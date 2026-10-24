@@ -135,13 +135,31 @@ editor:                     # owner's decision: an editor update is part of this
   - the editor's built-in test device can be an SMK (40 KiB slots) so the web tests cover it
   - the FM-1 path unchanged (80 KiB slots); sources only, the published site is left to the maintainer
 
-follow_up:                  # decided and planned, NOT in this port
-  stems:                    # 4 mono USB audio channels for DAW recording
-    mode: USB AUDIO = STEREO (default) | 4 TRACKS, outside SONG playback
-    tap: per track, post the track's own FX (engine, dist, SLICER, INSERT, level); dry of the shared send buses
-    punch: on the selected track in 4 TRACKS mode (one ring, as now; four rings do not fit in RAM)
-    cpu: the 48 kHz resampling pipelined onto core 1 (one block, 5.8 ms, more latency); core 0 as fallback
-    reference: Melodee (keremimo, GPL-3.0) has 4-track mono capture on the same chip
+follow_up:                  # decided and planned, NOT in this port; all of it behind BOARD_SMK37 (built and tested on
+                            # the SMK-37 first; offered to isod89 once it works), the FM-1 build byte-identical
+  stems:                    # per-track USB audio for a DAW (each track also on its own MIDI channel: exists, GLO > MIDI)
+    mode: USB AUDIO = STEREO (default) | TRACKS; a switch re-plugs USB (a distinct bcdDevice per layout, as Melodee)
+    channels:               # mono stems; pan, trim and the mix in the DAW
+      - 1-3 synth tracks 1-3, post their own chain (engine, DIST, INSERT, SLICER, FILTER)
+      - 4-7 drum groups (the per-kit STEM GROUP of each lane; default KICK / SNARE / HATS-CYMBALS / PERC)
+      - "8-9: open: the shared reverb / delay / chorus wet return, stereo (16 bit, 9 ch: ~830 B a packet) or none (24 bit possible, 7 ch)"
+    shared_fx: one reverb / delay / chorus for all tracks (sends only per track); per-track instances do not fit in RAM
+    drum_track_fx: FILTER, INSERT and SLICER GATE per group (exact for the linear ones); SLICER STUT needs 4 x 8 KB:
+                   per group if the RAM is there, else the kit as one stem while STUT is on
+    master: MASTER, DJ filter, DUST, limiter not on the stems; trim in the DAW; the metronome not on any stem
+    punch: on the selected track in TRACKS mode (one ring, as now; four rings do not fit in RAM)
+    rate: open (44.1 kHz needs no resampling; 48 kHz would resample on core 1, one block more latency)
+    tap: "open: post LEVEL and mute/solo (what you hear) or pre LEVEL"
+    reference: Melodee (Kerem Kilic, keremimo/melodee, GPL-3.0) 4-track capture on the same chip (packets ~540 B work)
+  choke:                    # MPC-style, per kit, sharing the per-voice group routing with the stems
+    model: per lane CHOKE (OFF / A..D: a hit cuts the sounding voices of its group) and MONO (a new hit cuts its own
+           lane); one-way mute targets maybe later
+    storage: a per-kit table on the SMK (46 kits x 16 lanes, 1 byte a lane: stem group, choke, mono; a new SMK-only
+             store object); user sample kits may also carry choke + mono in their slot header's reserved bytes (FM-1
+             ignores them); editable on the keyboard and the editor's DRUM KIT page; in backups (an SMK-only object the
+             FM-1 path skips)
+    defaults: today's sound (only the hat choke: closed / pedal hat cut the open one); the stem groups by lane role
+    open: whether kit files must carry their settings (header copy for USR kits) or the device table is enough
 
 pedal: none
 
