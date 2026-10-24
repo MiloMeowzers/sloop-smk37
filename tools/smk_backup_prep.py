@@ -31,13 +31,16 @@ FLASH_SIZE = 0x100000
 TRIM_OFF, TRIM_TAG = 0xC1224, b"trimdat"                 # the factory calibration record's tag (USRTRIM)
 
 AFTER = """the UBOOT key was sent: the keyboard comes back as the USB disk "WL82 UBOOT1.00" in a few seconds.
+DO NOT unplug or power-cycle it now: the bootloader lasts only until then. Read the flash first (1), check it (2).
   1. In an administrator shell (Windows) or as root (Linux), read the whole flash twice with jl-uboot-tool:
-       python3 jluboottool.py --device <the WL82 UBOOT disk> --chip wl82 "read 0 0x100000 smk37-dump-1.bin"
-       python3 jluboottool.py --device <the WL82 UBOOT disk> --chip wl82 "read 0 0x100000 smk37-dump-2.bin"
-     (Windows: \\\\.\\PhysicalDriveN, the disk named WL82 UBOOT; Linux: /dev/sgN.) Note the flash id it prints.
+       python3 jluboottool.py --chip wl82 "read 0 0x100000 smk37-dump-1.bin"
+       python3 jluboottool.py --chip wl82 "read 0 0x100000 smk37-dump-2.bin"
+     Without --device it finds the UBOOT disk itself (jldevfind.py lists it); else --device \\\\.\\E: on Windows (the
+     disk's drive letter), /dev/sgN on Linux. Note the flash id it prints.
   2. Check them: python3 tools/smk_backup_prep.py verify smk37-dump-1.bin smk37-dump-2.bin
   3. Keep the dump in two places: 0xC0000-0xC1FFF and 0xFF000-0xFFFFF are this unit's own.
-  4. Power-cycle the keyboard: it is in update mode. Finish the install, or M-UPGRADE back to stock."""
+  4. Only once verify says "a good backup": power-cycle the keyboard, then install (or M-UPGRADE back to stock).
+     (Power-cycled before the read: no harm, nothing was written; run prep again.)"""
 
 
 def prep(a, backend, out, ask):
