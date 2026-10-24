@@ -34,7 +34,7 @@ const E = vm.runInNewContext(proto + `
    CHOP, chopNovelty, chopHits, chopSnap, chopGrid, chopEqual, chopList, chopPick, chopFit, chopZones, wavFile, zipStore, crc32,
    UP, bank, capturePatch, auditionPatch, startWatch, libraryFile, readLibraryFile, paramKeys, patternFromSteps, stepsFromPattern, upName,
    mixer, GM_DRUM, drumName, parseNotes, fmtValue, F, DRUM_LANES, LV_NAMES, emptyDrum, lockable, MICRO, FC, fillGet, fillSet, pack7, unpack7,
-   loudDb, matchGains, withGain, LEVEL_MIN, backupCapture, backupRestore, backupObjects, b64enc, b64dec, FM6, KIT, kitPad, kitZones, kitLen, kitBytes, kitFit, kitSplit, kitLaneOf, kitPlace, zipRead, ROLL, SMF, ARR, mockSettings, fm6CartWrite, fm6CartPreset, fm6CartSlots, fm6CartPresets, DSYN, DSYN_MOCK_NAMES, DSYN_MOCK_KITS, DAW, SetGate, bkProjFormat, bkDevFormat, bkFwAtLeast, THEME, FM1_PORT_ED: FM1_PORT, fm1Ports, LOOP, LIVE, LVX, SONGF, songCapture, songLoad, songObjects })`,
+   loudDb, matchGains, withGain, LEVEL_MIN, backupCapture, backupRestore, backupObjects, b64enc, b64dec, FM6, KIT, kitPad, kitZones, kitLen, kitBytes, kitFit, kitSplit, kitLaneOf, kitPlace, smpMax, smpSlotsSet, zipRead, ROLL, SMF, ARR, mockSettings, fm6CartWrite, fm6CartPreset, fm6CartSlots, fm6CartPresets, DSYN, DSYN_MOCK_NAMES, DSYN_MOCK_KITS, DAW, SetGate, bkProjFormat, bkDevFormat, bkFwAtLeast, THEME, FM1_PORT_ED: FM1_PORT, fm1Ports, LOOP, LIVE, LVX, SONGF, songCapture, songLoad, songObjects })`,
 { setTimeout, clearTimeout, setInterval, clearInterval, console, TextEncoder, TextDecoder, Blob, Response, DecompressionStream });
 
 async function editorMock() {
@@ -2145,6 +2145,14 @@ async function editorSmkSlots() {
   const r40 = 0xA000 - 512 - 64, r80 = 0x14000 - 512 - 64, sp = E.kitSplit(pads, r40);
   ok(E.kitBytes(pads) > r40 && E.kitBytes(pads) <= r80 && sp && sp[0].length && sp[1].length && sp[0].length + sp[1].length === 16,
     "SMK-37 slots: a 49 KB kit shares out over USR3 and USR4 (40 KiB each), every pad whole in one");
+  /* the size everything fits to follows the connected device (the page's code keeps it with smpSlotsSet: its own
+     `dev` is out of smpMax's reach; on the unit the texts said 7.4 s while the meters said 40 KiB) */
+  const m0 = E.smpMax();
+  E.smpSlotsSet(i0);                                   /* an SMK-37's SMP_INFO */
+  const m40 = E.smpMax(), fit40 = E.kitSplit(pads, m40 - 64);
+  E.smpSlotsSet(null);                                 /* disconnected: an FM-1's again */
+  ok(m0 === 0x14000 - 512 && m40 === 0xA000 - 512 && E.smpMax() === m0 && fit40 && fit40[0].length && fit40[1].length,
+    "SMK-37 slots: smpMax follows the device's SMP_INFO (80 KiB with none, 40 KiB on an SMK-37), back at a disconnect");
 }
 
 await editorMock();

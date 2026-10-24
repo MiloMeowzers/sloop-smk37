@@ -1931,9 +1931,12 @@ function fmtValue(d, v) {
    byte for byte: web/test_web.mjs compares them. */
 const SMP = { SLOT_SIZE: 0x14000, DATA_OFF: 512, RATE: 22050, HDR_LEN: 32 + 16 * 28, MAX_ZONES: 16 };
 SMP.MAX_DATA = SMP.SLOT_SIZE - SMP.DATA_OFF;
-/* the data a slot of the connected device holds: SMP_INFO's slot size (an FM-1 80 KiB, an SMK-37 40 KiB); no device yet: an
-   FM-1's. Everything that fits samples to a slot (the meters, FIT, the kit split, sending) asks this, never SMP.MAX_DATA */
-const smpMax = () => ((typeof dev !== "undefined" && dev && dev.smp && dev.smp.slotKiB) ? dev.smp.slotKiB * 1024 : SMP.SLOT_SIZE) - SMP.DATA_OFF;
+/* the data a slot of the connected device holds: SMP_INFO's slot size (an FM-1 80 KiB, an SMK-37 40 KiB), kept in SMP.devSlot by
+   smpSlotsSet (the page's code: it runs in its own scope, its `dev` is not visible here); no device yet: an FM-1's.
+   Everything that fits samples to a slot (the meters, FIT, the kit split, sending, the texts' seconds) asks this */
+SMP.devSlot = 0;
+const smpSlotsSet = (s) => { SMP.devSlot = s && s.slotKiB ? s.slotKiB * 1024 : 0; return s; };   /* -> s (dev.smp = smpSlotsSet(...)) */
+const smpMax = () => (SMP.devSlot || SMP.SLOT_SIZE) - SMP.DATA_OFF;
 
 /* groups of up to 7 bytes, each preceded by their top bits */
 function pack7(b) {
@@ -6149,7 +6152,8 @@ async function connect() {
   sayK("connecting");
   try {
     if (!access) {
-      if (MOCK) { mock = makeMockDevice({ auto: false, legacy: QS.get("legacy") === "1", daw: QS.get("smk") === "1", onChange: previewChanged }); access = mock.access; }
+      if (MOCK) { mock = makeMockDevice({ auto: false, legacy: QS.get("legacy") === "1", daw: QS.get("smk") === "1",
+        slotSize: QS.get("smk") === "1" ? 0xA000 : 0, onChange: previewChanged });   /* (smk=1: an SMK-37, 40 KiB user slots) */ access = mock.access; }
       else {
         try { access = await navigator.requestMIDIAccess({ sysex: true }); }
         catch (e) { sayK("denied"); return; }
@@ -6204,6 +6208,7 @@ function disconnect(reasonKey = "disconnected") {
     dev.input.onmidimessage = null;
   }
   dev = null;
+  smpSlotsSet(null);                                /* (the next device says its own slot size) */
   busy = 0;
   needReload = false;
   renderPanels();
@@ -6262,8 +6267,8 @@ async function load(d) {
       try { d.slotUsed[k] = parse[CMD.PROJECT](await d.link.request(req.project(2, k))).used; }
       catch (e) { if (e.message === "closed") throw e; }
     }
-    try { d.smp = parse[CMD.SMP_INFO](await d.link.request(req.smpInfo())); }
-    catch (e) { if (e.message === "closed") throw e; d.smp = null; }   /* older firmware, or no flash */
+    try { d.smp = smpSlotsSet(parse[CMD.SMP_INFO](await d.link.request(req.smpInfo()))); }
+    catch (e) { if (e.message === "closed") throw e; d.smp = smpSlotsSet(null); }   /* older firmware, or no flash */
     d.keys = paramKeys(d.pdesc, d.info.pe0, d.info.pcount);
     d.fm6 = null;                                     /* v9: the FM6 patch slots (FM6_LIST), else null */
     if (d.info.proto >= 9) {
@@ -8439,6 +8444,7 @@ function renderKits() {
     const d = +b.dataset.d, sl = kitSlots(d).map((k) => ok && dev.smp.slots[k]);
     b.setAttribute("aria-checked", d === kitDraft.slot ? "true" : "false");
     b.disabled = ok && !kitHas4() && (d === KIT_PAIR || d === 3);
+    b.querySelector(".cap").textContent = t(d === KIT_PAIR ? "kitCapBig" : "kitCapOne");   /* (the device's slot size: smpMax) */
     b.querySelector(".now").textContent = !ok ? "" : sl.every((x) => !x || !x.zones) ? t("empty")
       : sl.filter((x) => x && x.zones).map((x) => x.name || "\u2014").filter((x, i, a) => a.indexOf(x) === i).join(" + ");
     b.classList.toggle("full", ok && sl.some((x) => x && x.zones));
@@ -8554,7 +8560,7 @@ function kitZip() {
   downloadBytes(`${fileSlug(kitDraft.name || "kit")}-drumkit.zip`, zipStore(files));
 }
 
-async function smpInfo() { dev.smp = parse[CMD.SMP_INFO](await rq(req.smpInfo())); }
+async function smpInfo() { dev.smp = smpSlotsSet(parse[CMD.SMP_INFO](await rq(req.smpInfo()))); }
 
 async function smpUpload(k, prog, ask = true, d = smpDraft[k]) {   /* (d: the DRUM KIT page's own, not the Samples draft) */
   let built, done = false;
