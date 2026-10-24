@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0             # the baseline commit and its history
 
@@ -36,13 +36,13 @@ jobs:
           ~/.venv-fw/bin/python -c "from PIL import features; import sys; ok = features.check('raqm'); print('raqm', ok); sys.exit(0 if ok else 1)"
           echo "$HOME/.venv-fw/bin" >> "$GITHUB_PATH"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Cache the JieLi toolchain and SDK files
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.jieli
@@ -111,7 +111,7 @@ jobs:
 
       - name: Artifact (packages, SHA-256, logs)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sloop-smk37-${{ github.sha }}
           path: out/
