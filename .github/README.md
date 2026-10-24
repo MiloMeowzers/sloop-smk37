@@ -6,9 +6,13 @@ release channel: the port is meant to go back to the projects it comes from.
 
 ## Provenance
 
+Everything here descends from **Felucca**: SLOOP is built on it, and genkigenki keeps the same SMK-37 layer for Felucca
+itself ([genkigenki/Felucca](https://github.com/genkigenki/Felucca) branch `smk37`, hugelton/Felucca#237).
+
 | Part | From | Licence |
 |---|---|---|
-| SLOOP, the firmware | [isod89/sloop-fm1](https://github.com/isod89/sloop-fm1), based on [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita / Hügelton Instruments | GPL-3.0-only |
+| Felucca, the root: the FM-1 firmware platform (HAL, engines, update path) SLOOP and the SMK-37 work build on | [hugelton/Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita (@kurogedelic) / Hügelton Instruments | GPL-3.0-only |
+| SLOOP, the firmware | [isod89/sloop-fm1](https://github.com/isod89/sloop-fm1), based on Felucca | GPL-3.0-only |
 | The SMK-37 board layer (input, screen, pad LEDs, flash map, update path, DAW mode) | M. Geisler, [genkigenki/sloop-fm1](https://github.com/genkigenki/sloop-fm1) branch `smk37` (isod89/sloop-fm1#112); its commits keep their authorship here | GPL-3.0-only |
 | The porting method: the playbook, the hardware docs, the `smk37-port.yaml` template | M. Geisler, [genkigenki/fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) | see that repository |
 | Carrying the layer to 2.8.1, the four 40 KiB user sample slots, punch-in FX MIDI out, the editor's slot sizing | the commits on `smk37` after the merge of the layer | GPL-3.0-only |
