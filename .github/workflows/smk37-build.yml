@@ -93,6 +93,19 @@ jobs:
         run: |
           (cd out && sha256sum *.fwsc | tee packages.sha256)
 
+      - name: Installer sites, one per model (for a local, offline install)
+        run: |
+          # web/make_site.py: the installer with its package (checked by its SHA-256 in the page) and the editor,
+          # also as one file for the disk (webapp/editor/sloop-editor.html). The installer fetches its package, so
+          # it is served from localhost (serve-installer.ps1), not opened as a file
+          v="2.8.1-smk37-$(git rev-parse --short HEAD)"
+          for m in pro elite mke; do
+            p=out/sloop-smk37$( [ $m = pro ] || echo "-$m" ).fwsc
+            python3 web/make_site.py "$p" "$v" "out/installer-$m" > /dev/null
+            ls "out/installer-$m/webapp/installer/index.html" "out/installer-$m/firmware/"*.fwsc
+          done
+          cp .github/serve-installer.ps1 out/
+
       - name: 3. FM-1, byte-identical to the baseline
         run: |
           sh build.sh > out/build-fm1.log 2>&1 || { tail -50 out/build-fm1.log; exit 1; }
