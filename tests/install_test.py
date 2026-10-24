@@ -538,6 +538,7 @@ def backup_prep():
             sys.stderr = old
         return rc, out.getvalue(), err.getvalue()
 
+    TMP.mkdir(parents=True, exist_ok=True)               # (the tests above removed it: shutil.rmtree(TMP))
     raw = package("SMK-37 Pro_900")
     p, image = pkgfile("bp.fwsc", raw), I.logical_image(raw)
     stock = dict(identity="SMK-37 Pro_016", name="SMK-37 Pro Midi", loader=("ota-SMK-37 Pro_900", "Felucca Update"))
@@ -573,6 +574,7 @@ def backup_prep():
     vr = lambda *n: BP.main(["verify"] + [files[k] for k in n], out=io.StringIO())   # noqa: E731
     ok(vr("d1", "d2") == 0 and vr("d1", "other") == 1 and vr("d1", "short") == 1 and vr("notrim", "notrim") == 1 and
        vr("d1") == 1, "backup verify: 2 x 1 MiB, the same, trimdat at 0xC1224; anything else refused")
+    shutil.rmtree(TMP, ignore_errors=True)
 
 
 backup_prep()
