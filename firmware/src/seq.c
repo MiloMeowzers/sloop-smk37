@@ -1910,6 +1910,29 @@ static void midi_fx(uint32_t note, int on)
             punch.req = -1;
     }
 }
+#if BOARD_SMK37
+/* SMK-37: a punch-in from the keys or pads (FX held) also goes out on FX CH, as the note midi_fx reads (53 + the key),
+ * so a DAW records it and plays it back through FX CH; the key's release sends its note off. The note off belongs to
+ * the key that sent the note on, not to whoever holds the effect then: with the DAW's MIDI thru on, the echoed note on
+ * takes the effect over (midi_fx), the key's note off still goes out, and its echo ends the effect. A punch-in from
+ * MIDI (or the editor's LIVE page) is never sent (no loop). FX CH OFF: nothing is sent */
+static uint8_t pfx_ch = 0xFFu, pfx_key;           /* the note on sent: its channel (0xFF: none), the key + 1 */
+static void punch_midi_off(void)
+{
+    if (pfx_ch <= 15u)
+        midi_out_note(pfx_ch, 53u + pfx_key - 1u, 0);
+    pfx_ch = 0xFFu, pfx_key = 0;
+}
+static void punch_midi_on(uint32_t k)
+{
+    int32_t c = song.g[G_FXCH];
+    punch_midi_off();                                 /* (another key's effect taken over: its note ends first) */
+    if (c < 1 || c > 16 || k > 26u)
+        return;
+    pfx_ch = (uint8_t)(c - 1), pfx_key = (uint8_t)(k + 1u);
+    midi_out_note(pfx_ch, 53u + k, 100u);
+}
+#endif
 
 static void key_down(uint32_t k)
 {
@@ -1925,6 +1948,9 @@ static void key_down(uint32_t k)
         if (fx >= 0 && fx < (int32_t)PUNCH_NFX) {
             punch.req = (int8_t)fx;
             punch.keybit = 1u << k;
+#if BOARD_SMK37
+            punch_midi_on(k);                         /* SMK-37: out on FX CH too */
+#endif
         }
         return;
     }
@@ -2048,6 +2074,10 @@ static void key_up(uint32_t k)
             punch.keybit = 0;
             punch.req = -1;
         }
+#if BOARD_SMK37
+        if (pfx_key == k + 1u)                        /* SMK-37: its note off on FX CH (whoever holds the effect now) */
+            punch_midi_off();
+#endif
         return;
     case KS_UI:
         lk_push(kb_nt[k][0], k, 0);

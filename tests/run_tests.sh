@@ -111,6 +111,19 @@ pads_rec_menu() {
     sed -n '/^    if (ui.menu) {/,/^    }/p' firmware/src/ui_input.c | grep -q 'transport_req = song.playing ? 2 : 1;' && echo checked
 }
 run "SMK-37 pads: DRUM KIT hits recorded into the drum track; PLAY / REC work in the HOME menu" pads_rec_menu
+# a punch-in from the keys / pads goes out on FX CH (the note midi_fx reads back: 53 + the key), its release sends the
+# note off of the key that sent it; SMK-37 only (the FM-1 build has none of it); MIDI in (midi_fx) never sends
+punch_midi_out() {
+    sed -n '/^static void punch_midi_on(/,/^}/p' firmware/src/seq.c | grep -q 'midi_out_note(pfx_ch, 53u + k, 100u);' &&
+    sed -n '/^static void punch_midi_on(/,/^}/p' firmware/src/seq.c | grep -q 'song.g\[G_FXCH\]' &&
+    sed -n '/^static void key_down(/,/^}/p' firmware/src/seq.c | grep -q 'punch_midi_on(k);' &&
+    sed -n '/^static void key_up(/,/^}/p' firmware/src/seq.c | grep -q 'if (pfx_key == k + 1u)' &&
+    ! sed -n '/^static void midi_fx(/,/^}/p' firmware/src/seq.c | grep -q 'punch_midi' &&
+    [ "$(grep -c 'punch_midi_on(k);' firmware/src/seq.c)" = 1 ] &&
+    sed -n '/^static void key_down(/,/^}/p' firmware/src/seq.c | grep -B1 -A1 'punch_midi_on(k);' | grep -q '#if BOARD_SMK37' &&
+    echo checked
+}
+run "SMK-37 punch-in FX: out on FX CH from the keys / pads, the note off from the key that sent it, never from MIDI in" punch_midi_out
 $CC -o "$OUT/smk_daw_test" tests/smk_daw_test.c
 run "SMK-37 DAW mode: the DEFAULT map, types, MIDI bytes (CC, notes, bend, MMC), knobs, toggles, rate, flash object" "$OUT/smk_daw_test"
 $CC -O2 -w -DSMK_MIX=1 -Ibuild/gen -Ifirmware/src -Ifirmware/hal -Itests -o "$OUT/daw_ui_test" tests/daw_ui_test.c -lm
