@@ -138,27 +138,47 @@ editor:                     # owner's decision: an editor update is part of this
 follow_up:                  # decided and planned, NOT in this port; all of it behind BOARD_SMK37 (built and tested on
                             # the SMK-37 first; offered to isod89 once it works), the FM-1 build byte-identical
   stems:                    # per-track USB audio for a DAW (each track also on its own MIDI channel: exists, GLO > MIDI)
-    mode: USB AUDIO = STEREO (default) | TRACKS; a switch re-plugs USB (a distinct bcdDevice per layout, as Melodee)
-    channels:               # mono stems; pan, trim and the mix in the DAW
-      - 1-3 synth tracks 1-3, post their own chain (engine, DIST, INSERT, SLICER, FILTER)
-      - 4-7 drum groups (the per-kit STEM GROUP of each lane; default KICK / SNARE / HATS-CYMBALS / PERC)
-      - "8-9: open: the shared reverb / delay / chorus wet return, stereo (16 bit, 9 ch: ~830 B a packet) or none (24 bit possible, 7 ch)"
+    mode: USB AUDIO LAYOUT = STEREO (default) | DRUMS+RET | SYNTHS+RET | ALL DRY; a switch re-plugs USB (a distinct
+          bcdDevice per layout, as Melodee); STEREO is today's path, unchanged
+    format: 48 kHz / 24 bit (3-byte samples), every stems layout 6 mono channels (49 x 6 x 3 = 882 B a packet; USB full
+            speed allows 1023 - 7 channels at 48/24 do not fit)
+    layouts:
+      DRUMS+RET:  [KICK, SNARE, HATS, PERC, RET L, RET R]
+      SYNTHS+RET: [SYN 1, SYN 2, SYN 3, DRUMS (the whole kit mono, as today's drum track), RET L, RET R]
+      ALL DRY:    [SYN 1, SYN 2, SYN 3, KICK, SNARE, HATS+PERC (PERC folded into HATS)]
+    groups: the per-kit STEM GROUP of each lane (KICK / SNARE / HATS / PERC); default KICK - KICK, KICK 2 / SNARE - SNARE,
+            SNARE 2, CLAP, RIM / HATS - HAT, PEDAL, OPEN HAT, CRASH, RIDE / PERC - LOW TOM, HI TOM, SHAKER, CONGA, COWBELL
+    choke: separate from the stem group (applies to the voices before the mix) - folding PERC into HATS in ALL DRY
+           changes only the channel, never what chokes what
+    synth_tap: post the track's own chain (engine, DIST, INSERT, SLICER, FILTER) and LEVEL / mute / solo; before pan
+               and the sends
+    return: the shared reverb / delay / chorus wet (stereo), with whatever every track sends to it
+    level: the existing USB AUDIO setting is respected - MASTER (the stems follow the knob's smoothed gain, either
+           LIMITER curve) or FULL (fixed, as the knob at the top); the stereo output's full scale at -12 dBFS in the
+           24-bit stems (12 dB headroom), no limiter / knee on the stems (no pumping baked in, no CPU), only a hard
+           ceiling at 24-bit full scale
     shared_fx: one reverb / delay / chorus for all tracks (sends only per track); per-track instances do not fit in RAM
-    drum_track_fx: FILTER, INSERT and SLICER GATE per group (exact for the linear ones); SLICER STUT needs 4 x 8 KB:
-                   per group if the RAM is there, else the kit as one stem while STUT is on
-    master: MASTER, DJ filter, DUST, limiter not on the stems; trim in the DAW; the metronome not on any stem
-    punch: on the selected track in TRACKS mode (one ring, as now; four rings do not fit in RAM)
-    rate: open (44.1 kHz needs no resampling; 48 kHz would resample on core 1, one block more latency)
-    tap: "open: post LEVEL and mute/solo (what you hear) or pre LEVEL"
+    drum_track_fx: FILTER, INSERT and SLICER GATE per group (exact for the linear ones; 4 groups in DRUMS+RET, 3 in ALL
+                   DRY, 1 in SYNTHS+RET); SLICER STUT needs 8 KB a group - per group if the RAM is there, else the kit
+                   as one stem while STUT is on
+    master: MASTER stage (DJ filter, DUST, TEXTURE, limiter) not on the stems; the metronome not on any stem
+    punch: on the selected track in the stems layouts (one ring, as now; four rings do not fit in RAM)
+    resampling: 44.1 -> 48 kHz per channel (6 instead of 2), on core 1
+    cpu_rule: a layout ships only if its worst case (all tracks, a full kit with the per-group FX, all sends, STUT)
+              stays under ~85 % on the unit (console build - cpu1); otherwise it is cut down, not shipped popping
+    first_tests: (1) the chip's USB sends 882-byte isochronous packets (today 196 B; Melodee proved 540 B);
+                 (2) Windows' class driver (usbaudio.sys) takes 6 ch / 24 bit; then macOS and an iPad
+    not_a_factor: isod89/sloop-fm1#99 (Pixel phones record USB audio distorted through Android's normal path) - an
+                  Android compatibility issue, not headroom; the stems are for a DAW
     reference: Melodee (Kerem Kilic, keremimo/melodee, GPL-3.0) 4-track capture on the same chip (packets ~540 B work)
   choke:                    # MPC-style, per kit, sharing the per-voice group routing with the stems
-    model: per lane CHOKE (OFF / A..D: a hit cuts the sounding voices of its group) and MONO (a new hit cuts its own
+    model: per lane CHOKE (OFF / A..D - a hit cuts the sounding voices of its group) and MONO (a new hit cuts its own
            lane); one-way mute targets maybe later
-    storage: a per-kit table on the SMK (46 kits x 16 lanes, 1 byte a lane: stem group, choke, mono; a new SMK-only
+    storage: a per-kit table on the SMK (46 kits x 16 lanes, 1 byte a lane - stem group, choke, mono; a new SMK-only
              store object); user sample kits may also carry choke + mono in their slot header's reserved bytes (FM-1
              ignores them); editable on the keyboard and the editor's DRUM KIT page; in backups (an SMK-only object the
              FM-1 path skips)
-    defaults: today's sound (only the hat choke: closed / pedal hat cut the open one); the stem groups by lane role
+    defaults: today's sound (only the hat choke - closed / pedal hat cut the open one); the stem groups by lane role
     open: whether kit files must carry their settings (header copy for USR kits) or the device table is enough
 
 pedal: none
@@ -166,7 +186,7 @@ pedal: none
 modes: {}                   # the layer's DAW mode (< + >) is kept as it is
 
 build:
-  environment: GitHub Actions (private CI branch `ci`, ubuntu-22.04): the upstream 2.8.1 baseline, the SMK-37 Pro /
+  environment: GitHub Actions (private CI branch `ci`, ubuntu-22.04) - the upstream 2.8.1 baseline, the SMK-37 Pro /
                Elite / MKE packages, the FM-1 again (byte-identical to the baseline), host and web tests in one run
 
 device_tests:               # what was tested on a unit (for the PR text: say exactly this, no more)
@@ -175,21 +195,16 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
           weak bit at 0xE0963, in USRFLASH), verified
   install: sloop-smk37-elite.fwsc (5118a03) with the local web installer; identity SMK-37 Elite_900 (fm1_install --info);
            the installer's wait for the restart timed out on Windows' first enumeration (to look at)
-  round_1: keys, pads, knobs, faders, wheels, buttons, HOME menu layout, saving: all ok (owner)
-  round_2: console build (FELUCCA_CDC=1, cda485b): status, smk, padtest, leds all as the kit expects; all 16 pads, 4
-           faders, both wheels, 18 buttons seen; flr: 0xC0000-0xC1FFF, 0xF4000-0xFDFFF, 0xFF000-0xFFFFF identical to the
+  round_1: keys, pads, knobs, faders, wheels, buttons, HOME menu layout, saving - all ok (owner)
+  round_2: console build (FELUCCA_CDC=1, cda485b) - status, smk, padtest, leds all as the kit expects; all 16 pads, 4
+           faders, both wheels, 18 buttons seen; flr - 0xC0000-0xC1FFF, 0xF4000-0xFDFFF, 0xFF000-0xFFFFF identical to the
            backup after the installs
-  round_3: the editor (4033cc7: 4 x 40 KiB, "about 3.7 s", a USR3+4 big kit sent and played, a chopped break, FM-1
-           backup restore); the slot read-back (6b76627, branch editor-slot-readback): load from the keyboard and the
-           pages filled after a restore: ok (owner)
+  round_3: the editor (4033cc7 - 4 x 40 KiB, "about 3.7 s", a USR3+4 big kit sent and played, a chopped break, FM-1
+           backup restore); the slot read-back (6b76627, branch editor-slot-readback) - load from the keyboard and the
+           pages filled after a restore - ok (owner)
   not_yet: punch-in MIDI out with a DAW; the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
-  - "stems: channels 8-9 = the shared FX return (stereo, 16 bit, 9 ch) or none (7 ch, 24 bit possible)"
-  - "stems: the tap post LEVEL and mute/solo (what you hear; recommended) or pre LEVEL"
-  - "stems: 44.1 kHz only first (recommended: no resampling) or 48 kHz too"
-  - "stems: the drum groups' default lanes (KICK: KICK, KICK 2 / SNARE: SNARE, SNARE 2, CLAP, RIM / HATS-CYMBALS: HAT,
-     PEDAL, OPEN HAT, CRASH, RIDE / PERC: LOW TOM, HI TOM, SHAKER, CONGA, COWBELL) and their order"
   - "stems: SLICER STUT on the drum groups needs 4 x 8 KB: per group if RAM allows (SMK build: ~35 KB .data/.bss and
      ~8 KB pool free), else the kit as one stem while STUT is on"
   - "choke: USR kits also carry choke + mono in their slot header (recommended) or the device table only"
