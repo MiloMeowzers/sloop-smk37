@@ -181,7 +181,9 @@ follow_up:                  # decided and planned, NOT in this port; all of it b
                slot today) - a magic, 16 lane bytes, a check; FF (absent) = the defaults, so every existing kit plays as
                now. The FM-1 never reads them (its build unchanged); the editor's kit files, backups and read-back carry
                them; SMP_END (or a new command) gets the 32 bytes on the SMK only, behind the editor's model check"
-    editing: on the keyboard and the editor's DRUM KIT page (per lane - STEM GROUP, CHOKE, MONO)
+    editing: "on the keyboard first; later also with the kit in the editor's DRUM KIT page (per lane - STEM GROUP,
+             CHOKE, MONO), saved in the kit block"
+    channel_names: by role (KICK, SNARE, HATS, PERC, HATS+PERC) - decided; the choke and the intent read at a glance
     defaults: today's sound (only the hat choke - closed / pedal hat cut the open one); the stem groups by lane role
     optimise: "a group with no lane assigned in the current kit costs nothing - no FX chain run, its channel silent;
               STUT buffers only for the groups in use (8 KB each), so most kits fit; only when they do not, the kit
@@ -212,8 +214,6 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
   not_yet: punch-in MIDI out with a DAW; the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
-  - "stems: name the drum channels by role (KICK, SNARE, HATS, PERC) or neutral (DRUM 1-4), since a kit can put
-     any lane in any group"
   - "Snoop37 look (SNOOP37=1, opt-in; genkigenki's smk37-snoop-look branch: boot splash + jingle, BOOT LOGO setting):
      BOOT LOGO in SCREEN (KNOB ACCEL to SEQ) or in SEQ"
   - "PAD LIGHT (genkigenki's snoop37 branch: LIGHTS K8, pads 100/75/50/25 %): bring it into every SMK build?"
