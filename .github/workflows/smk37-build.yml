@@ -1,0 +1,114 @@
+# The SMK-37 port's build and test run (fm1-to-smk37 AGENTS.md steps 1, 5 and 7), on a private CI branch only: never
+# part of the upstream pull request. One run builds, on the same day (the builds embed __DATE__):
+#   1. the baseline: upstream SLOOP 2.8.1 (BASE) for the FM-1, its hashes and its test results
+#   2. this branch for the SMK-37 Pro, Elite and MKE (one package each)
+#   3. this branch for the FM-1, last (the tests read the FM-1 binaries): byte-identical to the baseline, or the run fails
+#   4. the host and web tests: no failure that the baseline does not have, or the run fails
+# The packages, their SHA-256 and the logs are the run's artifact. Nothing is installed anywhere.
+name: SMK-37 build
+
+on:
+  push:
+    branches: [ci]
+  workflow_dispatch:
+
+env:
+  BASE: d893642                      # SLOOP 2.8.1, the port's upstream base
+  JIELI_TOOLCHAIN: /home/runner/.jieli/toolchain
+  AC79_SDK: /home/runner/fw-AC79_AIoT_SDK
+  SDK_TAG: AC79NN_SDK_V1.2.1_2023-12-13
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0             # the baseline commit and its history
+
+      - name: Host tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q build-essential python3-venv libraqm0 xz-utils curl
+          python3 -m venv ~/.venv-fw
+          ~/.venv-fw/bin/pip install -q Pillow fonttools
+          ~/.venv-fw/bin/python -c "from PIL import features; import sys; ok = features.check('raqm'); print('raqm', ok); sys.exit(0 if ok else 1)"
+          echo "$HOME/.venv-fw/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache the JieLi toolchain and SDK files
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.jieli
+            ~/fw-AC79_AIoT_SDK
+          key: jieli-${{ env.SDK_TAG }}-v1
+
+      - name: JieLi toolchain (JieLi's package server)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sh tools/get_toolchain.sh
+
+      - name: AC79 SDK files (gitee, sparse)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse --branch "$SDK_TAG" \
+            https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git "$AC79_SDK"
+          git -C "$AC79_SDK" sparse-checkout set cpu/wl82/tools
+
+      - name: Versions
+        run: |
+          ls "$JIELI_TOOLCHAIN"
+          "$JIELI_TOOLCHAIN"/pi32v2/bin/clang --version 2>/dev/null | head -1 || true
+          python3 --version; node --version; gcc --version | head -1
+
+      - name: 1. Baseline (upstream ${{ env.BASE }}, FM-1)
+        run: |
+          git worktree add ../base "$BASE"
+          cd ../base
+          sh build.sh > ../base-build.log 2>&1 || { tail -50 ../base-build.log; exit 1; }
+          sha256sum build/felucca.bin build/felucca.fwsc build/loader/ota.bin > ../fm1-reference.sha256
+          cat ../fm1-reference.sha256
+          sh tests/run_tests.sh > ../base-tests.log 2>&1 || true
+          grep -n "FAIL\|OVER BUDGET" ../base-tests.log | sed 's/^[0-9]*://' | sort -u > ../base-fails.txt || true
+          echo "baseline failures: $(wc -l < ../base-fails.txt)"
+
+      - name: 2. SMK-37 packages (Pro, Elite, MKE)
+        run: |
+          mkdir -p out
+          for m in pro elite mke; do
+            BOARD=smk37 MODEL=$m sh build.sh > "out/build-smk37-$m.log" 2>&1 || { tail -50 "out/build-smk37-$m.log"; exit 1; }
+            p=build/sloop-smk37$( [ $m = pro ] || echo "-$m" ).fwsc     # (the intermediates are shared: copy each at once)
+            cp "$p" out/
+          done
+          ls -l out/*.fwsc
+
+      - name: SHA-256 of the packages
+        run: |
+          (cd out && sha256sum *.fwsc | tee packages.sha256)
+
+      - name: 3. FM-1, byte-identical to the baseline
+        run: |
+          sh build.sh > out/build-fm1.log 2>&1 || { tail -50 out/build-fm1.log; exit 1; }
+          sha256sum -c ../fm1-reference.sha256 | tee out/fm1-identical.txt
+
+      - name: 4. Host and web tests (FM-1 built last)
+        run: |
+          sh tests/run_tests.sh > out/tests.log 2>&1 || true
+          grep -n "FAIL\|OVER BUDGET" out/tests.log | sed 's/^[0-9]*://' | sort -u > out/fails.txt || true
+          cp ../base-fails.txt ../base-tests.log ../fm1-reference.sha256 out/
+          comm -13 ../base-fails.txt out/fails.txt > out/new-fails.txt
+          echo "failures: $(wc -l < out/fails.txt), baseline: $(wc -l < ../base-fails.txt), new: $(wc -l < out/new-fails.txt)"
+          if [ -s out/new-fails.txt ]; then echo "NEW FAILURES:"; cat out/new-fails.txt; exit 1; fi
+
+      - name: Artifact (packages, SHA-256, logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sloop-smk37-${{ github.sha }}
+          path: out/
+          retention-days: 30
