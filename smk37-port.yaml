@@ -166,8 +166,19 @@ pedal: none
 modes: {}                   # the layer's DAW mode (< + >) is kept as it is
 
 build:
-  environment: none yet     # no WSL distribution / JieLi toolchain on this machine: source-only port for now;
-                            # the FM-1 byte-identical check, the SMK builds and the host tests run once the owner has
-                            # the toolchain (until then nothing is claimed as built or tested)
+  environment: GitHub Actions (private CI branch `ci`, ubuntu-22.04): the upstream 2.8.1 baseline, the SMK-37 Pro /
+               Elite / MKE packages, the FM-1 again (byte-identical to the baseline), host and web tests in one run
+
+device_tests:               # what was tested on a unit (for the PR text: say exactly this, no more)
+  unit: SMK-37 Elite (flash id 0x856014), from M-Vave stock 016
+  backup: full flash dump via tools/smk_backup_prep.py prep + jl-uboot-tool, 4 reads (reads 2-4 identical; read 1 one
+          weak bit at 0xE0963, in USRFLASH), verified
+  install: sloop-smk37-elite.fwsc (5118a03) with the local web installer; identity SMK-37 Elite_900 (fm1_install --info);
+           the installer's wait for the restart timed out on Windows' first enumeration (to look at)
+  round_1: keys, pads, knobs, faders, wheels, buttons, HOME menu layout, saving: all ok (owner)
+  round_2: console build (FELUCCA_CDC=1, cda485b): status, smk, padtest, leds all as the kit expects; all 16 pads, 4
+           faders, both wheels, 18 buttons seen; flr: 0xC0000-0xC1FFF, 0xF4000-0xFDFFF, 0xFF000-0xFFFFF identical to the
+           backup after the installs
+  not_yet: the editor's sample slots / big kit / backup restore on the unit; punch-in MIDI out; the DAW mode
 
 open_questions: []
