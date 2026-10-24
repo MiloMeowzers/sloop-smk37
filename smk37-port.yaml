@@ -174,12 +174,19 @@ follow_up:                  # decided and planned, NOT in this port; all of it b
   choke:                    # MPC-style, per kit, sharing the per-voice group routing with the stems
     model: per lane CHOKE (OFF / A..D - a hit cuts the sounding voices of its group) and MONO (a new hit cuts its own
            lane); one-way mute targets maybe later
-    storage: a per-kit table on the SMK (46 kits x 16 lanes, 1 byte a lane - stem group, choke, mono; a new SMK-only
-             store object); user sample kits may also carry choke + mono in their slot header's reserved bytes (FM-1
-             ignores them); editable on the keyboard and the editor's DRUM KIT page; in backups (an SMK-only object the
-             FM-1 path skips)
+    storage: "built-in kits - a per-kit table on the SMK (46 kits x 16 lanes, 1 byte a lane - stem group, choke, mono;
+             a new SMK-only store object, in backups, the FM-1 path skips it). User kits (USR1-4, USR3+4) - IN THE KIT
+             itself (decided), so a kit shared through the editor keeps its settings"
+    kit_block: "plan - the slot's bytes 480..511 (between the 480-byte header and the data at 512; erased FF on every
+               slot today) - a magic, 16 lane bytes, a check; FF (absent) = the defaults, so every existing kit plays as
+               now. The FM-1 never reads them (its build unchanged); the editor's kit files, backups and read-back carry
+               them; SMP_END (or a new command) gets the 32 bytes on the SMK only, behind the editor's model check"
+    editing: on the keyboard and the editor's DRUM KIT page (per lane - STEM GROUP, CHOKE, MONO)
     defaults: today's sound (only the hat choke - closed / pedal hat cut the open one); the stem groups by lane role
-    open: whether kit files must carry their settings (header copy for USR kits) or the device table is enough
+    optimise: "a group with no lane assigned in the current kit costs nothing - no FX chain run, its channel silent;
+              STUT buffers only for the groups in use (8 KB each), so most kits fit; only when they do not, the kit
+              goes out as one stem while STUT is on. Assignment is free per kit (toms in KICK, perc unused, ...)"
+    stut: decided - per group if the RAM is there, else the whole kit as one stem while STUT is on
 
 pedal: none
 
@@ -205,9 +212,8 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
   not_yet: punch-in MIDI out with a DAW; the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
-  - "stems: SLICER STUT on the drum groups needs 4 x 8 KB: per group if RAM allows (SMK build: ~35 KB .data/.bss and
-     ~8 KB pool free), else the kit as one stem while STUT is on"
-  - "choke: USR kits also carry choke + mono in their slot header (recommended) or the device table only"
+  - "stems: name the drum channels by role (KICK, SNARE, HATS, PERC) or neutral (DRUM 1-4), since a kit can put
+     any lane in any group"
   - "Snoop37 look (SNOOP37=1, opt-in; genkigenki's smk37-snoop-look branch: boot splash + jingle, BOOT LOGO setting):
      BOOT LOGO in SCREEN (KNOB ACCEL to SEQ) or in SEQ"
   - "PAD LIGHT (genkigenki's snoop37 branch: LIGHTS K8, pads 100/75/50/25 %): bring it into every SMK build?"
