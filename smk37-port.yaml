@@ -1,0 +1,155 @@
+# smk37-port.yaml: every decision for this SMK-37 port of SLOOP, in one place.
+# Filled from the owner's answers (fm1-to-smk37 AGENTS.md, step 0). Change this file first, then the code.
+# The mapping is the existing SLOOP SMK-37 port's (fm1-to-smk37 examples/sloop.yaml), carried to SLOOP 2.8.1.
+
+firmware:
+  name: SLOOP
+  upstream: https://github.com/isod89/sloop-fm1
+  base: SLOOP 2.8.1 (d893642)
+  family: sloop
+  board_layer: sloop        # genkigenki/sloop-fm1 smk37 (= isod89/sloop-fm1#112): 8fad1a1..ref/smk37, on 2.6; that
+                            # branch already merged upstream 2.7 (ba54ba5), so 2.8 / 2.8.1 are the new ground
+  lost_on_smk: [TRS MIDI IN / MIDI clock in over TRS]   # MIDI OUT on the TRS jack stays
+  priorities:
+    - user sample kits and banks from the web editor work as on the FM-1 (USR1..USR4, the big kit USR3+4)
+    - the SLOOP workflow unchanged, so the SLOOP manual still applies (2.8's NOTES editor and per-step sheet too)
+    - step sequencing on the pads, in the screen's track colours
+    - quick sound choice without menus
+    - a hands-on mixer for the four tracks
+
+delivery:
+  mode: local               # prepared on the local branch smk37 only: no push, fork, PR or release until the owner
+                            # has talked to genkigenki; PR text drafted for later (upstream PR is the intended end)
+  pr: ""
+  fork: ""
+  package: sloop-smk37.fwsc # sloop-smk37-elite.fwsc, sloop-smk37-mke.fwsc
+  usb_name: Felucca         # SLOOP's USB product string (kept); installers already know it
+  data_family: SLOOP        # shared with genkigenki's SLOOP SMK-37 build; settings layouts 2.7 -> 2.8.1 to be
+                            # checked byte for byte before relying on it (step 3)
+  copyright: ""             # no new porter line: genkigenki's existing lines in the layer's files stay as they are
+
+models: [pro, elite, mke]   # Starrykey 37 Play uses the Pro build
+
+samples:                    # owner's decision (not in the template): keep the FM-1's four-slot arrangement
+  layout: 4 x 40 KiB        # USR1..USR4 in the existing FL_SMP window 0xC2000..0xE9FFF (no new flash window, the
+                            # allow-list and its asserts unchanged): USR1 0xC2000, USR2 0xCC000, USR3 0xD6000, USR4 0xE0000
+  usr1_usr2: instruments / one-shots (SAMPLE, GRAIN, SLICE, texture SRC), and kits, as on the FM-1
+  usr3_usr4: two kits, or together the big kit USR3+4 (80 KiB, about 7 s; the FM-1's is about 15 s)
+  drum_track: KIT USR1, USR2, USR3, USR4, USR3+4, as on the FM-1
+  editor: the web editor sizes everything from SMP_INFO's slot size (no hard-coded 80 KiB); FM-1 unchanged (80 KiB)
+  migration: samples stored by the 2.7 SMK build (2 x 80 KiB) read as empty when over 40 KiB; re-upload; told in SMK37.md
+  backups: a backup slot bigger than the device's slot is skipped with a message; the rest restores
+
+keys:
+  middle: fm1
+  outer: extend             # synth tracks: more notes; drum track: drums
+  outer_drums:
+    C3: kick
+    D3: snare
+    E3: hi-hat              # a black key plays its left white neighbour
+    G#5: cowbell
+    A5: open hi-hat
+    B5: crash
+    C6: ride
+  velocity: factory
+
+pads:
+  pattern: steps            # the FM-1's 16 white keys F3..G5
+  order: reading            # top row steps 1-8, bottom row 9-16
+  colours: screen           # track colours: blue, green, yellow, orange
+  idle: dark
+  playhead: bright
+  picker:
+    enabled: true
+    knob: K4
+    page: "< >"
+    pin: KNOB BANK
+  velocity: true
+  notes: SEL layer shows a piano layout (scale green, root brighter); SAVE layer shows slots (used green, free white)
+
+faders:
+  pattern: banks
+  takeover: soft
+  bank_button: FADER BANK
+  banks:
+    A: [level 1, level 2, level 3, level 4 (drums)]
+    B: [filter 1, filter 2, filter 3, filter 4]
+    C: [reverb 1, reverb 2, reverb 3, reverb 4]
+    D: [delay 1, delay 2, delay 3, delay 4]
+  screen: bank_screen
+
+wheels:
+  pitch:
+    target: bend
+    range_semitones: 7
+    applies_to: selected
+  mod:
+    target: vibrato
+    detail: 10 Hz, up to +-1 semitone, up = more
+  calibration: auto
+
+rules:
+  no_doubles: true
+  doubles_allowed: []
+
+knobs:
+  layout: fm1               # plus the layer's HOME > SCREEN > KNOB LAYOUT = SMK option, kept
+  K1: master
+  K2: select                # tempo on TRACKS, pages; 2.8.1: on the PUNCH page (FX held) the fade
+  K3: track
+  K4: sound / kit
+  K5: dial 1 (blue)
+  K6: dial 2 (green)
+  K7: dial 3 (yellow)
+  K8: dial 4 (orange)
+  step: detent
+  pages: {}
+
+buttons:
+  map: printed              # PATCH = HOME, CHORD = ENV, NOTE REPEAT = LFO, SCALE = SEL, PARA = EDIT, GLOBE = GLO, BT = SAVE
+  names: firmware
+  extra:
+    KNOB BANK: pins the pad sound picker
+    FADER BANK: the fader bank screen
+    "<": "page back (SEQ held: step page back; visualiser: style)"
+    ">": "page forward (SEQ held: step page forward; visualiser: style)"
+  notes: 2.8's NOTES editor and per-step sheet open with OCTAVE+ (the FM-1's OCT+), as the layer maps OCT+ already
+
+screen:
+  style: keep
+  colours: track colours blue, green, yellow, orange on screen, pads and knob caps K5-K8
+  rules:
+    - the screen shows what you touch first
+    - same colours and same places on screen and panel
+    - no hidden modes
+
+punch_midi:                 # owner's decision: SMK-only in this port (behind BOARD_SMK37; FM-1 unchanged)
+  in: as upstream 2.7      # GLO > MIDI 3 > FX CH: notes 53..79 hold the punch-in effects (USB MIDI in; no TRS in)
+  out: smk only            # a punch-in from the pads / keys (FX held) sends its note on FX CH (USB and TRS MIDI OUT),
+                            # note off on release, so a DAW records it and plays it back through FX CH
+  default: FX CH OFF        # as upstream: nothing new is sent until FX CH is set
+
+editor:                     # owner's decision: an editor update is part of this port (web/editor.html, web tests)
+  - sample slots, kits (USR3+4 split) and backups sized from SMP_INFO's slot size, not a fixed 80 KiB
+  - a backup slot larger than the device's slot: skipped with a message, the rest restores
+  - the editor's built-in test device can be an SMK (40 KiB slots) so the web tests cover it
+  - the FM-1 path unchanged (80 KiB slots); sources only, the published site is left to the maintainer
+
+follow_up:                  # decided and planned, NOT in this port
+  stems:                    # 4 mono USB audio channels for DAW recording
+    mode: USB AUDIO = STEREO (default) | 4 TRACKS, outside SONG playback
+    tap: per track, post the track's own FX (engine, dist, SLICER, INSERT, level); dry of the shared send buses
+    punch: on the selected track in 4 TRACKS mode (one ring, as now; four rings do not fit in RAM)
+    cpu: the 48 kHz resampling pipelined onto core 1 (one block, 5.8 ms, more latency); core 0 as fallback
+    reference: Melodee (keremimo, GPL-3.0) has 4-track mono capture on the same chip
+
+pedal: none
+
+modes: {}                   # the layer's DAW mode (< + >) is kept as it is
+
+build:
+  environment: none yet     # no WSL distribution / JieLi toolchain on this machine: source-only port for now;
+                            # the FM-1 byte-identical check, the SMK builds and the host tests run once the owner has
+                            # the toolchain (until then nothing is claimed as built or tested)
+
+open_questions: []
