@@ -39,7 +39,7 @@ Until this project's releases include SMK-37 packages, unofficial builds can be 
 **Back to the stock firmware:** install the official package for your model with M-Vave's own updater (M-UPGRADE),
 or give it to the installer: `python3 tools/fm1_install.py --force SMK-37_Pro_016.fwsc` (the installer reads the
 stock package format). The SLOOP build keeps the stock update protocol, so the stock tools see the keyboard as usual.
-The user sample slots USR1 / USR2 (0xC2000–0xE9FFF) are where the stock firmware keeps its key, knob and fader
+The user sample slots USR1–USR4 (0xC2000–0xE9FFF) are where the stock firmware keeps its key, knob and fader
 mapping; it trusts that area while its end marker `usrdata` (0xEAFF8) is there. SLOOP erases the marker's sector
 (0xEA000, the only sector it may touch there) before it first stores a sample in USRFLASH, and at power-on when the
 marker sits over sample data, so the stock firmware rebuilds its factory mapping; an untouched stock mapping (with
@@ -102,6 +102,20 @@ update mode (UBOOT).
 | — | — | keys G#5–C6 (highest 5) | synth tracks: notes; drum track: G#5 cowbell, A5 open hat, B5 crash, C6 ride |
 | LEDs under 27 keys | what is on / playing | 16 RGB pads | PLAY screen: DRUM KIT (default; a pad a drum sound whatever track is selected, velocity, recorded into the drum track while recording; orange, dim / bright while it sounds) or STEPS (KNOB BANK + FADER BANK; the selected track's 16 steps of the page, top row 1–8: empty dim white, set in the track's colour, playhead white; tap sets / clears; drums: the sound last played). Layers: SEQ / FX / GLO / SAVE tiles, SCALE piano, EDIT / ARP held the white keys |
 
+## User samples and drum kits
+
+The web editor's samples and drum kits go to the four user slots **USR1–USR4**, as on the FM-1, at half the length:
+40 KiB a slot (about 3.7 s at 22050 Hz; the FM-1's are 80 KiB). SAMPLE / GRAIN / TEXTURE play USR1–USR4 (SLICE USR1–USR3); the
+drum track's KIT plays USR1–USR4 and **USR3+4**, one kit over the two slots (80 KiB, about 7 s), the editor's DRUM
+KIT page's default: it shares the pads out over USR3 and USR4 by itself (each pad whole in one slot, so one sound is at
+most about 3.7 s; FIT shortens the longest when a kit does not fit). The editor reads the slot size from the keyboard,
+so its meters, FIT and the kit split are the SMK-37's.
+
+- A **backup from an FM-1** restores; a sample slot bigger than 40 KiB is skipped (the editor names it, that slot stays
+  as it was). Send it again shorter (FIT), or, for a drum kit, to USR3+4.
+- Samples stored by an **earlier SMK-37 build** (two slots of 80 KiB) read as empty when longer than 40 KiB (a shorter
+  USR2 shows up as USR3); send them again.
+
 ## Velocity
 
 HOME menu (PATCH held) > PLAY > **KEY VELOCITY**, on K5 (before: MIDI, K8), sets how the 37 keys and the pads play. It applies to the
@@ -118,17 +132,18 @@ notes, their MIDI out and the drum levels; OCT− / OCT+ held still play ghost /
 
 ## HOME menu: the SMK-37 settings
 
-HOME menu (PATCH held; sections SCREEN, LIGHTS, AUDIO, PLAY, MIDI, DAW, SYSTEM); SELECT walks the sections, the knobs set the rows (K5–K8, or K1–K4 with KNOB LAYOUT = SMK;
+HOME menu (PATCH held; sections SCREEN, LIGHTS, AUDIO, SEQ, PLAY, MIDI, DAW, SYSTEM: every row the SLOOP manual lists is in
+its section, as on the FM-1, and the SMK-37's own are below); SELECT walks the sections, the knobs set the rows (K5–K8, or K1–K4 with KNOB LAYOUT = SMK;
 the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ REC still start / stop and arm:
 
 | Section | Row | Knob | Setting |
 |---|---|---|---|
 | SCREEN | KNOB LAYOUT | K7 | FM-1 (default): K1 MASTER, K2 SELECT, K3 ALGORITHM, K4 PRESETS, K5–K8 the dials. SMK: K1–K4 the dials, K5 MASTER, K6 SELECT, K7 PRESETS, K8 ALGORITHM. The knobs are endless: the new layout works at once. Switched to SMK, the menu's rows move to K1–K4 (K3 switches back) |
-| AUDIO | LIMITER | K8 | SOFT (default): 9 dB more headroom at the power-on MASTER position, the limiter only near full scale, so a held chord keeps its level; MASTER's top as loud as before (turn it up for loudness). CLASSIC: SLOOP's limiter and MASTER curve |
+| SCREEN | KNOB ACCEL | K8 | SLOOP's: ON (default), a fast turn moves further; OFF, one value a detent |
 | PLAY | KEY VELOCITY | K5 | see [Velocity](#velocity) |
 | PLAY | BEND UP | K6 | the pitch wheel up, on the internal sounds (the selected synth track): OFF, 1, 2, 3, 4, 5, 7 or 12 semitones, default 7. MIDI IN's pitch bend has its own (GLO > MIDI 2 > BEND) |
 | PLAY | BEND DOWN | K7 | the same, down (default 7; e.g. +2 up, −12 down). The earlier BEND RANGE is read as both |
-| PLAY | KNOB ACCEL | K8 | SLOOP's (SCREEN on the FM-1): ON (default), a fast turn moves further; OFF, one value a detent |
+| PLAY | LIMITER | K8 | SOFT (default): 9 dB more headroom at the power-on MASTER position, the limiter only near full scale, so a held chord keeps its level; MASTER's top as loud as before (turn it up for loudness). CLASSIC: SLOOP's limiter and MASTER curve |
 | MIDI | TRS MIDI OUT | K5 | ON (default) / OFF. The 3.5 mm jack sends what goes out over USB MIDI: the keys and pads (and the sequencer with GLO > SYSTEM > MIDI = SEQ, or DAW mode), on each track's MIDI channel, with or without a computer. NOT SENDING: the UART did not answer; set it again to retry |
 | MIDI | MODE | K6 | SYNTH (default) / DAW ([DAW mode](#daw-mode); also `<` + `>`) |
 | MIDI | CHANNEL | K7 | 1–16 (default 1): DAW mode's keys and every map entry on MAIN |
@@ -137,6 +152,12 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 | DAW | KNOBS | K6 | ABSOLUTE (0–127) / RELATIVE (64 ± the detents) |
 | DAW | EDIT MAP | K7 | OCT+: the map editor (also PATCH held + OCTAVE+) |
 | DAW | RESET MAP | K8 | how many entries differ from DEFAULT; OCT+ twice: USER = DEFAULT |
+
+**Punch-in FX over MIDI:** with GLO > MIDI 3 > **FX CH** set (OFF by default), a punch-in played on the keys or pads
+(FX held) also goes out on that channel as the note SLOOP reads back there (F3–G5, 53–79: the FM-1's 27 keys), and its
+release as the note off. A DAW records them on a MIDI track and plays them back into SLOOP over USB MIDI (FX CH, as since
+SLOOP 2.7); with the DAW's MIDI thru on, the echo takes the effect over and the key's note off still ends it. Punch-ins
+that come in over MIDI are not sent again. SMK-37 only.
 
 The jack is a MIDI **OUT** (UART1 on PC7, 31250 baud; there is no MIDI IN on the SMK-37). Connect it with a
 TRS-to-DIN MIDI adapter. The SMK-37 is listed with a **type A** TRS jack (a community spec sheet; M-Vave's manual
