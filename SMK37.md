@@ -3,6 +3,10 @@
 The M-Vave SMK-37 has the FM-1's chip (JieLi AC791N), so SLOOP runs on it as a target board: `BOARD=smk37`.
 Everything SMK-37-specific sits behind `BOARD_SMK37`; the FM-1 build is unchanged, byte for byte.
 
+The SMK-37 board layer (input, screen, pad LEDs, flash map, update path, DAW mode) is M. Geisler's
+([genkigenki/sloop-fm1](https://github.com/genkigenki/sloop-fm1), branch `smk37`; isod89/sloop-fm1#112), ported with
+the [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) kit; this build carries it to SLOOP 2.8.1.
+
 > Unofficial firmware for the SMK-37, not affiliated with or endorsed by M-Vave. No warranty: install at your own
 > risk and read [Safety](#safety) first.
 
