@@ -94,6 +94,12 @@ jobs:
             { tail -50 out/build-smk37-elite-console.log; exit 1; }
           cp build/sloop-smk37-elite.fwsc out/sloop-smk37-elite-console.fwsc
           tail -3 out/build-smk37-elite-console.log
+          # the stems probe (smk37-port.yaml follow_up.stems first_tests): the console build with the USB audio input
+          # as 6 x 24 bit at 48 kHz and test signals instead of the music (SMK_UAC_PROBE=1). For testing only
+          BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_PROBE=1 sh build.sh > out/build-smk37-elite-uac6.log 2>&1 ||
+            { tail -50 out/build-smk37-elite-uac6.log; exit 1; }
+          cp build/sloop-smk37-elite.fwsc out/sloop-smk37-elite-uac6probe.fwsc
+          tail -3 out/build-smk37-elite-uac6.log
           ls -l out/*.fwsc
 
       - name: SHA-256 of the packages
