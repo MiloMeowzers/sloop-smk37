@@ -1931,6 +1931,9 @@ function fmtValue(d, v) {
    byte for byte: web/test_web.mjs compares them. */
 const SMP = { SLOT_SIZE: 0x14000, DATA_OFF: 512, RATE: 22050, HDR_LEN: 32 + 16 * 28, MAX_ZONES: 16 };
 SMP.MAX_DATA = SMP.SLOT_SIZE - SMP.DATA_OFF;
+/* the data a slot of the connected device holds: SMP_INFO's slot size (an FM-1 80 KiB, an SMK-37 40 KiB); no device yet: an
+   FM-1's. Everything that fits samples to a slot (the meters, FIT, the kit split, sending) asks this, never SMP.MAX_DATA */
+const smpMax = () => ((typeof dev !== "undefined" && dev && dev.smp && dev.smp.slotKiB) ? dev.smp.slotKiB * 1024 : SMP.SLOT_SIZE) - SMP.DATA_OFF;
 
 /* groups of up to 7 bytes, each preceded by their top bits */
 function pack7(b) {
@@ -2134,7 +2137,7 @@ const LOOP = {
 };
 
 /* zones: [{s: Int16Array (22050 Hz), root, lo?, hi?, loop?, ls?, le?}] -> {hdr (480 B), data, zones} (sampleio.user_slot) */
-function buildSlot(name, zonesIn) {
+function buildSlot(name, zonesIn, max = smpMax()) {
   const zones = [], parts = [];
   let len = 0;
   for (const z of zonesIn) {
@@ -2148,7 +2151,7 @@ function buildSlot(name, zonesIn) {
   const data = new Uint8Array(len);
   let o = 0;
   for (const p of parts) { data.set(p, o); o += p.length; }
-  if (len > SMP.MAX_DATA) throw new Error(`too long: ${len} B (max ${SMP.MAX_DATA} B)`);
+  if (len > max) throw new Error(`too long: ${len} B (max ${max} B)`);
   if (!zones.length || zones.length > SMP.MAX_ZONES) throw new Error("1..16 files per slot");
   zones.sort((a, b) => a.root - b.root);
   zones.forEach((z, j) => {
@@ -2597,6 +2600,22 @@ async function backupRestore(rq, file, progress = () => {}) {
     d.set([1, 2, 3, 10, 2], 32);
     m.set(10, d);
   }
+  /* the user sample slots the device has (SMP_INFO: an SMK-37's are 40 KiB, an FM-1's 80 KiB): a slot of the backup
+     bigger than the device's is skipped (the device's slot left as it is) and named in the result, before anything is
+     written; everything else restores. -> the skipped slots' names ([]: all of it) */
+  const skipped = [];
+  if (BK.SAMPLES.some((id) => m.has(id))) {
+    let cap = Infinity, ns = BK.SAMPLES.length;
+    try {
+      const s = parse[CMD.SMP_INFO](await rq(req.smpInfo(), { timeout: 1000, retries: 1 }));
+      cap = s.slotKiB * 1024, ns = s.nslots;
+    } catch (e) { /* (no answer: as before, the device's SMP_END refuses what does not fit) */ }
+    for (const id of BK.SAMPLES)
+      if (m.has(id) && (id - 32 >= ns || m.get(id).length > cap)) {
+        skipped.push(`USR${id - 31}`);
+        m.delete(id);
+      }
+  }
   const total = [...m.values()].reduce((s, d) => s + d.length, 0) || 1;
   let done = 0;
   for (const id of BK.RESTORE) {
@@ -2637,7 +2656,7 @@ async function backupRestore(rq, file, progress = () => {}) {
     r = parse[CMD.SMP_END](await rq(req.smpEnd(k, d.subarray(0, SMP.HDR_LEN)), { timeout: 2000, retries: 0 }));
     if (r.rc) throw new BackupError("bkWrite", `USR${k + 1} end rc ${r.rc}`);
   }
-  return true;
+  return skipped;
 }
 
 /* 2.5 Store cartridge: packed patches into B1..Bn in one write. The bank (backup object 8) is read whole, slots
@@ -3263,11 +3282,12 @@ function makeMockDevice(opt = {}) {
     micro: new Array(NSTEP).fill(0), locks: [],      /* v7: nudges, parameter locks (at most NLOCK) */
     fill: new Array(NSTEP / 4).fill(0) });           /* v8: fill conditions, 2 bits a step */
   const NLOCK = 24;
+  const SLOT = opt.slotSize || SMP.SLOT_SIZE;         /* a slot's size: an FM-1 80 KiB; opt.slotSize 0xA000: an SMK-37 */
   const st = {
     tracks: [0, 1, 2, 3].map(newTrack), sel: 0, rec: 0, solo: 0,
     g: GP.map((d) => d.def),
     slots: [null, null, null, null],
-    smp: [0, 1, 2, 3].map(() => ({ flash: new Uint8Array(SMP.SLOT_SIZE).fill(0xFF), zones: 0, name: "", len: 0, next: SMP.DATA_OFF })),   /* USR1..4 (2.4: USR4) */
+    smp: [0, 1, 2, 3].map(() => ({ flash: new Uint8Array(SLOT).fill(0xFF), zones: 0, name: "", len: 0, next: SMP.DATA_OFF })),   /* USR1..4 (2.4: USR4) */
     bank: new Array(opt.slots || 32).fill(null),     /* user presets: {engine, name, p, pattern} */
     fm6bank: new Array(FM6_BANK).fill(null),         /* the FM6 patch bank (fm6_bank.c): packed records */
     settings: mockSettings(),                       /* v6: the settings object (2.5: a PER3 with a song order) */
@@ -3628,7 +3648,7 @@ function makeMockDevice(opt = {}) {
         if (a.length < 5 || a[0] >= st.smp.length) return null;
         const u = st.smp[a[0]], off = a[1] | (a[2] << 7) | (a[3] << 14), dat = unpack7(a.slice(4));
         let rc = 0;
-        if (off < SMP.DATA_OFF || (off & 0xFF) || !dat.length || off + dat.length > SMP.SLOT_SIZE || dat.length > 256) rc = 1;
+        if (off < SMP.DATA_OFF || (off & 0xFF) || !dat.length || off + dat.length > SLOT || dat.length > 256) rc = 1;
         else {
           if (!(off & 0xFFF)) u.flash.fill(0xFF, off, off + 4096);
           u.flash.set(dat, off);
@@ -3645,7 +3665,7 @@ function makeMockDevice(opt = {}) {
         else if (!hd[6] || hd[6] > 16) rc = 5;
         else {
           const len = dv.getUint32(16, true);
-          if (len > SMP.MAX_DATA) rc = 1;
+          if (len > SLOT - SMP.DATA_OFF) rc = 1;
           else if (crc32(u.flash.subarray(SMP.DATA_OFF, SMP.DATA_OFF + len)) !== dv.getUint32(20, true)) rc = 3;
           else {
             u.flash.set(hd, 0);
@@ -3824,7 +3844,7 @@ function makeMockDevice(opt = {}) {
         if (!st.playing) st.stockTag = false;
         break;
       case CMD.SMP_INFO:
-        b(st.smp.length); b(SMP.SLOT_SIZE / 1024);
+        b(st.smp.length); b(SLOT / 1024);
         st.smp.forEach((u) => { b(u.zones); s(u.zones ? u.name : ""); b(u.zones ? Math.ceil(u.len / 1024) : 0); });
         break;
       case CMD.LIVE: {                              /* v12: firmware editor_live.c */
@@ -4101,7 +4121,7 @@ const kitLen = (p) => { const full = p.tune ? Math.floor((p.s.length - 1) / Math
 const kitBytes = (pads) => pads.reduce((a, p) => a + (p ? (kitLen(p) + 1) >> 1 : 0), 0);
 /* shorten the longest pads to fit `room` bytes (as CHOP's fit): their len, in samples. bins 2 (KIT USR3+4): the
    room of two slots, no pad longer than one slot holds, and the pads must also share out (kitSplit) */
-function kitFit(pads, room = SMP.MAX_DATA, bins = 1) {
+function kitFit(pads, room = smpMax(), bins = 1) {
   if (bins > 1) {
     let changed = false;
     for (const p of pads) if (p && ((kitLen(p) + 1) >> 1) > room) { p.len = room * 2 - 1; changed = true; }
@@ -4118,7 +4138,7 @@ function kitFit(pads, room = SMP.MAX_DATA, bins = 1) {
 }
 /* KIT USR3+4: the pads shared out over two slots of `room` bytes each, every pad whole in one (the biggest first,
    each into the emptier slot that takes it): [lanes of USR3, lanes of USR4], or null when they do not fit */
-function kitSplit(pads, room = SMP.MAX_DATA) {
+function kitSplit(pads, room = smpMax()) {
   const items = pads.map((p, l) => (p ? { l, b: (kitLen(p) + 1) >> 1 } : null)).filter(Boolean).sort((a, b) => b.b - a.b || a.l - b.l);
   const bins = [[], []], used = [0, 0];
   for (const it of items) {
@@ -4845,7 +4865,7 @@ const TEXT = {
     confirmSave: "今のループをセクション {n} にしまいますか？（{n} の中身は置き換わります）", confirmLoad: "セクション {n} を今のループに読み込みますか？ 今の音色とパターンは置き換わります。",
     secSaved: "セクションに保存しました: ", secLoaded: "セクションを読み込みました: ", secEmpty: "空のセクションです: ",
     confirmClear: "シーケンスを全部消しますか？", confirmInit: "音色を初期化しますか？",
-    samples: "サンプル", smpHelp: "WAV をドロップするか選んでください。1 スロットに 16 ファイルまで、モノ 22050 Hz の ADPCM で合計約 7 秒。SAMPLE エンジンの SET（または SLICE エンジンの SRC）で USR1〜USR4 を選ぶと鳴ります。ドラムキットは「ドラムキット」ページで。",
+    samples: "サンプル", smpHelp: "WAV をドロップするか選んでください。1 スロットに 16 ファイルまで、モノ 22050 Hz の ADPCM で合計約 {one} 秒。SAMPLE エンジンの SET（または SLICE エンジンの SRC）で USR1〜USR4 を選ぶと鳴ります。ドラムキットは「ドラムキット」ページで。",
     zones: "ゾーン", smpName: "名前", chooseFiles: "ファイルを選ぶ", upload: "書き込む", erase: "消去", clearList: "リストを消す",
     file: "ファイル", root: "ルート", keys: "鍵盤", length: "長さ", remove: "外す",
     chopOpen: "音を開く", chopHelp: "録音（WAV、MP3、AIFF…）を開くかドロップし、チョップを決めてスロットへ。1 キーに 1 チョップ。長い録音（7 秒以上）でも、使うチョップを選び長さを調整できます。",
@@ -4917,7 +4937,7 @@ const TEXT = {
     projHelp: "FM-1 が持つのは 1 曲です: セクション A〜D（それぞれ 4 トラックのループ: 音色、パターン、テンポ、キー）と、その並び（ソングタブ）。「読込」はセクションを今のループに入れ、「保存」は今のループをセクションにしまいます。4 曲ではありません: 何曲も残すには、曲ごとに下のバックアップをファイルに保存し、使う曲を復元してください。",
     bkTitle: "バックアップ", bkHelp: "FM-1 の中身をすべて 1 つのファイルに保存します: 今のループ、ソング（セクション A〜D とその並び）、ユーザープリセット、FM6 の音色バンク、サンプル USR1〜4、設定（色、キャリブレーション、ソング、ライト）。復元すると、本体はファイルの状態に戻ります（今の内容は上書きされます）。",
     bkSave: "バックアップを保存", bkLoad: "ファイルから復元", bkSaving: "バックアップ中 ", bkSaved: "バックアップを保存しました",
-    bkRestoring: "復元中 ", bkRestored: "復元しました", bkConfirm: "FM-1 の今の内容をすべてこのバックアップで置き換えます。続けますか？",
+    bkRestoring: "復元中 ", bkRestored: "復元しました", bkSmpSkipped: "復元しました。この機器のスロット（各約 {one} 秒）より大きいため、そのままにしたスロット: ", bkConfirm: "FM-1 の今の内容をすべてこのバックアップで置き換えます。続けますか？",
     bkBad: "SLOOP のバックアップファイルではないか、壊れています: ", bkStop: "FM-1 の再生を止めてから、もう一度復元してください。",
     bkStale: "本体の内容が途中で変わりました。もう一度バックアップしてください: ", bkRead: "読み取りエラー: ", bkWrite: "書き込みエラー: ", bkRc4: "フラッシュがありません",
     bkNewer: "新しい SLOOP のバックアップです。先に FM-1 をアップデートしてから復元してください（何も変更していません）: ",
@@ -4954,21 +4974,21 @@ const TEXT = {
     kitStep1Help: "WAV をパッドにドロップ、またはまとめて選ぶとファイル名で振り分けます（kick, bd, snare, hh, open, crash…）。波形をクリックで試聴。パッドごとにピッチ・音量・長さ。",
     kitFitHelp: "長すぎるとき: 長い音（クラッシュ、オープンハット）を短くして収めます。",
     kitStep2: "置き場所",
-    kitCapBig: "大きなキット · 約 15 秒",
-    kitCapOne: "約 7 秒",
+    kitCapBig: "大きなキット · 約 {two} 秒",
+    kitCapOne: "約 {one} 秒",
     kitNotePair: "{x}: キットを USR3 と USR4 の 2 スロットに分けて入れます（自動）。USR1 と USR2 は楽器（SAMPLE）用に空いたまま。",
-    kitNoteOne: "{x}: キット全体を 1 スロットに（約 7 秒）。他のスロットは楽器用に空いたまま。",
+    kitNoteOne: "{x}: キット全体を 1 スロットに（約 {one} 秒）。他のスロットは楽器用に空いたまま。",
     kitReplaces: "今の中身を置き換えます: {x}",
     kitNo4: "このファームウェアには USR4 がありません（SLOOP 2.4 以降）。",
     kitStep3: "FM-1 に送る",
     kitWhereFM1: "FM-1 では: トラック 4（ドラム）→ KIT = {x}。保存したプロジェクトもこのキットを覚えています。",
-    smpIntro: "FM-1 に入れる自分の音。スロットは 4 つ（USR1〜USR4）、各約 7 秒。スロットには楽器（トラック 1〜3 の SAMPLE エンジンで鳴らす）か、ドラムキット（「ドラムキット」ページで作る）が入ります。",
+    smpIntro: "FM-1 に入れる自分の音。スロットは 4 つ（USR1〜USR4）、各約 {one} 秒。スロットには楽器（トラック 1〜3 の SAMPLE エンジンで鳴らす）か、ドラムキット（「ドラムキット」ページで作る）が入ります。",
     smpStep1: "スロットを選ぶ",
     smpStep2: "音を作る",
     smpStep3: "FM-1 に送って鳴らす",
     smpModeFiles: "ファイルから（1 ファイル = 1 音）",
     smpModeChop: "録音を切り分ける（CHOP）",
-    smpFilesHelp: "楽器用: 各ファイルが自分の音程で鳴り、間の鍵盤は近いファイルを音程を変えて鳴らします。\nピアノ、ベース、パッド、声、数個のワンショットに。ファイル名に音名を入れる（PIANO_C4.wav）か、下で設定。1 スロット 16 ファイルまで、合計約 7 秒。",
+    smpFilesHelp: "楽器用: 各ファイルが自分の音程で鳴り、間の鍵盤は近いファイルを音程を変えて鳴らします。\nピアノ、ベース、パッド、声、数個のワンショットに。ファイル名に音名を入れる（PIANO_C4.wav）か、下で設定。1 スロット 16 ファイルまで、合計約 {one} 秒。",
     smpChopHelp: "1 つの録音（ループ、ブレイク、フレーズ）を切って、1 キーに 1 片。\n① 録音を開くかドロップ ② 切る位置を決める: 再生中に TAP（スペースキー）、ヒット検出、グリッド、等分 ③ 要らない片のチェックを外し、長すぎたら短く ④ 下の 3 で送信。",
     smpDrop: "WAV ファイルをここにドロップ",
     smpDropHint: "またはクリックして選ぶ（複数可）",
@@ -5195,7 +5215,7 @@ const TEXT = {
     confirmSave: "Store the loop you are working on into section {n}? (what is in {n} is replaced)", confirmLoad: "Load section {n} into the loop you are working on? The current sounds and patterns are replaced.",
     secSaved: "Saved into section ", secLoaded: "Loaded section ", secEmpty: "Empty section: ",
     confirmClear: "Clear the whole sequence?", confirmInit: "Reset the sound to the engine defaults?",
-    samples: "Samples", smpHelp: "Drop or choose WAV files. Up to 16 files per slot, stored as mono 22050 Hz ADPCM (about 7 s in all). Select USR1–USR4 with SET on the SAMPLE engine (or SRC on the SLICE engine). Drum kits: the Drum kit page.",
+    samples: "Samples", smpHelp: "Drop or choose WAV files. Up to 16 files per slot, stored as mono 22050 Hz ADPCM (about {one} s in all). Select USR1–USR4 with SET on the SAMPLE engine (or SRC on the SLICE engine). Drum kits: the Drum kit page.",
     zones: "zones", smpName: "Name", chooseFiles: "Choose files", upload: "Upload", erase: "Erase", clearList: "Clear list",
     file: "File", root: "Root", keys: "Keys", length: "Length", remove: "Remove",
     chopOpen: "Open a sound", chopHelp: "Open or drop a recording (WAV, MP3, AIFF…), mark the chops, send them to a slot: one chop per key. Any length: a recording longer than a slot (7 s) works, keep the chops you want and adjust them.",
@@ -5267,7 +5287,7 @@ const TEXT = {
     projHelp: "The FM-1 holds one song: four sections A–D, each a loop of the four tracks (sounds, patterns, tempo, key), and the order they play in (the Song tab). Load puts a section into the loop you are working on; Save stores that loop into a section. They are not four songs: to keep several songs, save a Backup file per song (below) and restore the one you want.",
     bkTitle: "Backup", bkHelp: "Everything on the FM-1 in one file: the loop you are working on, the song (its sections A–D and their order), the user presets, the FM6 patch bank, the samples USR1–USR4 and the settings (colours, calibration, the song, the lights). Restoring puts the FM-1 back as it was in the file (what is on it now is replaced).",
     bkSave: "Save a backup", bkLoad: "Restore from a file", bkSaving: "Backing up ", bkSaved: "Backup saved",
-    bkRestoring: "Restoring ", bkRestored: "Restored", bkConfirm: "Replace everything on the FM-1 with this backup?",
+    bkRestoring: "Restoring ", bkRestored: "Restored", bkSmpSkipped: "Restored. Left as they were, bigger than this device's slots (about {one} s each): ", bkConfirm: "Replace everything on the FM-1 with this backup?",
     bkBad: "Not a SLOOP backup, or damaged: ", bkStop: "Stop the FM-1 (PLAY), then restore again.",
     bkStale: "The FM-1 changed during the backup; back up again: ", bkRead: "Read error: ", bkWrite: "Write error: ", bkRc4: "No flash",
     bkNewer: "This backup comes from a newer SLOOP: update the FM-1 first, then restore. Nothing was changed: ",
@@ -5304,21 +5324,21 @@ const TEXT = {
     kitStep1Help: "Drop a WAV on a pad, or choose several files: they are sorted onto the pads by name (kick, bd, snare, hh, open, crash…). Click a wave to hear it. Each pad has its pitch, gain and length.",
     kitFitHelp: "Too long? Fit shortens the longest sounds (crashes, open hats) just enough.",
     kitStep2: "Where it goes",
-    kitCapBig: "big kit · about 15 s",
-    kitCapOne: "about 7 s",
+    kitCapBig: "big kit · about {two} s",
+    kitCapOne: "about {one} s",
     kitNotePair: "{x}: the kit is shared out over the two slots USR3 and USR4 by itself. USR1 and USR2 stay free for your instruments (SAMPLE).",
-    kitNoteOne: "{x}: the whole kit in one slot (about 7 s). The other slots stay free for instruments.",
+    kitNoteOne: "{x}: the whole kit in one slot (about {one} s). The other slots stay free for instruments.",
     kitReplaces: "It replaces what is there now: {x}",
     kitNo4: "This firmware has no USR4 (SLOOP 2.4 and later).",
     kitStep3: "Send it to the FM-1",
     kitWhereFM1: "On the FM-1: track 4 (drums) → KIT = {x}. A project you save remembers the kit.",
-    smpIntro: "Your own sounds on the FM-1. Four slots (USR1–USR4) of about 7 s each. A slot holds an instrument, played by a synth track with the SAMPLE engine, or a drum kit (made on the Drum kit page).",
+    smpIntro: "Your own sounds on the FM-1. Four slots (USR1–USR4) of about {one} s each. A slot holds an instrument, played by a synth track with the SAMPLE engine, or a drum kit (made on the Drum kit page).",
     smpStep1: "Choose a slot",
     smpStep2: "Make the sound",
     smpStep3: "Send it and play it",
     smpModeFiles: "From files (one note per file)",
     smpModeChop: "Chop a recording",
-    smpFilesHelp: "For an instrument: each file plays at its own note, and the keys in between play the nearest file, pitched.\nGood for a piano, a bass, a pad, a voice, or a few one-shots. Put the note in the file name (PIANO_C4.wav) or set it below. Up to 16 files, about 7 s in all.",
+    smpFilesHelp: "For an instrument: each file plays at its own note, and the keys in between play the nearest file, pitched.\nGood for a piano, a bass, a pad, a voice, or a few one-shots. Put the note in the file name (PIANO_C4.wav) or set it below. Up to 16 files, about {one} s in all.",
     smpChopHelp: "Cut one recording (a loop, a break, a phrase) into pieces, one per key.\n① Open or drop it. ② Mark the cuts: TAP while it plays (or the space bar), Find hits, Grid or Equal parts. ③ Untick the pieces you don't want, shorten them if it is too long. ④ Send it in step 3 below.",
     smpDrop: "Drop WAV files here",
     smpDropHint: "or click to choose them (several at once)",
@@ -5415,7 +5435,13 @@ const TEXT = {
   },
 };
 let lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
-const t = (k) => TEXT[lang][k] ?? k;
+/* {one} / {two}: the seconds one slot / the big kit (two slots) of the connected device hold (an FM-1: 7 / 15, an SMK-37: 3.7 /
+   7; smpMax) */
+const slotSecs = (n) => { const v = smpMax() * 2 * n / SMP.RATE; return String(v >= 5 ? Math.round(v) : Math.round(v * 10) / 10); };
+const t = (k) => {
+  const s = TEXT[lang][k] ?? k;
+  return s.includes("{one}") || s.includes("{two}") ? s.split("{one}").join(slotSecs(1)).split("{two}").join(slotSecs(2)) : s;
+};
 let lastKey = null, lastArg = "";
 const ERR_KEYS = /fail|error|denied|nomidi|nodevice|noreply|lost|refused|full|bad/i;
 function sayK(k, arg = "") {
@@ -8092,7 +8118,7 @@ function renderSamples() {
     }
     u.keymap = el("canvas", { class: "keymap", title: t("smpKeymap") });
     u.list = el("div", { class: "flist" });
-    u.meter = el("progress", { max: SMP.MAX_DATA, value: 0 });
+    u.meter = el("progress", { max: smpMax(), value: 0 });
     u.meterTxt = el("span", { class: "dim" });
     u.meterBox = el("div", { class: "kitmeter" }, u.meter, u.meterTxt);
     u.clear = el("button", { class: "warn", ic: "symbol_trash", onclick: () => { P.draft.files = []; renderSamples(); } }, t("clearList"));
@@ -8152,10 +8178,11 @@ function renderSamples() {
   u.chopPane.hidden = P.mode !== "chop";
   u.modeHelp.replaceChildren(...t(P.mode === "files" ? "smpFilesHelp" : "smpChopHelp").split("\n").map((x) => el("p", { text: x })));
   const d = P.draft, keys = splitKeys(d.files), bytes = draftBytes(d);
-  u.meter.value = Math.min(bytes, SMP.MAX_DATA);
-  u.meterBox.classList.toggle("over", bytes > SMP.MAX_DATA);
-  u.meterTxt.textContent = (bytes > SMP.MAX_DATA ? t("smpTooBig") + " · " : "") +
-    t("kitUsed").replace("{s}", (d.files.reduce((a, f) => a + f.s.length, 0) / SMP.RATE).toFixed(1)).replace("{t}", (SMP.MAX_DATA * 2 / SMP.RATE).toFixed(1));
+  u.meter.max = smpMax();                          /* (the device connected since the page was made) */
+  u.meter.value = Math.min(bytes, smpMax());
+  u.meterBox.classList.toggle("over", bytes > smpMax());
+  u.meterTxt.textContent = (bytes > smpMax() ? t("smpTooBig") + " · " : "") +
+    t("kitUsed").replace("{s}", (d.files.reduce((a, f) => a + f.s.length, 0) / SMP.RATE).toFixed(1)).replace("{t}", (smpMax() * 2 / SMP.RATE).toFixed(1));
   u.keymap.hidden = u.list.hidden = !d.files.length;
   u.match.disabled = d.files.length < 2;
   u.list.replaceChildren(...(d.files.length ? [el("div", { class: "frow fhead" }, el("span"), el("span", { text: t("file") }), el("span", { text: t("smpNote") }),
@@ -8227,8 +8254,8 @@ function smpButtons() {
   const P = smpPage, k = P.slot, x = dev.smp.slots[k];
   setLabel(u.send, t("smpSendTo").replace("{n}", k + 1));
   let ready;
-  if (P.mode === "files") ready = P.draft.files.length && draftBytes(P.draft) <= SMP.MAX_DATA && P.draft.name;
-  else { const U = chopUsed(), over = U.use.reduce((a, q) => a + ((q.end - q.start + 1) >> 1), 0) > SMP.MAX_DATA; ready = CH.x && U.use.length && !over && CH.name; }
+  if (P.mode === "files") ready = P.draft.files.length && draftBytes(P.draft) <= smpMax() && P.draft.name;
+  else { const U = chopUsed(), over = U.use.reduce((a, q) => a + ((q.end - q.start + 1) >> 1), 0) > smpMax(); ready = CH.x && U.use.length && !over && CH.name; }
   u.send.disabled = smpBusy || !ready;
   for (const b of u.play.children) b.disabled = smpBusy || !x.zones || !hasTracks();
   u.where.textContent = t("smpWhere").replace(/\{n\}/g, k + 1);
@@ -8262,7 +8289,7 @@ const kitDraft = { name: "", slot: 4, pads: Array(16).fill(null), sel: -1 };   /
 const KIT_PAIR = 4;
 const kitSlots = (d = kitDraft.slot) => (d === KIT_PAIR ? [2, 3] : [d]);
 const kitDest = (d = kitDraft.slot) => (d === KIT_PAIR ? "USR3+4" : `USR${d + 1}`);
-const kitRoom = () => SMP.MAX_DATA - 64;                 /* (a slot, less a margin: kitLen may undercount a sample) */
+const kitRoom = () => smpMax() - 64;                 /* (a slot, less a margin: kitLen may undercount a sample) */
 const kitHas4 = () => !!dev && !!dev.smp && dev.smp.nslots >= 4;
 const KEY_OF_LANE = ["F3", "G3", "A3", "B3", "C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "F5", "G5"];
 let kitUi = null, kitAudio = null, kitSrc = null;
@@ -8341,7 +8368,7 @@ function renderKits() {
       type: "button", role: "radio", "data-d": d, class: d === KIT_PAIR ? "big" : null, onclick: () => { kitDraft.slot = d; renderKits(); } },
       el("b", { text: kitDest(d) }), el("span", { class: "cap", text: d === KIT_PAIR ? t("kitCapBig") : t("kitCapOne") }), el("span", { class: "now" }))));
     u.destNote = el("p", { class: "destnote" });
-    u.meter = el("progress", { max: SMP.MAX_DATA, value: 0 });
+    u.meter = el("progress", { max: smpMax(), value: 0 });
     u.meterTxt = el("span", { class: "dim" });
     u.meterBox = el("div", { class: "kitmeter" }, u.meter, u.meterTxt);
     u.prog = el("progress", { max: 1, value: 0, hidden: true });
@@ -8447,7 +8474,7 @@ function kitPadUpdate(l) {
 function kitMeter() {
   const u = kitUi;
   if (!u) return;
-  const n = kitSlots().length, cap = SMP.MAX_DATA * n, bytes = kitBytes(kitDraft.pads), secs = kitDraft.pads.reduce((a, p) => a + (p ? kitLen(p) : 0), 0) / SMP.RATE;
+  const n = kitSlots().length, cap = smpMax() * n, bytes = kitBytes(kitDraft.pads), secs = kitDraft.pads.reduce((a, p) => a + (p ? kitLen(p) : 0), 0) / SMP.RATE;
   const over = n > 1 ? !kitSplit(kitDraft.pads, kitRoom()) : bytes > kitRoom();
   u.meter.max = cap;
   u.meter.value = Math.min(bytes, cap);
@@ -8627,7 +8654,7 @@ function chopSetLen(i, len) {                        /* the length of chop i in 
   chopRender();
 }
 function chopFitAll() {                              /* shorten the longest kept chops so they all fit the slot */
-  const { use } = chopUsed(), L = chopFit(use, SMP.MAX_DATA * 2 - use.length);   /* (an odd chop takes half a byte more) */
+  const { use } = chopUsed(), L = chopFit(use, smpMax() * 2 - use.length);   /* (an odd chop takes half a byte more) */
   if (!isFinite(L)) return;
   for (const c of use) if (c.end - c.start > L) chopOpt(c.i).len = L;
   sayK("chopFitted", chSecs(L));
@@ -8828,7 +8855,7 @@ function chopUI() {
   u.key.value = String(CH.key0);
   u.mode = el("select", {}, el("option", { value: 0, text: t("chopModeKeys") }), el("option", { value: 1, text: t("chopModeOne") }));
   u.max = el("select", {}, ...[["—", 0], ["0.25 s", 0.25], ["0.5 s", 0.5], ["1 s", 1], ["2 s", 2]].map(([n, v]) => el("option", { value: v, text: n })));
-  u.meter = el("progress", { max: SMP.MAX_DATA * 2, value: 0 });
+  u.meter = el("progress", { max: smpMax() * 2, value: 0 });
   u.room = el("span", { class: "dim" });
   u.list = el("div", { class: "chops" });
   /* the selected chop: keep it or not, its length; and all of them at once */
@@ -8957,10 +8984,11 @@ function chopUI() {
 function chopRender() {
   const u = CH.ui;
   if (!u) return;
-  const U = chopUsed(), { all, use, n } = U, room = SMP.MAX_DATA * 2, over = use.reduce((a, q) => a + ((q.end - q.start + 1) >> 1), 0) > SMP.MAX_DATA;
+  const U = chopUsed(), { all, use, n } = U, room = smpMax() * 2, over = use.reduce((a, q) => a + ((q.end - q.start + 1) >> 1), 0) > smpMax();
   const kept = all.filter((c) => !c.off).length;
   u.info.textContent = CH.x ? `${CH.name} · ${chSecs(CH.x.length)} · ${all.length} ${t("chopChops")}` +
     (kept < all.length ? ` (${kept} ${t("chopKept")})` : "") : t("chopHelp");
+  u.meter.max = room;
   u.meter.value = Math.min(room, n);
   u.room.textContent = `${chSecs(n)} / ${chSecs(room)}` + (over ? " " + t("chopTooLong") + " " + t("chopOverHint") : "") +
     (CH.mode === 0 && kept > CHOP.MAX ? " " + t("chopTooMany") : "");
@@ -10075,11 +10103,12 @@ $("bk-file").addEventListener("change", async () => {
   await op(async () => {
     try {
       selfLoad();
-      await backupRestore(rq, file, bkProgress("bkRestoring"));
+      const skipped = await backupRestore(rq, file, bkProgress("bkRestoring"));
       dev.slotUsed = [null, null, null, null];
       renderSlots();
       try { await smpInfo(); renderSamples(); } catch (e) { /* shown by the next action */ }
       await afterSoundChange("bkRestored");
+      if (skipped.length) sayK("bkSmpSkipped", skipped.join(", "));   /* (slots bigger than this device's: an SMK-37's) */
     } catch (e) { bkReport(e); } finally { $("bk-prog").hidden = true; }
   });
 });

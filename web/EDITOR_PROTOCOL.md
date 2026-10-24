@@ -120,7 +120,10 @@ An absent status byte retains the original reply format.
 **User sample slot** (80 KiB each: USR1..USR3 at flash 0xA0000, 0xB4000, 0xC8000 and, from SLOOP 2.4, USR4 at
 0xE7000 — SMP_INFO says how many; SAMPLE / GRAIN sets USR1..USR4, the drum track's KIT USR1..USR4 and USR3+4; reference uploader
 `tools/fm1_sample_upload.py`, slot builder `sampleio.user_slot`; the editor's port of it is
-checked byte for byte by `web/test_web.mjs`): header at 0, ADPCM data at 512.
+checked byte for byte by `web/test_web.mjs`): header at 0, ADPCM data at 512. **SMK-37:** four slots of 40 KiB (USR1..USR4 at
+0xC2000, 0xCC000, 0xD6000, 0xE0000; SMP_INFO's slot KiB is 40), so KIT USR3+4 is 80 KiB. The editor sizes everything from
+SMP_INFO's slot KiB (an FM-1 80, an SMK-37 40), and a backup's slot bigger than the device's is skipped on restore (named;
+that slot stays as it was) while the rest restores.
 
 | Offset | Field |
 | --- | --- |

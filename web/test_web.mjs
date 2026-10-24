@@ -2107,6 +2107,46 @@ async function boards() {
   ok(written(g2, "SMK-37 Pro_016", d), "fm1ota.js: the SMK-37 stock package on an SMK-37 -> written");
 }
 
+/* the SMK-37's user sample slots: four of 40 KiB (firmware eng_sample.c, FL_SMP_SLOT). The mock as an SMK-37
+   (slotSize 0xA000) reports them; the big kit (USR3+4) shares out over two 40 KiB slots; an FM-1 backup's slot bigger
+   than 40 KiB is skipped on the SMK-37 (named, its slot left as it was) and the rest restores; on an FM-1 all of it */
+async function editorSmkSlots() {
+  const C = E.CMD;
+  const put = async (rq, k, secs) => {
+    const s = Int16Array.from({ length: Math.round(secs * 22050) }, (_, i) => Math.round(8000 * Math.sin(i / 9)));
+    const sl = E.buildSlot("T" + k, [{ s, root: 60 }], 0x14000 - 512);
+    if (E.parse[C.SMP_BEGIN](await rq(E.req.smpBegin(k))).rc) return -1;
+    for (let off = 0; off < sl.data.length; off += 256)
+      if (E.parse[C.SMP_WRITE](await rq(E.req.smpWrite(k, 512 + off, sl.data.subarray(off, off + 256)))).rc) return -2;
+    return E.parse[C.SMP_END](await rq(E.req.smpEnd(k, sl.hdr))).rc ? -3 : sl.data.length;
+  };
+  const fm1 = attachMock({});
+  const l1 = await put(fm1.rq, 0, 5.4), l2 = await put(fm1.rq, 1, 0.9);   /* USR1 ~59 KiB (an FM-1 slot only), USR2 ~10 KiB */
+  const A = await E.backupCapture(fm1.rq, E.parse[C.INFO](await fm1.rq(E.req.info())));
+  fm1.done();
+  const smk = attachMock({ slotSize: 0xA000 });
+  const i0 = E.parse[C.SMP_INFO](await smk.rq(E.req.smpInfo()));
+  ok(l1 > 0xA000 && l2 > 0 && l2 < 0xA000 - 512 && i0.nslots === 4 && i0.slotKiB === 40,
+    "SMK-37 slots: the mock as an SMK-37 has 4 x 40 KiB (SMP_INFO); an FM-1 slot of 59 KiB, one of 10 KiB");
+  const sk = await E.backupRestore(smk.rq, JSON.parse(JSON.stringify(A)));
+  const i1 = E.parse[C.SMP_INFO](await smk.rq(E.req.smpInfo()));
+  ok(Array.isArray(sk) && sk.length === 1 && sk[0] === "USR1" && !i1.slots[0].zones && i1.slots[1].zones === 1 && i1.slots[1].name === "T1",
+    "SMK-37 slots: an FM-1 backup restores, its 59 KiB USR1 skipped and named, USR2 restored");
+  smk.done();
+  const fm1b = attachMock({});
+  const sk2 = await E.backupRestore(fm1b.rq, JSON.parse(JSON.stringify(A)));
+  const i2 = E.parse[C.SMP_INFO](await fm1b.rq(E.req.smpInfo()));
+  ok(Array.isArray(sk2) && !sk2.length && i2.slotKiB === 80 && i2.slots[0].zones === 1 && i2.slots[1].zones === 1,
+    "SMK-37 slots: the same backup on an FM-1: nothing skipped, both slots restored");
+  fm1b.done();
+  /* a big kit of ~49 KB: too much for one 40 KiB slot, shared out over two (USR3+4); it fits one 80 KiB slot */
+  const pad = (secs) => ({ s: new Int16Array(Math.round(secs * 22050)), len: Math.round(secs * 22050) });
+  const pads = Array.from({ length: 16 }, (_, i) => pad(i < 2 ? 1.0 : 0.18));
+  const r40 = 0xA000 - 512 - 64, r80 = 0x14000 - 512 - 64, sp = E.kitSplit(pads, r40);
+  ok(E.kitBytes(pads) > r40 && E.kitBytes(pads) <= r80 && sp && sp[0].length && sp[1].length && sp[0].length + sp[1].length === 16,
+    "SMK-37 slots: a 49 KB kit shares out over USR3 and USR4 (40 KiB each), every pad whole in one");
+}
+
 await editorMock();
 await editorLibrarian();
 await editorLive();
@@ -2131,6 +2171,7 @@ editorIcons();
 samplesMatch();
 chopTests();
 await editorDaw();
+await editorSmkSlots();
 await packages();
 await updater();
 await boards();
