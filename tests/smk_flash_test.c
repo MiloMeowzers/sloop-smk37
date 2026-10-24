@@ -54,6 +54,16 @@ int main(void)
           FL_GUARD(0xC2000u, 0x1000u) && FL_GUARD(0xE9000u, 0x1000u) && FL_GUARD(0xEA000u, 0x1000u) &&
           !FL_GUARD(0xEB000u, 0x1000u) && !FL_GUARD(0x9C000u, 0x1000u) &&
           allowed == (0xC0000u - 0x9D000u + 0xEA000u - 0xC2000u) / 0x1000u + 1u);
+    {   /* the four user sample slots (eng_sample.c SMP_USER_OFF): each whole in FL_SMP, none into the stock marker */
+        uint32_t k, slots_ok = FL_SMP_NSLOT == 4u && FL_SMP_SLOT == 0xA000u;
+        for (k = 0; k < FL_SMP_NSLOT; k++) {
+            uint32_t at = FL_SMP_LO + k * FL_SMP_SLOT;
+            slots_ok &= FL_STORE_OK(at, FL_SMP_SLOT) && FL_GUARD(at, FL_SMP_SLOT) && at % 0x1000u == 0u &&
+                        !FL_PROTECTED(at, FL_SMP_SLOT) && at + FL_SMP_SLOT <= FL_STOCKTAG_LO;
+        }
+        check("user sample slots USR1..USR4: 4 x 40 KiB, each wholly in FL_SMP, below the stock marker sector",
+              slots_ok && !FL_STORE_OK(FL_SMP_LO + 3u * FL_SMP_SLOT, FL_SMP_SLOT + 1u));
+    }
     check("the stock marker sector 0xEA000: the whole sector only (its erase), never a page or a range into it",
           FL_STOCKTAG_OK(0xEA000u, 0x1000u) && !FL_GUARD(0xEA000u, 256u) && !FL_GUARD(0xEAF00u, 256u) &&
           !FL_GUARD(0xEAFF8u, 8u) && !FL_GUARD(0xE9000u, 0x2000u) && !FL_GUARD(0xEA000u, 0x2000u) &&

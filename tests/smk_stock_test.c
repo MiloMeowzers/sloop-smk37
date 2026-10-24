@@ -75,6 +75,22 @@ int main(void)
     memcpy(nor + 0xD6000, "FSMP", 4);
     st_stock_boot();
     check("boot, the marker over a sample slot (FSMP at USR2): released", tag_erases == 1 && !tagged());
+    {   /* the four 40 KiB slots: USR2 at 0xCC000, USR4 at 0xE0000 (in the stock presets' gaps) are looked at too */
+        static const uint32_t AT[2] = {0xCC000u, 0xE0000u};
+        uint32_t k;
+        check("the user slots: 4 x 40 KiB filling USRFLASH, USR1..USR4 at 0xC2000, 0xCC000, 0xD6000, 0xE0000",
+              FL_SMP_NSLOT == 4u && FL_SMP_SLOT == 0xA000u && FL_SMP_LO + 3u * FL_SMP_SLOT == 0xE0000u &&
+              FL_SMP_LO + FL_SMP_NSLOT * FL_SMP_SLOT == FL_SMP_HI);
+        stock();
+        check("the intact stock mapping has no FSMP at any slot start (so boot keeps the marker)", st_stock_intact());
+        for (k = 0; k < 2u; k++) {
+            stock();
+            memcpy(nor + AT[k], "FSMP", 4);
+            st_stock_boot();
+            check(k ? "boot, the marker over FSMP at USR4 (0xE0000): released"
+                    : "boot, the marker over FSMP at USR2 (0xCC000): released", tag_erases == 1 && !tagged());
+        }
+    }
     stock();
     memset(nor + 0xC2000, 0xFF, 0x14000);          /* USR1 erased (SMP_ERASE) */
     st_stock_boot();

@@ -41,19 +41,22 @@ static uint32_t pow2_q16(int32_t d16)
  * smp_zone_t layout (off relative to the slot's data at +512) + IMA ADPCM data. */
 #include "../hal/fm1_xip.h"   /* relative: hostsim includes this file too */
 #define SMP_USER_SLOTS 4
-#define SMP_USER_SIZE 0x14000u
 #if BOARD_SMK37
-/* SMK-37 Pro: only USR1 / USR2 have flash (USRFLASH 0xC2000..0xE9FFF, FL_SMP in fm1_flash.h); USR3 / USR4
- * stay empty: never scanned, their erase / write refused (SMP_USER_HAS). Their offset is a dummy that no
- * flash window accepts. */
-#define SMP_USER_FLASH_SLOTS 2u
-#define SMP_USER_BASE 0xC2000u                      /* USR1, USR2: 0xC2000..0xE9FFF */
-#define SMP_USER_NONE 0xEA000u                      /* USR3 / USR4: no storage */
+/* SMK-37 Pro: USR1..USR4 as on the FM-1, at half the size: USRFLASH 0xC2000..0xE9FFF (FL_SMP, fm1_flash_map.h)
+ * holds four slots of 40 KiB (FL_SMP_SLOT), so the drum track's KIT USR3+4 is 80 KiB, an FM-1 slot. ED_SMP_INFO
+ * reports the slot size and the web editor fits to it. A slot of an earlier SMK-37 build (2 x 80 KiB) longer than
+ * 40 KiB reads as empty (its header's data length is past the slot: smp_user_scan). */
+#include "../hal/fm1_flash_map.h"
+#define SMP_USER_SIZE FL_SMP_SLOT
+#define SMP_USER_FLASH_SLOTS FL_SMP_NSLOT
+#define SMP_USER_BASE FL_SMP_LO                     /* USR1 0xC2000, USR2 0xCC000, USR3 0xD6000, USR4 0xE0000 */
 #define SMP_USER_HAS(k) ((uint32_t)(k) < SMP_USER_FLASH_SLOTS)
-#define SMP_USER_OFF(k) (SMP_USER_HAS(k) ? SMP_USER_BASE + (uint32_t)(k) * SMP_USER_SIZE : SMP_USER_NONE)
-_Static_assert(SMP_USER_BASE + SMP_USER_FLASH_SLOTS * SMP_USER_SIZE <= 0xEA000u, "SMK: user slots past FL_SMP");
+#define SMP_USER_OFF(k) (SMP_USER_BASE + (uint32_t)(k) * SMP_USER_SIZE)
+_Static_assert(SMP_USER_FLASH_SLOTS == SMP_USER_SLOTS && SMP_USER_BASE + SMP_USER_SLOTS * SMP_USER_SIZE <= FL_SMP_HI,
+               "SMK: the user slots fill FL_SMP");
 #else
-#define SMP_USER_BASE 0xA0000u                      /* USR1..USR3: 0xA0000..0xDBFFF */
+#define SMP_USER_SIZE 0x14000u
+#define SMP_USER_BASE 0xA0000u                     /* USR1..USR3: 0xA0000..0xDBFFF */
 #define SMP_USER4_BASE 0xE7000u                     /* USR4 (2.4): the free flash after the FM6 bank, 0xE7000..0xFAFFF */
 #define SMP_USER_HAS(k) 1
 #define SMP_USER_OFF(k) ((k) < 3u ? SMP_USER_BASE + (k) * SMP_USER_SIZE : SMP_USER4_BASE)

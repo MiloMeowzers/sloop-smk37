@@ -148,14 +148,16 @@ static int st_stock_tagged(void)
 }
 static int st_stock_intact(void)                /* the marker over the stock layout (none of our samples there) */
 {
-    static const uint32_t PRESET[2] = {0xC3000u, 0xD7000u}, SLOT[2] = {0xC2000u, 0xD6000u};   /* presets 0, 4 */
+    static const uint32_t PRESET[2] = {0xC3000u, 0xD7000u};   /* presets 0, 4 */
     uint8_t b[9];
     uint32_t k, i;
     if (!st_stock_tagged() || st_read(FL_SMP_LO, b, 2) || b[0] != 0xA3u || b[1] != 0x3Au)
         return 0;
+    for (k = 0; k < FL_SMP_NSLOT; k++)          /* a sample slot's header ("FSMP"): USR1..USR4, or (SLOOP <= 2.8.1's
+                                                 * 2 x 80 KiB) USR2 at 0xD6000, USR3's place now */
+        if (st_read(FL_SMP_LO + k * FL_SMP_SLOT, b, 4) || (b[0] == 'F' && b[1] == 'S' && b[2] == 'M' && b[3] == 'P'))
+            return 0;
     for (k = 0; k < 2u; k++) {
-        if (st_read(SLOT[k], b, 4) || (b[0] == 'F' && b[1] == 'S' && b[2] == 'M' && b[3] == 'P'))
-            return 0;                           /* a sample slot's header ("FSMP") */
         if (st_read(PRESET[k], b, 9))
             return 0;
         for (i = 5; i < 9u; i++)

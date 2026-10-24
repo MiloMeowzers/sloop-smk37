@@ -28,7 +28,7 @@
  *   0xBB000-0xBFFFF  VM: M-UPGRADE loader staging + update record (ota.c)          FL_OTA
  *   0xC0000-0xC0FFF  BTIF (BT pairing)              NEVER
  *   0xC1000-0xC1FFF  USRTRIM (key/pad/wheel calibration, "trimdat")   NEVER
- *   0xC2000-0xE9FFF  USRFLASH: user sample slots USR1, USR2 (2 x 80 KiB)           FL_SMP
+ *   0xC2000-0xE9FFF  USRFLASH: user sample slots USR1..USR4 (4 x 40 KiB)          FL_SMP
  *                    (the stock firmware's mapping until a sample is stored there)
  *   0xEA000-0xEAFFF  USRFLASH tail: the stock end marker "usrdata" at 0xEAFF8; erased (only) before the
  *                    first write into FL_SMP, or on request (FL_STOCKTAG)
@@ -55,6 +55,8 @@
 #define FL_OTA_HI       0x000C0000u
 #define FL_SMP_LO       0x000C2000u                /* user sample slots (eng_sample.c) */
 #define FL_SMP_HI       0x000EA000u
+#define FL_SMP_SLOT     0x0000A000u                /* one user sample slot: 40 KiB (the FM-1's are 80 KiB) */
+#define FL_SMP_NSLOT    4u                         /* USR1..USR4 at FL_SMP_LO + k * FL_SMP_SLOT: 0xC2000, 0xCC000, 0xD6000, 0xE0000 */
 /* USRFLASH is the stock firmware's mapping (global settings 0xC2000, 8 presets from 0xC3000) with its end marker
  * "usrdata\0" at 0xEAFF8: while the marker is there the stock firmware trusts the area and never rebuilds it. Its
  * sector is erased before SLOOP's first erase in FL_SMP (storage.c st_stock_touch), so a return to stock rebuilds
@@ -71,6 +73,8 @@
 _Static_assert(FL_WIN_SAFE(FL_DATA_LO, FL_DATA_HI), "SMK: FL_DATA overlaps a protected range");
 _Static_assert(FL_WIN_SAFE(FL_OTA_LO, FL_OTA_HI), "SMK: FL_OTA overlaps a protected range");
 _Static_assert(FL_WIN_SAFE(FL_SMP_LO, FL_SMP_HI), "SMK: FL_SMP overlaps a protected range");
+_Static_assert(FL_SMP_SLOT % 0x1000u == 0u && FL_SMP_LO + FL_SMP_NSLOT * FL_SMP_SLOT == FL_SMP_HI,
+               "SMK: the four user sample slots fill FL_SMP exactly, each sector aligned");
 _Static_assert(FL_WIN_SAFE(FL_STOCKTAG_LO, FL_STOCKTAG_HI) && FL_STOCKTAG_LO == FL_SMP_HI &&
                FL_STOCKTAG_OFF + 8u == FL_STOCKTAG_HI, "SMK: the stock marker sector");
 _Static_assert(FL_WIN_SAFE(FL_APP_LO, FL_APP_HI), "SMK: FL_APP overlaps a protected range");
