@@ -179,6 +179,21 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
   round_2: console build (FELUCCA_CDC=1, cda485b): status, smk, padtest, leds all as the kit expects; all 16 pads, 4
            faders, both wheels, 18 buttons seen; flr: 0xC0000-0xC1FFF, 0xF4000-0xFDFFF, 0xFF000-0xFFFFF identical to the
            backup after the installs
-  not_yet: the editor's sample slots / big kit / backup restore on the unit; punch-in MIDI out; the DAW mode
+  round_3: the editor (4033cc7: 4 x 40 KiB, "about 3.7 s", a USR3+4 big kit sent and played, a chopped break, FM-1
+           backup restore); the slot read-back (6b76627, branch editor-slot-readback): load from the keyboard and the
+           pages filled after a restore: ok (owner)
+  not_yet: punch-in MIDI out with a DAW; the DAW mode
 
-open_questions: []
+open_questions:             # to settle next (the owner's call), in this order
+  - "stems: channels 8-9 = the shared FX return (stereo, 16 bit, 9 ch) or none (7 ch, 24 bit possible)"
+  - "stems: the tap post LEVEL and mute/solo (what you hear; recommended) or pre LEVEL"
+  - "stems: 44.1 kHz only first (recommended: no resampling) or 48 kHz too"
+  - "stems: the drum groups' default lanes (KICK: KICK, KICK 2 / SNARE: SNARE, SNARE 2, CLAP, RIM / HATS-CYMBALS: HAT,
+     PEDAL, OPEN HAT, CRASH, RIDE / PERC: LOW TOM, HI TOM, SHAKER, CONGA, COWBELL) and their order"
+  - "stems: SLICER STUT on the drum groups needs 4 x 8 KB: per group if RAM allows (SMK build: ~35 KB .data/.bss and
+     ~8 KB pool free), else the kit as one stem while STUT is on"
+  - "choke: USR kits also carry choke + mono in their slot header (recommended) or the device table only"
+  - "Snoop37 look (SNOOP37=1, opt-in; genkigenki's smk37-snoop-look branch: boot splash + jingle, BOOT LOGO setting):
+     BOOT LOGO in SCREEN (KNOB ACCEL to SEQ) or in SEQ"
+  - "PAD LIGHT (genkigenki's snoop37 branch: LIGHTS K8, pads 100/75/50/25 %): bring it into every SMK build?"
+  - "the installer's wait for the keyboard after the write (60 s) timed out on Windows' first enumeration: lengthen it"
