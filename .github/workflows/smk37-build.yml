@@ -87,6 +87,13 @@ jobs:
             p=build/sloop-smk37$( [ $m = pro ] || echo "-$m" ).fwsc     # (the intermediates are shared: copy each at once)
             cp "$p" out/
           done
+          # a console build of the Elite package for the device bring-up (fm1-to-smk37 docs/03, section 7: smk, padtest,
+          # leds): the USB serial console built in (FELUCCA_CDC=1, out of the normal builds since 2.7) and on from the
+          # start (FELUCCA_CDC_ON=1); the same identity. For testing only: the normal package goes back on after
+          BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 sh build.sh > out/build-smk37-elite-console.log 2>&1 ||
+            { tail -50 out/build-smk37-elite-console.log; exit 1; }
+          cp build/sloop-smk37-elite.fwsc out/sloop-smk37-elite-console.fwsc
+          tail -3 out/build-smk37-elite-console.log
           ls -l out/*.fwsc
 
       - name: SHA-256 of the packages
