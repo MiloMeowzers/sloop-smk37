@@ -2145,9 +2145,10 @@ function buildSlot(name, zonesIn, max = smpMax()) {
   let len = 0;
   for (const z of zonesIn) {
     const [ls, le] = z.loop ? LOOP.range(z) : [0, z.s.length - 1];
-    const e = imaEncode(z.s, ls);                   /* (the decoder's state at the loop start) */
-    zones.push({ off: len, n: z.s.length, ls, le, looped: z.loop ? 2 : 0, root: z.root, lo: z.lo ?? null, hi: z.hi ?? null,
-      pred: e.pred, idx: e.idx });
+    const r = rawKept(z, ls, le);                   /* a sound read back from the keyboard, unchanged: its own bytes */
+    const e = r ? { data: r.data, pred: r.pred, idx: r.idx } : imaEncode(z.s, ls);   /* (the decoder's state at the loop start) */
+    zones.push({ off: len, n: z.s.length, ls, le, looped: r ? r.looped : z.loop ? 2 : 0, root: z.root, lo: z.lo ?? null,
+      hi: z.hi ?? null, pred: e.pred, idx: e.idx, rate: r ? r.rate : 0 });
     parts.push(e.data);
     len += e.data.length;
   }
@@ -2174,12 +2175,98 @@ function buildSlot(name, zonesIn, max = smpMax()) {
   const rate = pyRound(SMP.RATE / 44100 * 65536);
   zones.forEach((z, j) => {
     const b = 32 + j * 28;
-    [z.off, z.n, z.ls, z.le, rate].forEach((x, k) => v.setUint32(b + k * 4, x >>> 0, true));
+    [z.off, z.n, z.ls, z.le, z.rate || rate].forEach((x, k) => v.setUint32(b + k * 4, x >>> 0, true));
     v.setInt16(b + 20, z.root * 16, true);
     v.setInt16(b + 22, z.pred, true);
     hdr[b + 24] = z.idx; hdr[b + 25] = z.lo; hdr[b + 26] = z.hi; hdr[b + 27] = z.looped || 0;
   });
   return { hdr, data, zones };
+}
+
+/* ---- reading a slot back (the Samples and Drum kit pages' "Load from the keyboard", and after a restore): the
+   editor only ever wrote slots; a slot restored or made elsewhere could only be replaced whole. Now its sounds come
+   back into the page: decoded for the meters, the preview and any change, and each with its own stored bytes (raw),
+   which go back unchanged while the sound is (rawKept), so an untouched sound is sent bit for bit. */
+/* IMA ADPCM, the firmware's decoder (eng_sample.c) and imaEncode's mirror: n samples, low nibble first, from the
+   state (pred, idx) (a zone's start: 0, 0, as imaEncode starts) */
+function imaDecode(data, n, pred = 0, idx = 0) {
+  const out = new Int16Array(n);
+  for (let i = 0; i < n; i++) {
+    const code = (data[i >> 1] >> ((i & 1) << 2)) & 15, step = IMA_STEP[idx];
+    let vd = step >> 3;
+    if (code & 4) vd += step;
+    if (code & 2) vd += step >> 1;
+    if (code & 1) vd += step >> 2;
+    pred = Math.max(-32768, Math.min(32767, code & 8 ? pred - vd : pred + vd));
+    idx = Math.max(0, Math.min(88, idx + IMA_IDX[code & 7]));
+    out[i] = pred;
+  }
+  return out;
+}
+/* a slot as stored (backup object 32 + k: the 480-byte header, ADPCM data from SMP.DATA_OFF) -> {name, sounds:
+   [{fname, s, root, lo, hi, loop, ls, le, raw}]} in the header's order, or null (empty, or not a slot) */
+function slotParse(bytes) {
+  if (!bytes || bytes.length < SMP.DATA_OFF) return null;
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), nz = bytes[6], len = v.getUint32(16, true);
+  if (v.getUint32(0, true) !== 0x504D5346 || v.getUint16(4, true) !== 1 || !nz || nz > SMP.MAX_ZONES ||
+      SMP.DATA_OFF + len > bytes.length) return null;
+  const data = bytes.subarray(SMP.DATA_OFF, SMP.DATA_OFF + len);
+  if (crc32(data) !== v.getUint32(20, true)) return null;
+  let name = "";
+  for (let i = 8; i < 16 && bytes[i]; i++) name += String.fromCharCode(bytes[i]);
+  const sounds = [];
+  for (let j = 0; j < nz; j++) {
+    const b = 32 + j * 28, [off, n, ls, le, rate] = [0, 1, 2, 3, 4].map((k) => v.getUint32(b + k * 4, true));
+    const nb = (n + 1) >> 1;
+    if (!n || off + nb > len) return null;
+    const raw = { data: data.slice(off, off + nb), off, n, ls, le, rate, looped: bytes[b + 27],
+                  pred: v.getInt16(b + 22, true), idx: bytes[b + 24] };
+    const s = imaDecode(raw.data, n);
+    raw.s = s;                                      /* (the sound as read: rawKept compares with it) */
+    /* the page's loop choice (its f.loop: 0 ONE SHOT, 1 LOOP the whole sound, 2 LOOP+TAIL; buildSlot stores both loops
+     * as looped 2): stored 2 over the whole sound reads as LOOP, else as LOOP+TAIL; another tool's 1 (always) as
+     * LOOP+TAIL to edit, sent back as 1 while untouched (rawKept) */
+    raw.mode = !raw.looped ? 0 : raw.looped === 2 && ls === 0 && le === n - 1 ? 1 : 2;
+    sounds.push({ fname: `${name || "USR"} ${j + 1}`, s, root: Math.round(v.getInt16(b + 20, true) / 16), lo: bytes[b + 25],
+                  hi: bytes[b + 26], loop: raw.mode, ls, le, raw });
+  }
+  sounds.sort((a, b) => a.raw.off - b.raw.off);     /* in the data's order, as they were given to buildSlot (which sorts the
+                                                     * header by root): built again untouched, the slot is the same bytes */
+  return { name, sounds };
+}
+/* the stored bytes of z, when z is the sound read back, untouched (the same samples, the same loop) */
+function rawKept(z, ls, le) {
+  const r = z.raw;
+  return r && r.s === z.s && r.n === z.s.length && (z.loop || 0) === r.mode &&
+    (!r.mode || (ls === r.ls && le === r.le)) ? r : null;
+}
+/* one slot from the device (backup object 32 + k, read as backupCapture reads) -> its bytes, or null when empty */
+async function slotRead(rq, k, progress = () => {}) {
+  const L = parse[CMD.BK_LIST](await rq(req.bkList(), { timeout: 5000, retries: 0 }));
+  if (L.rc) throw new Error(`LIST rc ${L.rc}`);
+  const it = L.items.find((x) => x.id === 32 + k);
+  if (!it || !it.len) return null;
+  const data = new Uint8Array(it.len);
+  for (let off = 0; off < it.len; off += 256) {
+    const n = Math.min(256, it.len - off);
+    const g = parse[CMD.BK_GET](await rq(req.bkGet(it.id, off, n), { timeout: 1500, retries: 2 }));
+    if (g.rc || g.data.length !== n) throw new Error(`GET USR${k + 1}+${off} rc ${g.rc}`);
+    data.set(g.data, off);
+    progress(off + n, it.len);
+  }
+  if (crc32(data) !== it.crc) throw new Error(`USR${k + 1}: CRC`);
+  return data;
+}
+/* the Drum kit page's pads from slots' sounds: a sound whose keys are one drum lane's note goes to that lane (the
+   page's own format: tune 0, gain 0, the whole sound, as it was stored after them) -> {pads, other: sounds on no lane} */
+function kitFromSounds(sounds) {
+  const pads = Array(16).fill(null), other = [];
+  for (const z of sounds) {
+    const l = DRUM_LANES.findIndex((d) => d[0] === z.lo && z.lo === z.hi);
+    if (l < 0 || pads[l]) { other.push(z); continue; }
+    pads[l] = { s: z.s, fname: `${DRUM_LANES[l][1]} (${z.fname})`, tune: 0, gain: 0, len: 0, raw: z.raw };
+  }
+  return { pads, other };
 }
 
 /* ------------------------------------------------------------------- chop --- */
@@ -4116,7 +4203,12 @@ function kitPad(p) {
 /* the slot's zones: one per pad, lo = hi = root = its lane's note */
 function kitZones(pads) {
   const zs = [];
-  pads.forEach((p, l) => { if (p) zs.push({ s: kitPad(p), root: DRUM_LANES[l][0], lo: DRUM_LANES[l][0], hi: DRUM_LANES[l][0], lane: l, fname: p.fname }); });
+  pads.forEach((p, l) => {
+    if (!p) return;
+    const kept = p.raw && !p.tune && !p.gain && !(p.len > 0 && p.len < p.s.length);   /* read back, untouched: as stored */
+    zs.push({ s: kept ? p.s : kitPad(p), root: DRUM_LANES[l][0], lo: DRUM_LANES[l][0], hi: DRUM_LANES[l][0], lane: l, fname: p.fname,
+              raw: kept ? p.raw : undefined });
+  });
   return zs;
 }
 /* the samples a pad keeps after tune and cut (no encode: for the meter while the knobs move) */
@@ -4940,7 +5032,11 @@ const TEXT = {
     projHelp: "FM-1 が持つのは 1 曲です: セクション A〜D（それぞれ 4 トラックのループ: 音色、パターン、テンポ、キー）と、その並び（ソングタブ）。「読込」はセクションを今のループに入れ、「保存」は今のループをセクションにしまいます。4 曲ではありません: 何曲も残すには、曲ごとに下のバックアップをファイルに保存し、使う曲を復元してください。",
     bkTitle: "バックアップ", bkHelp: "FM-1 の中身をすべて 1 つのファイルに保存します: 今のループ、ソング（セクション A〜D とその並び）、ユーザープリセット、FM6 の音色バンク、サンプル USR1〜4、設定（色、キャリブレーション、ソング、ライト）。復元すると、本体はファイルの状態に戻ります（今の内容は上書きされます）。",
     bkSave: "バックアップを保存", bkLoad: "ファイルから復元", bkSaving: "バックアップ中 ", bkSaved: "バックアップを保存しました",
-    bkRestoring: "復元中 ", bkRestored: "復元しました", bkSmpSkipped: "復元しました。この機器のスロット（各約 {one} 秒）より大きいため、そのままにしたスロット: ", bkConfirm: "FM-1 の今の内容をすべてこのバックアップで置き換えます。続けますか？",
+    bkRestoring: "復元中 ", bkRestored: "復元しました", bkSmpSkipped: "復元しました。この機器のスロット（各約 {one} 秒）より大きいため、そのままにしたスロット: ",
+    smpLoad: "USR{n} をキーボードから読み込む", smpLoadConfirm: "このページの音を、キーボードの USR{n} の音で置き換えますか？（まだ送っていない変更は消えます）",
+    smpLoading: "読み込み中 ", smpLoaded: "読み込みました ", smpLoadEmpty: "空です: ",
+    kitLoad: "{x} をキーボードから読み込む", kitLoadConfirm: "パッドの音を、キーボードの {x} のキットで置き換えますか？（まだ送っていない変更は消えます）",
+    kitReadBack: "キットを読み込みました ", kitLoadOther: "ドラムのレーンにない音 {n} 個は読み込みませんでした", bkConfirm: "FM-1 の今の内容をすべてこのバックアップで置き換えます。続けますか？",
     bkBad: "SLOOP のバックアップファイルではないか、壊れています: ", bkStop: "FM-1 の再生を止めてから、もう一度復元してください。",
     bkStale: "本体の内容が途中で変わりました。もう一度バックアップしてください: ", bkRead: "読み取りエラー: ", bkWrite: "書き込みエラー: ", bkRc4: "フラッシュがありません",
     bkNewer: "新しい SLOOP のバックアップです。先に FM-1 をアップデートしてから復元してください（何も変更していません）: ",
@@ -5290,7 +5386,11 @@ const TEXT = {
     projHelp: "The FM-1 holds one song: four sections A–D, each a loop of the four tracks (sounds, patterns, tempo, key), and the order they play in (the Song tab). Load puts a section into the loop you are working on; Save stores that loop into a section. They are not four songs: to keep several songs, save a Backup file per song (below) and restore the one you want.",
     bkTitle: "Backup", bkHelp: "Everything on the FM-1 in one file: the loop you are working on, the song (its sections A–D and their order), the user presets, the FM6 patch bank, the samples USR1–USR4 and the settings (colours, calibration, the song, the lights). Restoring puts the FM-1 back as it was in the file (what is on it now is replaced).",
     bkSave: "Save a backup", bkLoad: "Restore from a file", bkSaving: "Backing up ", bkSaved: "Backup saved",
-    bkRestoring: "Restoring ", bkRestored: "Restored", bkSmpSkipped: "Restored. Left as they were, bigger than this device's slots (about {one} s each): ", bkConfirm: "Replace everything on the FM-1 with this backup?",
+    bkRestoring: "Restoring ", bkRestored: "Restored", bkSmpSkipped: "Restored. Left as they were, bigger than this device's slots (about {one} s each): ",
+    smpLoad: "Load USR{n} from the keyboard", smpLoadConfirm: "Replace the sounds on this page with USR{n} from the keyboard? Changes not sent yet are lost.",
+    smpLoading: "Reading ", smpLoaded: "Loaded ", smpLoadEmpty: "Empty: ",
+    kitLoad: "Load {x} from the keyboard", kitLoadConfirm: "Replace the pads with the kit in {x} on the keyboard? Changes not sent yet are lost.",
+    kitReadBack: "Kit loaded ", kitLoadOther: "{n} sounds on no drum lane left out", bkConfirm: "Replace everything on the FM-1 with this backup?",
     bkBad: "Not a SLOOP backup, or damaged: ", bkStop: "Stop the FM-1 (PLAY), then restore again.",
     bkStale: "The FM-1 changed during the backup; back up again: ", bkRead: "Read error: ", bkWrite: "Write error: ", bkRc4: "No flash",
     bkNewer: "This backup comes from a newer SLOOP: update the FM-1 first, then restore. Nothing was changed: ",
@@ -8105,6 +8205,7 @@ function renderSamples() {
         el("b", { text: `USR${k + 1}` }), el("span", { class: "now" }), el("progress", { max: 1, value: 0 }), el("span", { class: "cap" }));
       return b;
     }));
+    u.load = el("button", { ic: "symbol_download", onclick: () => smpLoad(P.slot) });   /* its sounds back into step 2 */
     u.erase = el("button", { class: "warn", ic: "symbol_trash", onclick: () => smpErase(P.slot) });
     u.slotNote = el("p", { class: "destnote" });
     /* 2: files or CHOP */
@@ -8156,7 +8257,7 @@ function renderSamples() {
     box.replaceChildren(el("div", { class: "card" },
       el("h2", { ic: "symbol_waves" }, t("samples")),
       el("p", { class: "dim", text: t("smpIntro") }),
-      step(1, t("smpStep1"), u.slots, el("div", { class: "bar" }, u.erase), u.slotNote),
+      step(1, t("smpStep1"), u.slots, el("div", { class: "bar" }, u.load, u.erase), u.slotNote),
       step(2, t("smpStep2"), u.modes, u.modeHelp, u.filesPane, u.chopPane),
       step(3, t("smpStep3"), el("div", { class: "bar" }, el("span", { class: "dim", text: t("smpName") }), u.name, u.send, u.prog),
         el("div", { class: "bar" }, el("span", { class: "dim", text: t("smpPlayOn") }), u.play), u.where)));
@@ -8175,6 +8276,8 @@ function renderSamples() {
   const cur = dev.smp.slots[P.slot];
   setLabel(u.erase, t("smpEraseSlot").replace("{n}", P.slot + 1));
   u.erase.disabled = smpBusy || !cur.zones;
+  setLabel(u.load, t("smpLoad").replace("{n}", P.slot + 1));
+  u.load.disabled = smpBusy || !cur.zones;
   u.slotNote.textContent = (cur.zones ? t("smpReplaces").replace("{n}", P.slot + 1).replace("{x}", cur.name || "—") : t("smpSlotFree").replace("{n}", P.slot + 1))
     + (n >= 4 && P.slot >= 2 ? " " + t("smpKitHint") : "");
   /* 2 */
@@ -8329,6 +8432,20 @@ async function kitOpenZip(f) {
     sayK("kitLoaded", f.name);
   } catch (e) { sayK("smpDecodeFail", `${f.name} (${e.message})`); }
 }
+/* after a restore: the Samples page (its slot) and the Drum kit page (its destination) show what was restored, from the
+   backup's own bytes (nothing is read again); a page with unsent work is left as it is (its Load button reads the slot) */
+function bkFillPages(file, skipped) {
+  const m = backupObjects(file);
+  const get = (k) => (skipped.includes(`USR${k + 1}`) || !m.has(32 + k) ? null : slotParse(m.get(32 + k)));
+  const P = smpPage, g = !P.draft.files.length && get(P.slot);
+  if (g) [P.mode, P.draft] = ["files", { name: g.name, files: g.sounds }];
+  if (!kitDraft.pads.some(Boolean)) {
+    const gs = kitSlots().map(get).filter(Boolean), { pads } = kitFromSounds(gs.flatMap((x) => x.sounds));
+    if (pads.some(Boolean)) [kitDraft.pads, kitDraft.name, kitDraft.sel] = [pads, gs[0].name, pads.findIndex(Boolean)];
+  }
+  renderSamples();
+  renderKits();
+}
 function kitPlayPad(l) {
   const p = kitDraft.pads[l];
   if (!p) return;
@@ -8378,6 +8495,7 @@ function renderKits() {
     u.meterBox = el("div", { class: "kitmeter" }, u.meter, u.meterTxt);
     u.prog = el("progress", { max: 1, value: 0, hidden: true });
     u.send = el("button", { class: "pri", ic: "symbol_upload", onclick: kitSend });
+    u.load = el("button", { ic: "symbol_download", onclick: kitLoad });   /* the destination's kit back into the pads */
     u.use = el("button", { ic: "symbol_drum", onclick: () => kitUse(kitDraft.slot) });
     u.fit = el("button", { onclick: () => { if (kitFit(kitDraft.pads, kitRoom(), kitSlots().length)) renderKits(); } }, t("kitFit"));
     u.match = el("button", { ic: "symbol_audio", onclick: kitMatch }, t("matchLevels"));
@@ -8430,7 +8548,7 @@ function renderKits() {
         el("div", { class: "kithead" }, el("div", { class: "bar", style: "margin:0" }, u.add, u.file, u.zip, u.clear), u.meterBox),
         grid, el("div", { class: "bar" }, u.match, el("span", { class: "dim", text: t("matchHelp") })),
         el("div", { class: "bar" }, u.fit, el("span", { class: "dim", text: t("kitFitHelp") }))),
-      step(2, t("kitStep2"), u.dest, u.destNote,
+      step(2, t("kitStep2"), u.dest, u.destNote, el("div", { class: "bar" }, u.load),
         el("div", { class: "bar" }, el("span", { class: "dim", text: t("kitName") }), u.name)),
       step(3, t("kitStep3"), el("div", { class: "bar" }, u.send, u.prog, u.use), u.where));
     card.addEventListener("dragover", (e) => e.preventDefault());
@@ -8450,6 +8568,11 @@ function renderKits() {
     b.classList.toggle("full", ok && sl.some((x) => x && x.zones));
   }
   const used = kitSlots().map((k) => ok && dev.smp.slots[k]).filter((x) => x && x.zones);
+  {                                                 /* Load: the destination's slots hold something */
+    const ok = !!dev && !!dev.smp, sl = kitSlots().map((k) => ok && dev.smp.slots[k]);
+    setLabel(u.load, t("kitLoad").replace("{x}", kitDest()));
+    u.load.disabled = !ok || smpBusy || !sl.some((x) => x && x.zones);
+  }
   u.destNote.replaceChildren(t(kitDraft.slot === KIT_PAIR ? "kitNotePair" : "kitNoteOne").replace("{x}", kitDest()),
     ...(used.length ? [" ", el("span", { class: "warn", text: t("kitReplaces").replace("{x}", used.map((x) => x.name || "\u2014").join(" + ")) })] : []),
     ...(ok && !kitHas4() ? [" ", el("span", { class: "dim", text: t("kitNo4") })] : []));
@@ -8562,10 +8685,50 @@ function kitZip() {
 
 async function smpInfo() { dev.smp = smpSlotsSet(parse[CMD.SMP_INFO](await rq(req.smpInfo()))); }
 
+/* "Load from the keyboard": a slot's sounds back into the page (slotRead, slotParse), each with its stored bytes, so a
+   change to one sound sends the others back as they were. Unsent work on the page is only replaced when confirmed */
+async function smpLoad(k) {
+  const P = smpPage;
+  if (P.draft.files.length && !confirm(t("smpLoadConfirm").replace("{n}", k + 1))) return;
+  await op(async () => {
+    sayK("smpLoading", `USR${k + 1}`);
+    smpLoadInto(k, slotParse(await slotRead(rq, k)));
+  });
+}
+function smpLoadInto(k, got) {                       /* (also after a restore, from the backup's bytes) */
+  const P = smpPage;
+  if (!got) { sayK("smpLoadEmpty", `USR${k + 1}`); return; }
+  P.slot = k;
+  P.mode = "files";
+  P.draft = { name: got.name, files: got.sounds };
+  renderSamples();
+  sayK("smpLoaded", `USR${k + 1}: ${got.sounds.length}`);
+}
+/* the Drum kit page's destination (one slot, or USR3 + USR4) back into its pads */
+async function kitLoad() {
+  if (kitDraft.pads.some(Boolean) && !confirm(t("kitLoadConfirm").replace("{x}", kitDest()))) return;
+  await op(async () => {
+    sayK("smpLoading", kitDest());
+    const slots = [];
+    for (const k of kitSlots()) slots.push(slotParse(await slotRead(rq, k)));
+    kitLoadInto(slots);
+  });
+}
+function kitLoadInto(slots) {
+  const got = slots.filter(Boolean);
+  if (!got.length) { sayK("smpLoadEmpty", kitDest()); return; }
+  const { pads, other } = kitFromSounds(got.flatMap((g) => g.sounds));
+  kitDraft.pads = pads;
+  kitDraft.name = got[0].name;
+  kitDraft.sel = pads.findIndex(Boolean);
+  renderKits();
+  sayK("kitReadBack", `${kitDest()}: ${pads.filter(Boolean).length}` + (other.length ? " · " + t("kitLoadOther").replace("{n}", other.length) : ""));
+}
+
 async function smpUpload(k, prog, ask = true, d = smpDraft[k]) {   /* (d: the DRUM KIT page's own, not the Samples draft) */
   let built, done = false;
   try { built = buildSlot(d.name, d.files.map((f) => ({ s: withGain(f.s, f.gain), root: f.root, lo: f.lo, hi: f.hi,
-    loop: f.loop || 0, ls: f.ls, le: f.le }))); }
+    loop: f.loop || 0, ls: f.ls, le: f.le, raw: f.raw }))); }   /* (raw: read back from the keyboard, buildSlot rawKept) */
   catch (e) { sayK("smpFail", e.message); return false; }
   if (ask && !confirm(t("confirmUpload").replace("{n}", k + 1))) return false;
   const { hdr, data } = built;
@@ -10115,6 +10278,7 @@ $("bk-file").addEventListener("change", async () => {
       try { await smpInfo(); renderSamples(); } catch (e) { /* shown by the next action */ }
       await afterSoundChange("bkRestored");
       if (skipped.length) sayK("bkSmpSkipped", skipped.join(", "));   /* (slots bigger than this device's: an SMK-37's) */
+      bkFillPages(file, skipped);                       /* the pages show the restored slots */
     } catch (e) { bkReport(e); } finally { $("bk-prog").hidden = true; }
   });
 });

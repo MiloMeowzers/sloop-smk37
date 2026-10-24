@@ -34,7 +34,7 @@ const E = vm.runInNewContext(proto + `
    CHOP, chopNovelty, chopHits, chopSnap, chopGrid, chopEqual, chopList, chopPick, chopFit, chopZones, wavFile, zipStore, crc32,
    UP, bank, capturePatch, auditionPatch, startWatch, libraryFile, readLibraryFile, paramKeys, patternFromSteps, stepsFromPattern, upName,
    mixer, GM_DRUM, drumName, parseNotes, fmtValue, F, DRUM_LANES, LV_NAMES, emptyDrum, lockable, MICRO, FC, fillGet, fillSet, pack7, unpack7,
-   loudDb, matchGains, withGain, LEVEL_MIN, backupCapture, backupRestore, backupObjects, b64enc, b64dec, FM6, KIT, kitPad, kitZones, kitLen, kitBytes, kitFit, kitSplit, kitLaneOf, kitPlace, smpMax, smpSlotsSet, zipRead, ROLL, SMF, ARR, mockSettings, fm6CartWrite, fm6CartPreset, fm6CartSlots, fm6CartPresets, DSYN, DSYN_MOCK_NAMES, DSYN_MOCK_KITS, DAW, SetGate, bkProjFormat, bkDevFormat, bkFwAtLeast, THEME, FM1_PORT_ED: FM1_PORT, fm1Ports, LOOP, LIVE, LVX, SONGF, songCapture, songLoad, songObjects })`,
+   loudDb, matchGains, withGain, LEVEL_MIN, backupCapture, backupRestore, backupObjects, b64enc, b64dec, FM6, KIT, kitPad, kitZones, kitLen, kitBytes, kitFit, kitSplit, kitLaneOf, kitPlace, smpMax, smpSlotsSet, imaEncode, imaDecode, slotParse, rawKept, kitFromSounds, slotRead, zipRead, ROLL, SMF, ARR, mockSettings, fm6CartWrite, fm6CartPreset, fm6CartSlots, fm6CartPresets, DSYN, DSYN_MOCK_NAMES, DSYN_MOCK_KITS, DAW, SetGate, bkProjFormat, bkDevFormat, bkFwAtLeast, THEME, FM1_PORT_ED: FM1_PORT, fm1Ports, LOOP, LIVE, LVX, SONGF, songCapture, songLoad, songObjects })`,
 { setTimeout, clearTimeout, setInterval, clearInterval, console, TextEncoder, TextDecoder, Blob, Response, DecompressionStream });
 
 async function editorMock() {
@@ -2155,6 +2155,54 @@ async function editorSmkSlots() {
     "SMK-37 slots: smpMax follows the device's SMP_INFO (80 KiB with none, 40 KiB on an SMK-37), back at a disconnect");
 }
 
+/* reading a slot back (the Samples / Drum kit pages' "Load from the keyboard", and the pages after a restore): the
+   decoder is the encoder's mirror; a slot parsed and built again untouched is the same bytes (its sounds in the data's
+   order, each with its stored bytes: rawKept); a kit's pads come back on their lanes; one sound changed, the others
+   go back bit for bit; slotRead reads the device's slot as stored */
+async function editorSlotReadback() {
+  const same = (a, b) => !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]);
+  const slotOf = (b) => { const u = new Uint8Array(512 + b.data.length); u.set(b.hdr); u.set(b.data, 512); return u; };
+  const s = Int16Array.from({ length: 6000 }, (_, i) => Math.round(14000 * Math.sin(i / 6) * Math.exp(-i / 2500) * Math.min(1, i / 40)));
+  const e1 = E.imaEncode(s), d1 = E.imaDecode(e1.data, s.length);
+  let err = 0;
+  for (let i = 0; i < s.length; i++) err = Math.max(err, Math.abs(s[i] - d1[i]));
+  ok(same(E.imaEncode(d1).data, e1.data) && err < 1500, `slot read-back: imaDecode mirrors imaEncode (re-encoded: the same bytes; max err ${err})`);
+  const mk = (n, f) => Int16Array.from({ length: n }, (_, i) => Math.round(9000 * Math.sin(i / f)));
+  const room = 0xA000 - 512;
+  const b1 = E.buildSlot("TEST", [{ s: mk(3000, 5), root: 60 }, { s: mk(2001, 9), root: 72, loop: 2, ls: 500, le: 1800 }, { s: mk(1500, 3), root: 48 },
+    { s: mk(1800, 4), root: 84, loop: 1 }], room);
+  const got = E.slotParse(slotOf(b1));
+  const again = E.buildSlot(got.name, got.sounds.map((f) => ({ ...f })), room);
+  ok(got.name === "TEST" && got.sounds.length === 4 && got.sounds.map((f) => f.loop).join() === "0,2,0,1" && same(again.data, b1.data) && same(again.hdr, b1.hdr),
+    "slot read-back: parsed (ONE SHOT, LOOP+TAIL, LOOP as the page has them) and built again untouched: byte for byte");
+  const ch = got.sounds.map((f, j) => ({ ...f, s: j === 1 ? E.withGain(f.s, -6) : f.s }));
+  const p2 = E.slotParse(slotOf(E.buildSlot(got.name, ch, room))).sounds;
+  ok(same(p2[0].raw.data, got.sounds[0].raw.data) && same(p2[2].raw.data, got.sounds[2].raw.data) && !same(p2[1].raw.data, got.sounds[1].raw.data),
+    "slot read-back: one sound changed: only it encoded again, the others bit for bit");
+  const pads = Array(16).fill(null);
+  [0, 2, 4, 5, 11].forEach((l, j) => { pads[l] = { s: mk(1200 + j * 300, 2 + j), fname: "p" + l, tune: 0, gain: 0, len: 0 }; });
+  const k1 = E.buildSlot("KIT", E.kitZones(pads), room), back = E.kitFromSounds(E.slotParse(slotOf(k1)).sounds);
+  const k2 = E.buildSlot("KIT", E.kitZones(back.pads), room);
+  ok(back.pads.map(Boolean).join() === pads.map(Boolean).join() && !back.other.length && same(k2.data, k1.data) && same(k2.hdr, k1.hdr),
+    "slot read-back: a kit's pads back on their lanes; sent again untouched: the same slot");
+  back.pads[2].gain = -6;
+  const p3 = E.kitFromSounds(E.slotParse(slotOf(E.buildSlot("KIT", E.kitZones(back.pads), room))).sounds).pads;
+  ok([0, 4, 5, 11].every((l) => same(p3[l].raw.data, back.pads[l].raw.data)) && !same(p3[2].raw.data, back.pads[2].raw.data),
+    "slot read-back: a kit with one pad changed: the other pads bit for bit");
+  ok(E.slotParse(new Uint8Array(600)) === null && E.slotParse(null) === null && E.rawKept({ s: s, loop: 0 }, 0, 0) === null,
+    "slot read-back: an empty or foreign slot reads as nothing; a sound without stored bytes is encoded");
+  /* from the device: the mock as an SMK-37, a slot sent, read back by slotRead: the stored bytes */
+  const C = E.CMD, dev = attachMock({ slotSize: 0xA000 });
+  ok(E.parse[C.SMP_BEGIN](await dev.rq(E.req.smpBegin(1))).rc === 0, "slot read-back: SMP_BEGIN USR2");
+  for (let off = 0; off < b1.data.length; off += 256)
+    await dev.rq(E.req.smpWrite(1, 512 + off, b1.data.subarray(off, off + 256)));
+  ok(E.parse[C.SMP_END](await dev.rq(E.req.smpEnd(1, b1.hdr))).rc === 0, "slot read-back: SMP_END USR2");
+  const rd = await E.slotRead(dev.rq, 1), none = await E.slotRead(dev.rq, 0);
+  ok(same(rd.subarray(0, 480), b1.hdr) && same(rd.subarray(512), b1.data) && E.slotParse(rd).sounds.length === 4 && none === null,   /* (480..511: erased flash) */
+    "slot read-back: slotRead gives USR2 as stored (header, data), an empty USR1 as nothing");
+  dev.done();
+}
+
 await editorMock();
 await editorLibrarian();
 await editorLive();
@@ -2180,6 +2228,7 @@ samplesMatch();
 chopTests();
 await editorDaw();
 await editorSmkSlots();
+await editorSlotReadback();
 await packages();
 await updater();
 await boards();
