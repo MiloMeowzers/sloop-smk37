@@ -26,6 +26,13 @@ back to the stock firmware. A release build: `--release X.Y` (identity `SMK-37 P
 
 ## Install
 
+**First, a full flash backup** ([fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37),
+docs/02-update-and-recovery.md, section 3): the calibration, the Bluetooth pairing and key_mac are this unit's
+own, and no package has them. From the stock firmware, `tools/smk_backup_prep.py prep build/sloop-smk37.fwsc` runs
+the check step only (nothing is written to the app) and sends the loader the UBOOT key; the keyboard comes back as the
+USB disk `WL82 UBOOT1.00`, read twice with [jl-uboot-tool](https://github.com/kagaimiq/jl-uboot-tool). Then
+`tools/smk_backup_prep.py verify dump-1.bin dump-2.bin`: 1 MiB each, the same, `trimdat` at 0xC1224.
+
 Connect the keyboard over USB (a data cable) and use this repository's installer, as for the FM-1:
 
 ```sh

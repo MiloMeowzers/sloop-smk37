@@ -522,5 +522,60 @@ def starrykey():
 
 starrykey()
 
+
+def backup_prep():
+    """tools/smk_backup_prep.py (the SMK-37's full flash backup from the stock firmware, fm1-to-smk37 method A): the
+    check step only, then the UBOOT key to this firmware's loader; never the write step; refusals send nothing.
+    verify: two reads of 1 MiB, the same, "trimdat" at 0xC1224"""
+    import smk_backup_prep as BP
+
+    def prep(args, dev, answer=True):
+        out, err = io.StringIO(), io.StringIO()
+        old, sys.stderr = sys.stderr, err
+        try:
+            rc = BP.main(["prep"] + args, backend=dev, out=out, ask=lambda _p: answer)
+        finally:
+            sys.stderr = old
+        return rc, out.getvalue(), err.getvalue()
+
+    raw = package("SMK-37 Pro_900")
+    p, image = pkgfile("bp.fwsc", raw), I.logical_image(raw)
+    stock = dict(identity="SMK-37 Pro_016", name="SMK-37 Pro Midi", loader=("ota-SMK-37 Pro_900", "Felucca Update"))
+    dev = FakeFM1(image, **stock)
+    rc, out, err = prep([p, "--yes"], dev)
+    ok(rc == 0 and dev.upgrades == 1 and dev.bad == 0 and dev.identity == "ota-SMK-37 Pro_900" and
+       dev.sent[-1] == BP.UBOOT_KEY and "WL82 UBOOT1.00" in out,
+       "backup prep: stock 016 -> the check step only -> SLOOP's loader -> UBOOT key")
+    ok(I.UPGRADE not in dev.sent[dev.sent.index(I.UPGRADE) + 1:],
+       "backup prep: the loader never gets UPGRADE (no write step)")
+    dev = FakeFM1(image, identity="ota-SMK-37 Pro_900", name="Felucca Update")
+    rc, out, err = prep([p, "--yes"], dev)
+    ok(rc == 0 and dev.upgrades == 0 and dev.sent[-1] == BP.UBOOT_KEY, "backup prep: in SLOOP's loader already -> the key only")
+    for what, kw, args, code in (
+            ("an FM-1", dict(identity="FM-1_015", name="FM-1"), [p, "--yes"], 6),
+            ("the stock loader", dict(identity="ota-SMK-37 Pro_016", name="SMK-37 Pro Midi"), [p, "--yes"], 6),
+            ("an FM-1 package", stock, [pkgfile("bp1.fwsc", package("FM-1_900")), "--yes"], 2)):
+        dev = FakeFM1(image, **kw)
+        rc, out, err = prep(args, dev)
+        ok(rc == code and dev.upgrades == 0 and BP.UBOOT_KEY not in dev.sent, f"backup prep: {what} -> exit {code}, nothing sent")
+    dev = FakeFM1(image, **stock)
+    rc, out, err = prep([p], dev, answer=False)
+    ok(rc == 1 and dev.upgrades == 0 and BP.UBOOT_KEY not in dev.sent, "backup prep: not confirmed -> nothing sent")
+
+    good = bytearray(BP.FLASH_SIZE)
+    good[BP.TRIM_OFF:BP.TRIM_OFF + 8] = b"trimdat\0"
+    files = {}
+    for name, b in (("d1", good), ("d2", good), ("short", good[:-1]), ("notrim", bytes(BP.FLASH_SIZE))):
+        files[name] = pkgfile(name + ".bin", bytes(b))
+    other = bytearray(good)
+    other[0x1234] ^= 1
+    files["other"] = pkgfile("other.bin", bytes(other))
+    vr = lambda *n: BP.main(["verify"] + [files[k] for k in n], out=io.StringIO())   # noqa: E731
+    ok(vr("d1", "d2") == 0 and vr("d1", "other") == 1 and vr("d1", "short") == 1 and vr("notrim", "notrim") == 1 and
+       vr("d1") == 1, "backup verify: 2 x 1 MiB, the same, trimdat at 0xC1224; anything else refused")
+
+
+backup_prep()
+
 print(f"INSTALL TESTS FAILED ({failed})" if failed else "install tests passed")
 sys.exit(1 if failed else 0)
