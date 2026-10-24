@@ -854,6 +854,7 @@ static void smkset_boot(void)                      /* after the settings (persis
                                                     * REMOTE off, their defaults; the ISR reads them) */
         midi_set[6] = midi_set[7] = midi_set[8] = midi_set[9] = 0;
         song.g[G_FXCH] = song.g[G_DRMAP] = song.g[G_CLKOUT] = song.g[G_RMCH] = 0;
+        flt_reso = 0;                              /* (2.7.2's FILTER RESO, bits 2..5 of the old BEND DOWN byte: OFF) */
         fm1_irq_on();
     }
     memset(&smkset_saved, 0, sizeof smkset_saved); /* (written at the next save) */
