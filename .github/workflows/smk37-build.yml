@@ -105,6 +105,8 @@ jobs:
             ls "out/installer-$m/webapp/installer/index.html" "out/installer-$m/firmware/"*.fwsc
           done
           cp .github/serve-installer.ps1 out/
+          mkdir -p out/tools        # the backup prep and the installer (Python 3 with mido and python-rtmidi)
+          cp tools/smk_backup_prep.py tools/fm1_install.py out/tools/
           # the editor of this branch, one file for the disk (the same for every model): open it in Chrome / Edge
           cp out/installer-pro/webapp/editor/sloop-editor.html "out/sloop-editor-$v.html"
 
