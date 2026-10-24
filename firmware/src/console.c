@@ -218,6 +218,15 @@ static void con_status(void)
     con_kv("usb_max_gap_polls", (int32_t)usb.max_gap);
     con_kv("midi_rx_pkts", (int32_t)usb.rx_pkts);
     con_kv("midi_tx_pkts", (int32_t)usb.tx_pkts);
+#if SMK_UAC_PROBE
+    con_kv("uac6_alt", uac.alt);                         /* the stems probe (usb.c uac6_packet): 1 the host records */
+    con_kv("uac6_flowing", uac.flowing);
+    con_kv("uac6_pkts", (int32_t)uac.pkts);
+    con_kv("uac6_frames", (int32_t)uac.frames);
+    con_kv("uac6_missed", (int32_t)uac.missed);          /* IN tokens that found no packet queued */
+    con_kv("uac6_stalls", (int32_t)uac.stalls);
+    con_kv("uac6_rate_sets", (int32_t)uac.rate_sets);
+#endif
 #if FELUCCA_FLASH
     con_kv("flash", flash_ok);
 #endif

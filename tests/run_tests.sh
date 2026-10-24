@@ -211,6 +211,10 @@ run "USB RATE 44.1: the descriptors of a build without 48 kHz (SLOOP 2.4), byte 
     sh -c "[ \"\$(UAC_DUMP=1 '$OUT/uac_test_441' | tail -n 2)\" = \"\$(UAC_DUMP=1 '$OUT/uac_test_no48' | tail -n 2)\" ] && echo same"
 uac_in_app() { ${CC%% *} -E -Ibuild/gen -Ifirmware/hal -Ifirmware/src firmware/src/felucca.c 2>/dev/null | grep -q uac_service; }
 run "USB audio input: built into the firmware (FELUCCA_UAC set before usb.c)" uac_in_app
+$CC -DT_CDC=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test" tests/uac6_test.c
+run "SMK-37 stems probe (SMK_UAC_PROBE): 6 x 24 bit at 48 kHz, descriptors and test packets (with CDC)" "$OUT/uac6_test"
+$CC -DT_CDC=0 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_nocdc" tests/uac6_test.c
+run "SMK-37 stems probe (SMK_UAC_PROBE): descriptors and test packets (without CDC)" "$OUT/uac6_test_nocdc"
 
 $CC -o "$OUT/ota_test" tests/ota_test.c
 run "M-UPGRADE entry" "$OUT/ota_test" build/felucca.fwsc
