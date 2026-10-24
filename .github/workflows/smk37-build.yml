@@ -74,7 +74,9 @@ jobs:
           sha256sum build/felucca.bin build/felucca.fwsc build/loader/ota.bin > ../fm1-reference.sha256
           cat ../fm1-reference.sha256
           sh tests/run_tests.sh > ../base-tests.log 2>&1 || true
-          grep -n "FAIL\|OVER BUDGET" ../base-tests.log | sed 's/^[0-9]*://' | sort -u > ../base-fails.txt || true
+          # (regress prints timing-only measurements as "-- timed: a note, not a failure": listed apart, never a failure;
+          # their numbers differ on every run of a shared runner)
+          grep -E "FAIL|OVER BUDGET" ../base-tests.log | grep -v "a note, not a failure" | sort -u > ../base-fails.txt || true
           echo "baseline failures: $(wc -l < ../base-fails.txt)"
 
       - name: 2. SMK-37 packages (Pro, Elite, MKE)
@@ -99,7 +101,9 @@ jobs:
       - name: 4. Host and web tests (FM-1 built last)
         run: |
           sh tests/run_tests.sh > out/tests.log 2>&1 || true
-          grep -n "FAIL\|OVER BUDGET" out/tests.log | sed 's/^[0-9]*://' | sort -u > out/fails.txt || true
+          grep -E "FAIL|OVER BUDGET" out/tests.log | grep -v "a note, not a failure" | sort -u > out/fails.txt || true
+          grep "a note, not a failure" out/tests.log > out/timing-notes.txt || true
+          echo "timing notes (not failures): $(wc -l < out/timing-notes.txt)"; cat out/timing-notes.txt
           cp ../base-fails.txt ../base-tests.log ../fm1-reference.sha256 out/
           comm -13 ../base-fails.txt out/fails.txt > out/new-fails.txt
           echo "failures: $(wc -l < out/fails.txt), baseline: $(wc -l < ../base-fails.txt), new: $(wc -l < out/new-fails.txt)"
