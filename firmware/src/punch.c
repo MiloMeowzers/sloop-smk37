@@ -23,7 +23,20 @@ static const char *const PUNCH_NAME[PUNCH_NFX] = {
 #define PX_FRZ_CAP 8192u                  /* FREEZE: samples of the mix poured into the held reverb (186 ms) */
 #define PX_RWD_ACC 17                     /* REWIND: speed change per sample (Q16): +1 to -3 in 0.35 s */
 #define PX_RWD_MAX (3 << 16)
+#if BOARD_SMK37
+/* SMK-37: the ring in slicer.c's smk_fxpool, its size punch_cap: PUNCH_N, or TP_MRING while STEM FX gives the rest to
+ * the stems (smk_tpunch.h; the master then has no rhythmic punch-in to play: they are on the stems) */
+static int16_t *punch_ring = smk_fxpool + NTRK * SL_LEN;
+static uint32_t punch_cap = PUNCH_N;
+#define PUNCH_M (punch_cap - 1u)
+#define PUNCH_CAP punch_cap
+static uint8_t tp_on;                    /* (smk_tpunch.h, after this file) */
+static int tp_fx(int32_t fx);
+#else
 static int16_t punch_ring[PUNCH_N] __attribute__((section(".pool")));
+#define PUNCH_M (PUNCH_N - 1u)
+#define PUNCH_CAP PUNCH_N
+#endif
 static struct {
     volatile int8_t req;          /* effect asked for by the keys (-1 none), ISR keyboard_block */
     volatile uint8_t hold;        /* FX button held (UI main loop) */
@@ -54,7 +67,7 @@ static int px_replay(int32_t fx) { return fx <= PX_HALF || fx == PX_LOOP8T; } /*
 
 static uint32_t beat_samples(void) { return (uint32_t)FS * 60u / (uint32_t)song.g[G_BPM]; }
 
-static int32_t ring_raw(uint32_t i) { return punch_ring[i & (PUNCH_N - 1u)]; }   /* the stored 16 bits (mix / 8) */
+static int32_t ring_raw(uint32_t i) { return punch_ring[i & PUNCH_M]; }   /* the stored 16 bits (mix / 8) */
 static int32_t ring_at(uint32_t i) { return ring_raw(i) << 3; }
 static int32_t ring_q16(uint32_t p)                 /* read at Q16 position, linear (on the stored values: no overflow) */
 {
@@ -69,8 +82,8 @@ static void punch_start(int32_t fx)
     punch.cur = (int8_t)fx;
     punch.t = 0;
     len = fx <= PX_HALF ? beat / DIV[fx] : fx == PX_LOOP8T ? beat / 3u : beat;
-    if (len > PUNCH_N - 1024u)
-        len = PUNCH_N - 1024u;
+    if (len > PUNCH_CAP - 1024u)
+        len = PUNCH_CAP - 1024u;
     if (len < 64u)
         len = 64u;
     punch.len = len;
@@ -143,8 +156,8 @@ static int punch_owns(int32_t fx, uint32_t w)
     if (fx < 0 || !px_replay(fx) || fx == PX_STOP || punch.pre)
         return 0;
     if (fx == PX_REV)
-        return d >= 1u && ((d + len - 1u) & (PUNCH_N - 1u)) < len;
-    return d >= len && (d & (PUNCH_N - 1u)) < len;
+        return d >= 1u && ((d + len - 1u) & PUNCH_M) < len;
+    return d >= len && (d & PUNCH_M) < len;
 }
 
 /* the kills: the SVF of dsp.c tsvf_lp with its high-pass out too (Butterworth: tsvf_coef reso 40, damping 5799
@@ -234,6 +247,10 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
     uint32_t i;
     int32_t want = punch.req, pstep;
     uint32_t beat, step, echo_d, binc, fdec;
+#if BOARD_SMK37
+    if (tp_on && tp_fx(want))
+        want = -1;                                      /* (STEM FX: the rhythmic ones play on the stems) */
+#endif
     static int32_t kl[CTL], kr[CTL];                    /* (static: the ISR stack is small) */
     tsvf_t c1, c2;
     if (punch.cur != PX_FREEZE) {                       /* (2.6) the mix's level, for FREEZE (every 4th sample) */
@@ -258,7 +275,7 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
     }
     if (punch.cur < 0 && want < 0) {                   /* idle: only the ring */
         for (i = 0; i < n; i++)
-            punch_ring[punch.w++ & (PUNCH_N - 1u)] = (int16_t)clamp((l[i] + r[i]) >> 4, -32768, 32767);
+            punch_ring[punch.w++ & PUNCH_M] = (int16_t)clamp((l[i] + r[i]) >> 4, -32768, 32767);
         return;
     }
     if (punch.cur < 0 && want >= 0)
@@ -266,7 +283,7 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
     beat = beat_samples();                              /* per block: no divide per sample */
     step = beat / 4u ? beat / 4u : 1u;
     echo_d = beat * 3u / 4u;
-    if (echo_d > PUNCH_N - 64u) echo_d = PUNCH_N - 64u;
+    if (echo_d > PUNCH_CAP - 64u) echo_d = PUNCH_CAP - 64u;
     binc = 0xFFFFFFFFu / beat;                          /* a turn a beat */
     fdec = (32767u << 8) / (2u * beat);                 /* FADE OUT: to nothing in two beats */
     if (punch.cur == PX_GATE)
@@ -304,7 +321,7 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
         int32_t fx = punch.cur;
         uint32_t target = want == fx ? 32767u : 0u;
         if (!punch_owns(fx, punch.w))                   /* (a held loop keeps its material) */
-            punch_ring[punch.w & (PUNCH_N - 1u)] = (int16_t)clamp(m >> 3, -32768, 32767);
+            punch_ring[punch.w & PUNCH_M] = (int16_t)clamp(m >> 3, -32768, 32767);
         switch (fx) {
         case PX_LPF:
             wl = tsvf_lp(&c1, x >> 1, &punch.f1l, &punch.f2l) << 1;
@@ -351,7 +368,7 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
             break;
         case PX_RWD: {                                  /* the record pulled back: slows, stops, spins backwards */
             uint32_t back = (uint16_t)(punch.w - (punch.rp >> 16));   /* samples behind the writer */
-            int32_t room = (int32_t)PUNCH_N - 512 - (int32_t)back, e;   /* before the writer's overwritten past */
+            int32_t room = (int32_t)PUNCH_CAP - 512 - (int32_t)back, e;   /* before the writer's overwritten past */
             if (room <= 0) {                            /* all of it heard: silence until the key is up */
                 wl = wr = 0;
                 break;
@@ -376,7 +393,7 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
                      dr = (26u << 16) + (uint32_t)((sine_i(punch.lfo + 0x40000000u) + 32768) * 240);
             int32_t el = ring_raw_q16((punch.w << 16) - dl), er = ring_raw_q16((punch.w << 16) - dr);
             punch.lfo += binc >> 2;
-            punch_ring[punch.w & (PUNCH_N - 1u)] =       /* feedback (the ring is the delay line) */
+            punch_ring[punch.w & PUNCH_M] =       /* feedback (the ring is the delay line) */
                 (int16_t)clamp((m >> 3) + (((el + er) * 9000) >> 15), -32768, 32767);
             wl = ((x + (el << 3)) * 5) >> 3;
             wr = ((y + (er << 3)) * 5) >> 3;
@@ -411,7 +428,7 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
             uint32_t d = echo_d;
             int32_t e;
             e = (ring_raw(punch.w - d) * 18000) >> 12;  /* (x 8 after: no overflow on a hot mix) */
-            punch_ring[punch.w & (PUNCH_N - 1u)] = (int16_t)clamp((m + e) >> 3, -32768, 32767);   /* feedback */
+            punch_ring[punch.w & PUNCH_M] = (int16_t)clamp((m + e) >> 3, -32768, 32767);   /* feedback */
             wl = x + e;
             wr = y + e;
             break;

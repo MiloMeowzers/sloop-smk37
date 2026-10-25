@@ -225,7 +225,8 @@ int main(int argc, char **argv)
     check(MS_FIRST[MS_PLAY] == MI_VEL && MS_FIRST[MS_MIDI] == MI_TRS && MS_FIRST[MS_DAW] == MI_DMAP && MI_LOCAL - MI_TRS == 3 &&
           MI_DRESET - MI_DMAP == 3 && MI_BDN - MI_VEL == 2 && MI_LIMIT == MI_BDN + 1 && MS_FIRST[MS_MIDI] - MS_FIRST[MS_PLAY] == 4 &&
           MI_KLAY == MI_ZOOM + 1 && MI_ACCEL == MI_KLAY + 1 && MS_FIRST[MS_LIGHTS] == MI_ACCEL + 1 &&
-          MS_FIRST[MS_USB] == MI_LAYOUT && MI_FRESO + 1 == MI_LAYOUT && MS_FIRST[MS_SEQ] == MI_ADV && MI_LAYOUT + 1 == MI_ADV &&
+          MS_FIRST[MS_USB] == MI_LAYOUT && MI_FRESO + 1 == MI_LAYOUT && MS_FIRST[MS_SEQ] == MI_ADV && MI_LAYOUT + 1 == MI_SFX &&
+          MI_SFX + 1 == MI_ADV &&
           MS_FIRST[MS_PLAY] == MI_DPREV + 1,
           "SCREEN: KNOB LAYOUT, KNOB ACCEL; AUDIO ends with FILTER RESO; USB: USB LAYOUT; SEQ; PLAY: KEY VELOCITY, BEND UP, BEND DOWN, LIMITER; MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4");
     {   /* USB LAYOUT: STEREO, DRUMS+RET, SYNTHS+RET, ALL DRY; the knob stops at the ends, OCT+ round */
@@ -245,6 +246,18 @@ int main(int argc, char **argv)
         check(usb_layout == UL_STEREO, "USB LAYOUT: stops at STEREO");
         ui.menu_sel = MI_LAYOUT; ui.force = 1; mi_set(MI_LAYOUT, 1); shot("daw-menu-usb");
         usb_layout = UL_STEREO;
+    }
+    {   /* STEM FX: SLICER, PUNCH, PUNCH HQ; the knob stops at the ends, OCT+ round */
+        uint16_t col;
+        stem_fx = SFX_SLICER;
+        mi_set(MI_SFX, 1);
+        check(stem_fx == SFX_PUNCH && !strcmp(mi_value(MI_SFX, &col), "PUNCH"), "STEM FX: right PUNCH");
+        mi_set(MI_SFX, 1);
+        mi_set(MI_SFX, 1);
+        check(stem_fx == SFX_HQ && !strcmp(mi_value(MI_SFX, &col), "PUNCH HQ"), "STEM FX: PUNCH HQ, stops at the end");
+        mi_set(MI_SFX, 0);
+        check(stem_fx == SFX_SLICER, "STEM FX: OCT+ round to SLICER");
+        check(!strcmp(MI_NAME[MI_SFX], "STEM FX"), "STEM FX: the row's name");
     }
     for (i = 0; i < MS_COUNT; i++)
         if (MS_FIRST[i + 1] - MS_FIRST[i] > 4u || MS_FIRST[i + 1] <= MS_FIRST[i])

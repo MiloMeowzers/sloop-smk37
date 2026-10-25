@@ -29,6 +29,7 @@ enum { MI_COLOR, MI_ZOOM,
        MI_FRESO,
 #if BOARD_SMK37
        MI_LAYOUT,                                  /* SMK-37: USB > USB LAYOUT (usb.c usb_layout, at the next start) */
+       MI_SFX,                                     /* SMK-37: USB > STEM FX (smk_tpunch.h stem_fx, live) */
 #endif
        MI_ADV, MI_DPREV,
 #if BOARD_SMK37
@@ -55,7 +56,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #endif
                                               "FILTER RESO",
 #if BOARD_SMK37
-                                              "USB LAYOUT",
+                                              "USB LAYOUT", "STEM FX",
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
 #if BOARD_SMK37
@@ -209,6 +210,11 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     }
     case MI_LIMIT: return lim_classic ? "CLASSIC" : "SOFT";
     case MI_LAYOUT: return UL_MENU_NAME[usb_layout % UL_N];   /* (usb.c: at the next start) */
+    case MI_SFX: {                                    /* the stems' effects: the SLICER's STUT, or the punch-ins */
+        static const char *const N[SFX_N] = {"SLICER", "PUNCH", "PUNCH HQ"};
+        *c = usb_layout_now() ? C_HI : C_DIM;          /* (STEREO: no stems, no effect) */
+        return N[stem_fx % SFX_N];
+    }
     case MI_BUP:
     case MI_BDN: {                                    /* semitones of the pitch wheel up / down, the internal sounds */
         static char b[2][16];
@@ -248,7 +254,8 @@ UI_SMALL static void draw_menu(void)
                    knob_accel_off * 179424673u + drum_preview * 236887691u + step_adv_off * 373587883u + flt_reso * 512927357u;
 #if BOARD_SMK37
     sig += vel_mode * 179424673u + trs_out * 373587883u + smo.dead * 573259391u + bend_up * 817504243u +
-           bend_dn * 941083987u + lim_classic * 1500450271u + knob_layout * 2147483647u + usb_layout * 433494437u;
+           bend_dn * 941083987u + lim_classic * 1500450271u + knob_layout * 2147483647u + usb_layout * 433494437u +
+           stem_fx * 160481183u;
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
 #endif
@@ -486,6 +493,11 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         break;
     case MI_BDN:
         bend_dn = (uint8_t)bend_step(bend_dn, s);
+        break;
+    case MI_SFX:                                       /* SLICER PUNCH PUNCH HQ, the knob stops at the ends, OCT+
+                                                        * round; at once (fx.c: the memory shared out again) */
+        stem_fx = (uint8_t)(s > 0 ? (stem_fx + 1u < SFX_N ? stem_fx + 1u : stem_fx) : s < 0 ? (stem_fx ? stem_fx - 1u : 0u)
+                                  : (stem_fx + 1u) % SFX_N);
         break;
     case MI_LAYOUT:                                    /* the layouts this build makes (ul_offered), the knob steps
                                                         * (stops at the ends), OCT+ round; at the next start */

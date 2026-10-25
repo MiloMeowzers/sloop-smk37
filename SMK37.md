@@ -152,6 +152,7 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 | SCREEN | KNOB LAYOUT | K7 | FM-1 (default): K1 MASTER, K2 SELECT, K3 ALGORITHM, K4 PRESETS, K5–K8 the dials. SMK: K1–K4 the dials, K5 MASTER, K6 SELECT, K7 PRESETS, K8 ALGORITHM. The knobs are endless: the new layout works at once. Switched to SMK, the menu's rows move to K1–K4 (K3 switches back) |
 | SCREEN | KNOB ACCEL | K8 | SLOOP's: ON (default), a fast turn moves further; OFF, one value a detent |
 | USB | USB LAYOUT | K5 | STEREO (default): the USB audio input as on the FM-1. DRUMS+RET, SYNTHS+RET, ALL DRY: [stems](#usb-audio-stems) for a DAW. At the next power-on (RESTART shows until then) |
+| USB | STEM FX | K6 | with a stem layout: SLICER (default; each track's SLICER STUT, the punch-ins on the master only), PUNCH or PUNCH HQ (the rhythmic punch-ins on every stem; [below](#usb-audio-stems)). At once |
 | PLAY | KEY VELOCITY | K5 | see [Velocity](#velocity) |
 | PLAY | BEND UP | K6 | the pitch wheel up, on the internal sounds (the selected synth track): OFF, 1, 2, 3, 4, 5, 7 or 12 semitones, default 7. MIDI IN's pitch bend has its own (GLO > MIDI 2 > BEND) |
 | PLAY | BEND DOWN | K7 | the same, down (default 7; e.g. +2 up, −12 down). The earlier BEND RANGE is read as both |
@@ -197,8 +198,18 @@ each named for the DAW:
   through the drum track's SLICER GATE, INSERT and FILTER, before the track's pan and sends. INSERT's drive and fold act
   on each group (on the kit in the stereo mix). While SLICER **STUT** runs on the drum track the kit goes out as one
   stem on KICK's channel (STUT records the whole track). Per-kit groups and choke are to come.
-- Pan, trim and mix them in the DAW. The master stage (TEXTURE, DUST, the punch-ins, the DJ filter, the limiter) and
-  the metronome are on no stem; punch-ins on the stems are to come.
+- Pan, trim and mix them in the DAW. The master stage (TEXTURE, DUST, the DJ filter, the limiter) and the metronome are
+  on no stem.
+- **STEM FX** (HOME menu > USB, at once): **SLICER** (default): each track's SLICER as always, the punch-ins on the
+  master only (headphones, not the stems). **PUNCH** / **PUNCH HQ**: the rhythmic punch-ins (LOOP 4 / 8 / 16 / 32 /
+  8T, STUTTER, REVERSE, STOP, HALF, REWIND, GATE) on every stem, each on its own signal before its pan and sends, the
+  same grid for all (the stems, the stereo mix and the headphones hear the same; the reverb hears the punched sound).
+  The tonal ones (the filters, kills, CRUSH, ALIAS, PHONE, ECHO, FLANGER, FREEZE ...) stay on the master (ECHO short).
+  The memory is the master ring's and the SLICERs' STUT recordings': SLICER STUT is off meanwhile (GATE stays). Each
+  stem keeps a past of 0.51 s (SYNTHS+RET, 4 rings), 0.29 s (DRUMS+RET, 7), 0.34 s (ALL DRY, 6) with PUNCH, stored at 22 kHz (the
+  top end above ~10 kHz goes while a punch-in plays, as the SLICER's STUT); PUNCH HQ keeps the full band and half the
+  time. A punch-in longer than that past (a slow tempo: REVERSE plays a beat, HALF and STOP 1/8 note and more) plays
+  what there is: REVERSE shorter, STOP and REWIND fade where the past ends.
 - The level follows HOME menu > AUDIO > **USB AUDIO**: MASTER (the MASTER knob, either LIMITER curve) or FULL (fixed).
   The stereo output's full scale sits at −6 dBFS in the stems: 6 dB of headroom and no limiter on them. For stems, USB
   AUDIO = FULL gives a fixed level that does not follow the knob.

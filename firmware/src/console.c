@@ -222,6 +222,11 @@ static void con_status(void)
     con_kv("usb_layout", usb_layout_mode);               /* 0 STEREO, 1 DRUMS+RET, 2 SYNTHS+RET, 3 ALL DRY (usb.c) */
     con_kv("uac6_alt", uac.alt);                         /* the stems' stream (usb.c): 1 the host records */
     con_kv("stem_k", stem_k);                            /* of the 6 channels, those core 1 resamples (fx.c stem_balance) */
+    con_kv("stem_fx", stem_fx);                          /* 0 SLICER, 1 PUNCH, 2 PUNCH HQ (smk_tpunch.h) */
+    con_kv("tp_on", tp_on);                              /* the stems' punch-ins set up (a stem layout and PUNCH / HQ) */
+    con_kv("tp_rings", tp.n);
+    con_kv("tp_ring_ms", tp.n ? (int32_t)(tp.cap * tp.s * 1000u / 44100u) : 0);   /* a ring's past */
+    con_kv("tp_fx", tp.cur);                             /* the punch-in on the stems now (-1 none) */
     con_kv("stem_ch_us", (int32_t)(stem_tch / 24u));    /* a channel's resampling, a block, us (TIMER4: 24 a us) */
     con_kv("uac6_underruns", (int32_t)uac.underruns);
     con_kv("uac6_overruns", (int32_t)uac.overruns);

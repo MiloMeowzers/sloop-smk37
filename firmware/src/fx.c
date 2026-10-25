@@ -205,6 +205,10 @@ static uint8_t stem_staged;              /* it waits for the resampler */
 static int (*stem_room)(uint32_t n);
 static void (*stem_tap_ch)(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1, uint32_t c_lo, uint32_t c_hi);
 static void (*stem_commit)(uint32_t n);
+/* STEM FX (smk_tpunch.h, after punch.c): the stems' rhythmic punch-ins, applied where the stems are taken */
+static uint8_t tp_on, tp_live;
+static inline int32_t tp_x(uint32_t r, uint32_t i, int32_t x);
+static void tp_zero(uint32_t r, uint32_t n);
 static uint8_t stem_k = 3;               /* the channels core 1 resamples (0..6) */
 static uint32_t stem_t0, stem_t1, stem_tch, stem_nb;   /* this half: core 0's and core 1's work (units + channels),
                                                          * ticks; a channel's cost (smoothed); blocks */
@@ -377,6 +381,9 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
  * (tests/regress.c gives the golden hashes under every mode of the host double: tests/cpu1_modes.sh). */
 static void events_block(uint32_t n);                    /* seq.c */
 typedef struct { int32_t l[CTL], r[CTL], sc[CTL], sd[CTL], sr[CTL]; } mixacc_t;   /* dry L, R; chorus, delay, reverb sends */
+#if BOARD_SMK37
+static void tp_silent_mix(track_t *t, uint32_t k, uint32_t n, mixacc_t *mx);   /* (STEM FX, after punch.c) */
+#endif
 static mixacc_t acc[2] __attribute__((section(".lowram")));          /* core 0's, core 1's (.lowram: app.ld, main.c) */
 static int32_t wet_l[CTL], wet_r[CTL];
 static int32_t part_buf[2][CTL] __attribute__((section(".lowram")));   /* a part's scratch, one per core */
@@ -744,10 +751,25 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         slicer_track(t, 0, n);                          /* (the SLICER's step clock runs on) */
         if (t->ins_run && !t->p[P_ITYPE])
             ins_rest(t);                                /* TYPE OFF while silent: no fade-out left for the next note */
+#if BOARD_SMK37
+        if (tp_on && g0 | g1) {                         /* STEM FX: a punch-in replays the track's past, its ring
+                                                         * records the silence */
+            if (tp_live)
+                tp_silent_mix(t, (uint32_t)(t - trk) % NPART, n, mx);
+            else
+                tp_zero((uint32_t)(t - trk) % NPART, n);
+        } else if (tp_on) {
+            tp_zero((uint32_t)(t - trk) % NPART, n);
+        }
+#endif
         return;
     }
     if (!g0 && !g1) {                                   /* silent (MUTE / SOLO): the voices run, nothing is heard */
         slicer_track(t, 0, n);
+#if BOARD_SMK37
+        if (tp_on)
+            tp_zero((uint32_t)(t - trk) % NPART, n);    /* (its ring records what is heard: nothing) */
+#endif
         return;
     }
     {
@@ -787,6 +809,8 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
             if (g < 32767)
                 x = (x >> 4) * (g >> 3) >> 8;           /* (Q15 in two halves: no 32-bit overflow) */
 #if BOARD_SMK37
+            if (tp_on)
+                x = tp_x((uint32_t)(t - trk) % NPART, i, x);   /* STEM FX: the punch-ins on the track */
             if (st)
                 st[i] = x;                              /* its stem: before the pan and the sends */
 #endif
@@ -876,6 +900,35 @@ static void djf_process(int32_t *l, int32_t *r, uint32_t n)
 }
 
 #include "punch.c"            /* PUNCH-IN FX on the whole mix (FX held + a white key) */
+#if BOARD_SMK37
+#include "smk_tpunch.h"       /* SMK-37 STEM FX: the rhythmic punch-ins on the stems */
+/* a silent track while a stems' punch-in plays: its ring's replay, panned and sent as mix_part_run does (the level and
+ * mute are in what the ring recorded) */
+static void tp_silent_mix(track_t *t, uint32_t k, uint32_t n, mixacc_t *mx)
+{
+    int32_t pan = t->p[P_PAN], gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
+    int32_t c = t->p[P_CHOR] * 258, d = send_thr(t->p[P_DLY] * 258, thr_dly), r = send_thr(t->p[P_REV] * 258, thr_rev);
+    int32_t xmax = c > d ? c : d, *st = stem_feed ? stem_syn[k] : 0;
+    uint32_t i;
+    xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);
+    for (i = 0; i < n; i++) {
+        int32_t x = tp_x(k, i, 0), xs;
+        if (st)
+            st[i] = x;
+        if (!x)
+            continue;
+        xs = clamp(x, -xmax, xmax);
+        if (c)
+            mx->sc[i] += mulq15(xs, c);
+        if (d)
+            mx->sd[i] += mulq15(xs, d);
+        if (r)
+            mx->sr[i] += mulq15(xs, r);
+        mx->l[i] += ((x >> 4) * gl) >> 8;
+        mx->r[i] += ((x >> 4) * gr) >> 8;
+    }
+}
+#endif
 /* ---- the render units and the second core. A unit is a synth part (mix_part) or the drum track with the
  * metronome (mix_drums); unit k is bit k of a mask, the drums bit NPART. What a unit on core 1 may not share
  * with one on core 0: part_buf (one per core); FM6's operator buses (per part, in its arena); the formant
@@ -922,8 +975,8 @@ static int mix_drums_groups(uint32_t n, mixacc_t *mx, int flt, const tsvf_t *fc)
     int32_t *G[DG_N] = {drum_buf[0], drum_buf[1], drum_buf[2], drum_buf[3]};
     uint32_t i, g;
     int gate;
-    if (t->p[P_SLCR] == SL_STUT || s->w || s->loop)
-        return 0;
+    if (!sl_mem_lent && (t->p[P_SLCR] == SL_STUT || s->w || s->loop))
+        return 0;                                       /* (STEM FX on: STUT records nothing, no fallback) */
     for (g = 0; g < DG_N; g++)
         for (i = 0; i < n; i++)
             G[g][i] = 0;
@@ -958,6 +1011,20 @@ static int mix_drums_groups(uint32_t n, mixacc_t *mx, int flt, const tsvf_t *fc)
         for (g = 0; g < DG_N; g++)
             if (dg_idle[g] < 64u)
                 tflt_run(&tflt[TRK_DRUM], fc, G[g], n, g);
+    if (tp_on) {                                        /* STEM FX: the punch-ins on each drum stem (rings 3 ..) */
+        uint32_t ng = stem_layout == 1u ? 4u : stem_layout == 3u ? 3u : 1u;   /* DRUMS+RET, ALL DRY, SYNTHS+RET */
+        if (ng < 4u)                                    /* (ALL DRY: HATS + PERC one stem; SYNTHS+RET: the kit) */
+            for (i = 0; i < n; i++) {
+                if (ng == 1u)
+                    G[0][i] += G[1][i] + G[2][i] + G[3][i], G[1][i] = G[2][i] = 0;
+                else
+                    G[2][i] += G[3][i];
+                G[3][i] = 0;
+            }
+        for (g = 0; g < ng; g++)
+            for (i = 0; i < n; i++)
+                G[g][i] = tp_x(3u + g, i, G[g][i]);
+    }
     {   /* the pan and the sends, as slicer_drums */
         int32_t send = send_thr(song.g[G_DRREV] * 258, thr_rev), dsend = send_thr(song.g[G_DRDLY] * 258, thr_dly), pan = t->p[P_PAN];
         int32_t gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
@@ -985,7 +1052,7 @@ static void mix_drums(uint32_t n, mixacc_t *mx)
     flt = n <= CTL && djf_block(f, TDRUM->p[P_TFLT], &fc, tflt_reso());   /* the drum track's FILTER */
 #if BOARD_SMK37
     dg_ran = 0;
-    if (stem_feed && n <= CTL && (stem_layout == 1u || stem_layout == 3u) && mix_drums_groups(n, mx, flt, &fc)) {
+    if (n <= CTL && (tp_on || (stem_feed && (stem_layout == 1u || stem_layout == 3u))) && mix_drums_groups(n, mx, flt, &fc)) {
         dg_ran = 1;                                     /* (DRUMS+RET, ALL DRY: the kit in its groups) */
         click_render(mx->l, mx->r, n);
         return;
@@ -1360,6 +1427,19 @@ static void mix_block(int32_t *out, uint32_t n)
     }
     events_block(n);
     duck_block(n * (uint32_t)song.g[G_BPM]);
+#if BOARD_SMK37
+    {   /* STEM FX: the memory shared out again when the mode changes (the menu's STEM FX, live), the stems' punch-ins'
+         * timeline for this block */
+        uint32_t mode = (stem_fx % SFX_N) | (uint32_t)stem_layout << 2;
+        if (mode != tp.mode) {
+            tp_setup(stem_fx % SFX_N, stem_layout);
+            tp.mode = (uint8_t)mode;
+        }
+        tp_live = 0;
+        if (tp_on && n <= CTL)
+            tp_block(n, punch.req);
+    }
+#endif
     c1 = cpu1_on() ? units_split() : 0;                 /* core 1's units this block */
 #if BOARD_SMK37
     {   /* SMK-37: the stems' last block shared out too (stem_k channels on core 1, the rest here, stem_balance) */
@@ -1464,6 +1544,8 @@ static void mix_block(int32_t *out, uint32_t n)
         static const int32_t ZERO[CTL];
         const int32_t *src[6] = {stem_syn[0], stem_syn[1], stem_syn[2], stem_drum, wet_l, wet_r};   /* SYNTHS+RET */
         uint32_t c, i;
+        if (stem_layout == 2u && dg_ran)                /* SYNTHS+RET with STEM FX: the kit, punched, in the groups' */
+            src[3] = drum_buf[0];
         if (stem_layout == 1u) {                        /* DRUMS+RET: the groups (STUT: the kit on KICK's) */
             src[0] = dg_ran ? drum_buf[0] : stem_drum, src[1] = dg_ran ? drum_buf[1] : ZERO;
             src[2] = dg_ran ? drum_buf[2] : ZERO, src[3] = dg_ran ? drum_buf[3] : ZERO;
