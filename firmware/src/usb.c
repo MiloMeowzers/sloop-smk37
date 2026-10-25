@@ -371,8 +371,9 @@ static int usb_rate_now(void) { return 0; }
 /* SMK-37: a USB serial number (string 3), one per unit and USB layout: without one Windows keys the device to the port
  * it is in, so another port or another layout is a new device with new names and the user's renames are lost (the
  * owner's VB-Matrix lost its slots). "SMK37-" + the flash's unique ID folded to 12 hex digits (project.c reads it at
- * boot: fl_uid_ram) + "-" + the layout (ST stereo, P6 the stems probe; the stems layouts later): each layout its own
- * stable device in any port, two units apart. The FM-1 build and the update loader: no serial, as before */
+ * boot: fl_uid_ram) + "-" + the layout (ST stereo, S4 / S8 stereo with USB RATE 44.1 / 48 KHZ, DR / SY / AD the stems
+ * layouts, P6 the stems probe): each set of descriptors its own stable device in any port, two units apart. The FM-1
+ * build and the update loader: no serial, as before */
 #define SMK_SN UAC6
 #if SMK_SN
 static uint8_t smk_uid[16];                     /* the flash's unique ID (project.c persist_boot) */
@@ -395,8 +396,14 @@ static int sn_string(const uint8_t **d, uint16_t *l)
         s[n++] = HEX[f[i] >> 4], s[n++] = HEX[f[i] & 15u];
     s[n++] = '-';
     {
-        static const char TAG[UL_N + 1][3] = {"ST", "DR", "SY", "AD", "P6"};   /* (the probe last) */
-        const char *t = TAG[SMK_UAC_PROBE ? UL_N : usb_layout_mode % UL_N];
+        static const char TAG[UL_N + 3][3] = {"ST", "DR", "SY", "AD", "P6", "S4", "S8"};   /* (the probe, then STEREO
+                                                         * with USB RATE 44.1 / 48: descriptors of their own, so
+                                                         * devices of their own; AUTO keeps ST) */
+        uint32_t ti = SMK_UAC_PROBE ? UL_N : usb_layout_mode % UL_N;
+        const char *t;
+        if (ti == UL_STEREO && (usb_rate_mode == 1u || usb_rate_mode == 2u))
+            ti = UL_N + usb_rate_mode;
+        t = TAG[ti];
         s[n++] = t[0];
         s[n++] = t[1];
     }

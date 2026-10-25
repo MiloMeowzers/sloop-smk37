@@ -109,6 +109,21 @@ static void test_descriptors(void)
         get_desc(0x0100, &dv, &dl);
         check("device descriptor: iSerialNumber 3", dv[16] == 3u);
         check(T_STEMS ? "string 3: SMK37-<the unique ID folded>-SY" : "string 3: SMK37-<the unique ID folded>-P6", sn_ok);
+#if T_STEMS
+        {   /* STEREO: AUTO ST, USB RATE 44.1 S4, 48 S8 (their own descriptors: their own devices) */
+            static const char *const W[3] = {"SMK37-C9C2507299B8-ST", "SMK37-C9C2507299B8-S4", "SMK37-C9C2507299B8-S8"};
+            uint32_t r, ok = 1;
+            usb_layout_mode = UL_STEREO;
+            for (r = 0; r < 3u; r++) {
+                usb_rate_mode = (uint8_t)r;
+                ok &= get_desc(0x0303, &s, &sl) && sl == 2u + 2u * 21u;
+                for (k = 0; ok && k < 21u; k++)
+                    ok = s[2u + 2u * k] == (uint8_t)W[r][k];
+            }
+            usb_rate_mode = 0, usb_layout_mode = UL_SYNTHS;
+            check("string 3, STEREO: -ST (AUTO), -S4 (44.1 KHZ), -S8 (48 KHZ)", ok);
+        }
+#endif
     }
 }
 
