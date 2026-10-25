@@ -225,8 +225,23 @@ int main(int argc, char **argv)
     check(MS_FIRST[MS_PLAY] == MI_VEL && MS_FIRST[MS_MIDI] == MI_TRS && MS_FIRST[MS_DAW] == MI_DMAP && MI_LOCAL - MI_TRS == 3 &&
           MI_DRESET - MI_DMAP == 3 && MI_BDN - MI_VEL == 2 && MI_LIMIT == MI_BDN + 1 && MS_FIRST[MS_MIDI] - MS_FIRST[MS_PLAY] == 4 &&
           MI_KLAY == MI_ZOOM + 1 && MI_ACCEL == MI_KLAY + 1 && MS_FIRST[MS_LIGHTS] == MI_ACCEL + 1 &&
-          MS_FIRST[MS_SEQ] == MI_ADV && MI_FRESO + 1 == MS_FIRST[MS_SEQ] && MS_FIRST[MS_PLAY] == MI_DPREV + 1,
-          "SCREEN: KNOB LAYOUT, KNOB ACCEL; AUDIO ends with FILTER RESO; SEQ; PLAY: KEY VELOCITY, BEND UP, BEND DOWN, LIMITER; MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4");
+          MS_FIRST[MS_USB] == MI_LAYOUT && MI_FRESO + 1 == MI_LAYOUT && MS_FIRST[MS_SEQ] == MI_ADV && MI_LAYOUT + 1 == MI_ADV &&
+          MS_FIRST[MS_PLAY] == MI_DPREV + 1,
+          "SCREEN: KNOB LAYOUT, KNOB ACCEL; AUDIO ends with FILTER RESO; USB: USB LAYOUT; SEQ; PLAY: KEY VELOCITY, BEND UP, BEND DOWN, LIMITER; MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4");
+    {   /* USB LAYOUT: the layouts this build makes (STEREO, SYNTHS+RET), the knob stops at the ends, OCT+ round */
+        uint16_t col;
+        usb_layout = UL_STEREO;
+        mi_set(MI_LAYOUT, 1);
+        check(usb_layout == UL_SYNTHS && !strcmp(mi_value(MI_LAYOUT, &col), "SYNTHS+RET"), "USB LAYOUT: right SYNTHS+RET");
+        mi_set(MI_LAYOUT, 1);
+        check(usb_layout == UL_SYNTHS, "USB LAYOUT: stops at the end");
+        mi_set(MI_LAYOUT, 0);
+        check(usb_layout == UL_STEREO && !strcmp(mi_value(MI_LAYOUT, &col), "STEREO"), "USB LAYOUT: OCT+ round to STEREO");
+        mi_set(MI_LAYOUT, -1);
+        check(usb_layout == UL_STEREO, "USB LAYOUT: stops at STEREO");
+        ui.menu_sel = MI_LAYOUT; ui.force = 1; mi_set(MI_LAYOUT, 1); shot("daw-menu-usb");
+        usb_layout = UL_STEREO;
+    }
     for (i = 0; i < MS_COUNT; i++)
         if (MS_FIRST[i + 1] - MS_FIRST[i] > 4u || MS_FIRST[i + 1] <= MS_FIRST[i])
             check(0, "a section of 1..4 rows");

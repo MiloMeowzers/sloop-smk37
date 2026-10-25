@@ -9,6 +9,9 @@
 #include "smk_midi_out.h"
 #include "smk_knobs.h"
 static void knob_layout_apply(void) {}
+enum { UL_STEREO, UL_DRUMS, UL_SYNTHS, UL_DRY, UL_N };   /* (usb.c: menu USB > USB LAYOUT) */
+static uint8_t usb_layout;
+static int usb_layout_now(void) { return UL_STEREO; }
 #include "smk_daw.h"
 static uint8_t daw_edit, daw_pbank;
 static int8_t daw_oct;

@@ -2,7 +2,8 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* SLOOP menu (HOME held), in sections as the pages are (2.4): SCREEN (COLOR, ZOOM, KNOB ACCEL (2.7); SMK-37: KNOB
  * LAYOUT, then KNOB ACCEL), LIGHTS (LIGHTS, KEYS, NOTES), AUDIO (LOWCUT, USB AUDIO, USB SERIAL (FELUCCA_CDC builds
- * only), USB RATE (2.7 beta), FILTER RESO (2.7.2)), SEQ (2.7.1: STEP ADVANCE, DRUM PREVIEW), SMK-37: PLAY (KEY
+ * only), USB RATE (2.7 beta), FILTER RESO (2.7.2)), SMK-37: USB (USB LAYOUT: the stems), SEQ (2.7.1: STEP ADVANCE,
+ * DRUM PREVIEW), SMK-37: PLAY (KEY
  * VELOCITY, BEND UP, BEND DOWN, LIMITER), MIDI (TRS MIDI OUT, MODE, CHANNEL, LOCAL), DAW (CC MAP, KNOBS, EDIT MAP,
  * RESET MAP), SYSTEM (2ND CORE (dualcore), HARDWARE CALIBRATION, LEARN CLEAR (2.6), ABOUT). The SMK-37 keeps every
  * row the SLOOP manual lists in its section; its own rows are in PLAY, MIDI and DAW.
@@ -25,7 +26,11 @@ enum { MI_COLOR, MI_ZOOM,
 #if MI_HAS_RATE
        MI_RATE,
 #endif
-       MI_FRESO, MI_ADV, MI_DPREV,
+       MI_FRESO,
+#if BOARD_SMK37
+       MI_LAYOUT,                                  /* SMK-37: USB > USB LAYOUT (usb.c usb_layout, at the next start) */
+#endif
+       MI_ADV, MI_DPREV,
 #if BOARD_SMK37
        MI_VEL, MI_BUP, MI_BDN, MI_LIMIT,           /* SMK-37: PLAY > KEY VELOCITY (smk_vel.h), BEND UP, BEND DOWN (smk_wheel.h),
                                                     * LIMITER (fx.c lim_classic) */
@@ -48,7 +53,11 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #if MI_HAS_RATE
                                               "USB RATE",
 #endif
-                                              "FILTER RESO", "STEP ADVANCE", "DRUM PREVIEW",
+                                              "FILTER RESO",
+#if BOARD_SMK37
+                                              "USB LAYOUT",
+#endif
+                                              "STEP ADVANCE", "DRUM PREVIEW",
 #if BOARD_SMK37
                                               "KEY VELOCITY", "BEND UP", "BEND DOWN", "LIMITER", "TRS MIDI OUT",
                                               "MODE", "CHANNEL", "LOCAL", "CC MAP", "KNOBS", "EDIT MAP", "RESET MAP",
@@ -56,11 +65,12 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "2ND CORE", "HARDWARE CALIBRATION", "MIDI LEARN CLEAR", "ABOUT"};
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
-static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "SEQ", "PLAY", "MIDI", "DAW", "SYSTEM"};
-static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_ADV, MI_VEL, MI_TRS, MI_DMAP, MI_SYS0,
-                                               MI_COUNT};
-_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_ADV - MI_LOWCUT <= 4 && MI_VEL - MI_ADV <= 4 && MI_TRS - MI_VEL <= 4 &&
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "SEQ", "PLAY", "MIDI", "DAW", "SYSTEM"};
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_ADV, MI_VEL, MI_TRS, MI_DMAP,
+                                               MI_SYS0, MI_COUNT};
+_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_ADV - MI_LAYOUT <= 4 && MI_VEL - MI_ADV <= 4 &&
+               MI_TRS - MI_VEL <= 4 &&
                MI_DMAP - MI_TRS <= 4 && MI_SYS0 - MI_DMAP <= 4 && MI_COUNT - MI_SYS0 <= 4,
                "SMK-37: four rows a section (K5..K8)");
 #define MS_GAP 10                                  /* (eight tabs: those around this one that fit, menu_tabs) */
@@ -96,6 +106,27 @@ UI_SMALL static uint32_t mi_sec(uint32_t i)                 /* the section of it
 }
 UI_SMALL static uint32_t mi_row(uint32_t i) { return i - MS_FIRST[mi_sec(i)]; }   /* its row: KNOB 1 + row sets it */
 
+#if BOARD_SMK37
+/* USB LAYOUT (usb.c UL_*): the names as the menu shows them, the layouts this build makes (3b: the drum groups for
+ * DRUMS+RET and ALL DRY to come) and the knob's step through them */
+static const char *const UL_MENU_NAME[UL_N] = {"STEREO", "DRUMS+RET", "SYNTHS+RET", "ALL DRY"};
+static int ul_offered(uint32_t l) { return l == UL_STEREO || l == UL_SYNTHS; }
+UI_SMALL static uint32_t ul_step(uint32_t l, int32_t s)
+{
+    uint32_t k, n = l % UL_N;
+    for (k = 0; k < UL_N; k++) {
+        uint32_t m = s > 0 ? n + 1u : s < 0 ? n + UL_N - 1u : n + 1u;   /* (OCT+: round) */
+        if (s > 0 && m >= UL_N)
+            return l;                                   /* (the knob stops at the ends) */
+        if (s < 0 && n == 0u)
+            return l;
+        n = m % UL_N;
+        if (ul_offered(n))
+            return n;
+    }
+    return l;
+}
+#endif
 /* item i's value as shown, and its colour */
 UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
 {
@@ -177,6 +208,7 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         return b;
     }
     case MI_LIMIT: return lim_classic ? "CLASSIC" : "SOFT";
+    case MI_LAYOUT: return UL_MENU_NAME[usb_layout % UL_N];   /* (usb.c: at the next start) */
     case MI_BUP:
     case MI_BDN: {                                    /* semitones of the pitch wheel up / down, the internal sounds */
         static char b[2][16];
@@ -216,7 +248,7 @@ UI_SMALL static void draw_menu(void)
                    knob_accel_off * 179424673u + drum_preview * 236887691u + step_adv_off * 373587883u + flt_reso * 512927357u;
 #if BOARD_SMK37
     sig += vel_mode * 179424673u + trs_out * 373587883u + smo.dead * 573259391u + bend_up * 817504243u +
-           bend_dn * 941083987u + lim_classic * 1500450271u + knob_layout * 2147483647u;
+           bend_dn * 941083987u + lim_classic * 1500450271u + knob_layout * 2147483647u + usb_layout * 433494437u;
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
 #endif
@@ -330,6 +362,10 @@ UI_SMALL static void draw_menu(void)
                 }
                 if (i == MI_RATE && usb_rate != usb_rate_now())
                     cv_text(xv + 8, y + 30, &FONT_S, "RESTART", C_AMB);   /* (usb.c: at the next start) */
+#if BOARD_SMK37
+                if (i == MI_LAYOUT && usb_layout != usb_layout_now())
+                    cv_text(xv + 8, y + 30, &FONT_S, "RESTART", C_AMB);
+#endif
 #if FELUCCA_CDC
                 if (i == MI_SERIAL && usb_serial != usb_cdc_now())
                     cv_text(xv + 8, y + 30, &FONT_S, "RESTART", C_AMB);   /* (usb.c: at the next start) */
@@ -450,6 +486,10 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         break;
     case MI_BDN:
         bend_dn = (uint8_t)bend_step(bend_dn, s);
+        break;
+    case MI_LAYOUT:                                    /* the layouts this build makes (ul_offered), the knob steps
+                                                        * (stops at the ends), OCT+ round; at the next start */
+        usb_layout = (uint8_t)ul_step(usb_layout, s);
         break;
     case MI_LIMIT:                                     /* right CLASSIC, left SOFT; OCT+ toggles */
         lim_classic = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !lim_classic);

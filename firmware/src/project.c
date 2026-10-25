@@ -805,7 +805,8 @@ static void daw_save(void)
 #define SMKSET_MAGIC 0x54534B53u                   /* "SKST" */
 typedef struct {
     uint32_t magic;
-    uint8_t vel, trs, bup, bdn, lim, klay, rsv[2];   /* bup / bdn: smk_wheel.h bend_*_byte */
+    uint8_t vel, trs, bup, bdn, lim, klay, ulay, rsv;   /* bup / bdn: smk_wheel.h bend_*_byte; ulay: USB LAYOUT (0 in
+                                                     * the records before it: STEREO) */
 } smkset_t;
 static smkset_t smkset_saved;
 static uint8_t smkset_old_ml[3], smkset_old_have;  /* the MIDI part's last three bytes as read (midi_part_read) */
@@ -819,6 +820,7 @@ static void smkset_fill(smkset_t *s)
     s->bdn = (uint8_t)bend_dn_byte(bend_dn, bend_up);
     s->lim = (uint8_t)(lim_classic != 0u);
     s->klay = (uint8_t)(knob_layout != 0u);
+    s->ulay = (uint8_t)(usb_layout % UL_N);
 }
 static void smkset_boot(void)                      /* after the settings (persist_boot, dsu_boot) */
 {
@@ -830,6 +832,7 @@ static void smkset_boot(void)                      /* after the settings (persis
         bend_dn = (uint8_t)bend_dn_of_byte(s.bdn, bend_up);
         lim_classic = (uint8_t)(s.lim & 1u);
         knob_layout = (uint8_t)(s.klay & 1u);
+        usb_layout = (uint8_t)(s.ulay < UL_N ? s.ulay : UL_STEREO);   /* (main.c: before usb_start) */
         knob_layout_apply();
         smkset_fill(&smkset_saved);
         return;

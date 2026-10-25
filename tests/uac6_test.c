@@ -1,19 +1,29 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Host test of the SMK-37 stems probe in src/usb.c (SMK_UAC_PROBE=1, smk37-port.yaml follow_up.stems first_tests):
+/* Host test of the SMK-37 stems in src/usb.c (smk37-port.yaml follow_up.stems). -DT_STEMS=0: the probe build
+ * (SMK_UAC_PROBE=1, the first tests on the unit); -DT_STEMS=1: the SYNTHS+RET layout as the firmware makes it:
  *   descriptors  the configuration walked as a host does (lengths, total), the input terminal 6 channels named by
  *                strings 4..9, the type I format 6 x 24 bit (3-byte subframes) at 48000 only, EP4 882 bytes,
  *                bcdDevice x.7x; with CDC (-DT_CDC=1) and without (-DT_CDC=0)
- *   packets      uac6_packet over 10 s: 47..49 frames, 48 a ms on average, never over EP4's size; every sample as
+ *   packets      uac6_probe_packet over 10 s: 47..49 frames, 48 a ms on average, never over EP4's size; every sample as
  *                uac6_check.py (smk37-devtools) expects it: the counter on channel 5 steps by one, the triangles of
  *                channels 0..4 follow it, the low bytes are there (24 bit, not 16)
+ *   stems        (T_STEMS) renders of 256 frames at 44.1 kHz through uac6_tap (6 channels: sines, DC, silence) against
+ *                packets at 1 kHz (uac6_ring_packet), 3 s: 48 frames a ms, no underrun or overrun once primed, DC
+ *                x 64 (the stereo output's full scale at -12 dBFS), the sines' level and frequency (no frame lost or
+ *                doubled), the level m scales, the 24-bit ceiling
  * The SIE is never touched. */
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #define BOARD_SMK37 1
-#define SMK_UAC_PROBE 1
+#ifndef T_STEMS
+#define T_STEMS 0
+#endif
+#define SMK_UAC_PROBE (!T_STEMS)
+#define CTL_LOG2 5                                /* (dsp.c: the mix's blocks of 32) */
 #define FELUCCA_OTA 0
 #define FELUCCA_CDC (T_CDC != 0)
 #define FELUCCA_UAC 1
@@ -41,14 +51,20 @@ static void test_descriptors(void)
     uint16_t cl, dl, sl;
     uint32_t off, i;
     int lens_ok = 1, it_ok = 0, fmt_ok = 0, ep_ok = 0, names_ok = 1;
+#if T_STEMS
+    static const char *const NAMES[6] = {"SYN 1", "SYN 2", "SYN 3", "DRUMS", "RET L", "RET R"};
+    usb_layout_mode = UL_SYNTHS;                       /* (main.c, from the menu) */
+#else
     static const char *const NAMES[6] = {"KICK", "SNARE", "HATS", "PERC", "RET L", "RET R"};
+#endif
 #if T_CDC
     usb_cdc_on = 1;
 #endif
     get_desc(0x0100, &dv, &dl);
     get_desc(0x0200, &c, &cl);
-    check("device descriptor: 18 bytes, bcdDevice x.7x (the probe's own version)",
-          dl == 18 && dv[0] == 18 && (dv[12] & 0xF0u) == 0x70u && dv[13] == 3);
+    check(T_STEMS ? "device descriptor: 18 bytes, bcdDevice x.5x (SYNTHS+RET's own version)" :
+                    "device descriptor: 18 bytes, bcdDevice x.7x (the probe's own version)",
+          dl == 18 && dv[0] == 18 && (dv[12] & 0xF0u) == (T_STEMS ? 0x50u : 0x70u) && dv[13] == 3);
     check("configuration: wTotalLength = the bytes given", le16(c + 2) == cl);
     for (off = 0; off < cl; off += c[off]) {
         const uint8_t *p = c + off;
@@ -77,11 +93,13 @@ static void test_descriptors(void)
         for (k = 0; k < n; k++)
             names_ok &= s[2u + 2u * k] == (uint8_t)NAMES[i][k] && s[3u + 2u * k] == 0;
     }
-    check("strings 4..9: KICK SNARE HATS PERC RET L RET R", names_ok);
+    check(T_STEMS ? "strings 4..9: SYN 1 SYN 2 SYN 3 DRUMS RET L RET R" : "strings 4..9: KICK SNARE HATS PERC RET L RET R",
+          names_ok);
     check("string 10: none", !get_desc(0x0300 | 10u, &s, &sl));
     {   /* the serial number (SMK_SN): string 3, the flash's unique ID folded, the probe's layout tag */
         static const uint8_t UID[16] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 1, 2, 3, 4, 5, 6, 7, 8};
-        const char *want = "SMK37-C9C2507299B8-P6";   /* byte k of the fold: the XOR of bytes k, k + 6, k + 12 */
+        const char *want = T_STEMS ? "SMK37-C9C2507299B8-SY" : "SMK37-C9C2507299B8-P6";   /* byte k of the fold: the
+                                                         * XOR of bytes k, k + 6, k + 12 */
         uint32_t k, n = (uint32_t)strlen(want);
         int sn_ok;
         memcpy(smk_uid, UID, 16);
@@ -90,19 +108,20 @@ static void test_descriptors(void)
             sn_ok = s[2u + 2u * k] == (uint8_t)want[k] && s[3u + 2u * k] == 0;
         get_desc(0x0100, &dv, &dl);
         check("device descriptor: iSerialNumber 3", dv[16] == 3u);
-        check("string 3: SMK37-<the unique ID folded>-P6", sn_ok);
+        check(T_STEMS ? "string 3: SMK37-<the unique ID folded>-SY" : "string 3: SMK37-<the unique ID folded>-P6", sn_ok);
     }
 }
 
 static int32_t s24(const uint8_t *p) { return (int32_t)((uint32_t)p[0] << 8 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 24) >> 8; }
 
+#if !T_STEMS
 static void test_packets(void)
 {
     static const uint32_t P[5] = {200, 160, 120, 100, 80};
     uint32_t k, i, ch, f = 0, frames = 0, nmin = 99, nmax = 0, bytes_max = 0, bad = 0, lowb = 1;
     int32_t prev = 0;
     for (k = 0; k < 10000u; k++) {
-        uint32_t n = uac6_packet(ep4tx6);
+        uint32_t n = uac6_probe_packet(ep4tx6);
         nmin = n < nmin ? n : nmin, nmax = n > nmax ? n : nmax;
         bytes_max = n * 18u > bytes_max ? n * 18u : bytes_max;
         for (i = 0; i < n; i++, f++) {
@@ -130,12 +149,94 @@ static void test_packets(void)
     check("the low bytes there (24-bit samples)", lowb);
     check("the probe's counters: packets and frames", uac.pkts == 10000u && uac.frames == 480000u);
 }
+#else
+#define ST_SECS 3u
+static int32_t got[ST_SECS * 48000u + 4000u][6];
+/* renders (256 frames, 44.1 kHz) against packets (1 kHz), level m; returns the frames received */
+static uint32_t stems_run(int32_t m, int32_t amp_dc)
+{
+    static int32_t c[6][32];
+    const int32_t *cp[6] = {c[0], c[1], c[2], c[3], c[4], c[5]};
+    uint64_t t_ns = 0, render_ns = 0, pkt_ns = 0, end = (uint64_t)ST_SECS * 1000000000u;
+    uint32_t g = 0, nf = 0, b, i, k;
+    memset(&uac, 0, sizeof uac);
+    ua_w = ua_r = 0;
+    usb.up = 1, usb.config = 1, uac.alt = 1, uac.flowing = 1;
+    uac_rate_set(48000);
+    while (t_ns < end) {
+        if (t_ns >= render_ns) {
+            uac_render_start();
+            for (b = 0; b < HALF_FRAMES; b += 32u) {
+                for (i = 0; i < 32u; i++, g++) {
+                    double ts = g / 44100.0;
+                    c[0][i] = (int32_t)lrint(8000.0 * sin(2 * M_PI * 1000.0 * ts));
+                    c[1][i] = 0;
+                    c[2][i] = 1000;
+                    c[3][i] = -2000;
+                    c[4][i] = (int32_t)lrint(4000.0 * sin(2 * M_PI * 3000.0 * ts));
+                    c[5][i] = amp_dc;
+                }
+                uac6_tap(cp, 32u, m, m);
+            }
+            render_ns += (uint64_t)HALF_FRAMES * 1000000000u / 44100u;
+        }
+        if (t_ns >= pkt_ns) {
+            uint32_t n = uac6_ring_packet(ep4tx6);
+            for (i = 0; i < n && nf < sizeof got / sizeof got[0]; i++, nf++)
+                for (k = 0; k < 6u; k++)
+                    got[nf][k] = s24(ep4tx6 + 18u * i + 3u * k);
+            pkt_ns += 1000000u;
+        }
+        t_ns = render_ns < pkt_ns ? render_ns : pkt_ns;
+    }
+    return nf;
+}
+static void test_stems(void)
+{
+    uint32_t nf, i, from = 9600, zc = 0, und, ovr;   /* (from 0.2 s: primed, the resampler settled) */
+    int32_t pk0 = 0, pk4 = 0, e2 = 0, e3 = 0, e5 = 0, z1 = 0;
+    nf = stems_run(4096, 30000);
+    und = uac.underruns, ovr = uac.overruns;
+    for (i = from; i < nf; i++) {
+        int32_t d2 = got[i][2] - 64000, d3 = got[i][3] + 128000, d5 = got[i][5] - 1920000;
+        e2 = abs(d2) > e2 ? abs(d2) : e2, e3 = abs(d3) > e3 ? abs(d3) : e3, e5 = abs(d5) > e5 ? abs(d5) : e5;
+        z1 = abs(got[i][1]) > z1 ? abs(got[i][1]) : z1;
+        pk0 = abs(got[i][0]) > pk0 ? abs(got[i][0]) : pk0;
+        pk4 = abs(got[i][4]) > pk4 ? abs(got[i][4]) : pk4;
+        if (i + 48000u <= nf && i < from + 48000u && got[i][0] < 0 && got[i + 1][0] >= 0)
+            zc++;                                       /* rising zero crossings over one second of 48 kHz frames */
+    }
+    printf("   frames %u, underruns %u, overruns %u, DC errors %d %d %d, peaks %d %d, crossings %u\n", nf, und, ovr,
+           e2, e3, e5, pk0, pk4, zc);
+    check("SYNTHS+RET: 48 frames a ms (3 s: 144000 +-100)", nf > 143900u && nf < 144100u);
+    check("no underrun, no overrun", und == 0 && ovr == 0);
+    check("DC x 64: the stereo output's full scale at -12 dBFS (24 bit)", e2 <= 2 && e3 <= 2 && e5 <= 3);
+    check("a silent channel stays 0", z1 == 0);
+    check("1 kHz at 8000 -> 512000 (+-2 %), 3 kHz at 4000 -> 256000 (+-3 %)",
+          abs(pk0 - 512000) <= 10240 && abs(pk4 - 256000) <= 7680);
+    check("1 kHz: 1000 rising zero crossings in a second of 48 kHz frames (none lost or doubled)", zc >= 999u && zc <= 1001u);
+    nf = stems_run(2048, 300000);                       /* half the level; a channel past the ceiling */
+    e2 = 0, e5 = 0;
+    for (i = from; i < nf; i++) {
+        int32_t d2 = got[i][2] - 32000;
+        e2 = abs(d2) > e2 ? abs(d2) : e2;
+        e5 = got[i][5] > e5 ? got[i][5] : e5;
+    }
+    check("the level m: 2048 halves it", e2 <= 2);
+    check("the 24-bit ceiling: 300000 x 32 clamps at 8388607", e5 == 8388607);
+}
+#endif
 
 int main(void)
 {
-    printf("-- the SMK-37 stems probe (SMK_UAC_PROBE), CDC %s\n", T_CDC ? "on" : "off");
+    printf(T_STEMS ? "-- the SMK-37 stems, SYNTHS+RET, CDC %s\n" : "-- the SMK-37 stems probe (SMK_UAC_PROBE), CDC %s\n",
+           T_CDC ? "on" : "off");
     test_descriptors();
+#if T_STEMS
+    test_stems();
+#else
     test_packets();
+#endif
     printf(fails ? "UAC6 TEST FAILED (%d)\n" : "uac6: all ok\n", fails);
     return fails != 0;
 }

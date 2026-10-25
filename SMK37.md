@@ -143,7 +143,7 @@ notes, their MIDI out and the drum levels; OCT− / OCT+ held still play ghost /
 
 ## HOME menu: the SMK-37 settings
 
-HOME menu (PATCH held; sections SCREEN, LIGHTS, AUDIO, SEQ, PLAY, MIDI, DAW, SYSTEM: every row the SLOOP manual lists is in
+HOME menu (PATCH held; sections SCREEN, LIGHTS, AUDIO, USB, SEQ, PLAY, MIDI, DAW, SYSTEM: every row the SLOOP manual lists is in
 its section, as on the FM-1, and the SMK-37's own are below); SELECT walks the sections, the knobs set the rows (K5–K8, or K1–K4 with KNOB LAYOUT = SMK;
 the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ REC still start / stop and arm:
 
@@ -151,6 +151,7 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 |---|---|---|---|
 | SCREEN | KNOB LAYOUT | K7 | FM-1 (default): K1 MASTER, K2 SELECT, K3 ALGORITHM, K4 PRESETS, K5–K8 the dials. SMK: K1–K4 the dials, K5 MASTER, K6 SELECT, K7 PRESETS, K8 ALGORITHM. The knobs are endless: the new layout works at once. Switched to SMK, the menu's rows move to K1–K4 (K3 switches back) |
 | SCREEN | KNOB ACCEL | K8 | SLOOP's: ON (default), a fast turn moves further; OFF, one value a detent |
+| USB | USB LAYOUT | K5 | STEREO (default): the USB audio input as on the FM-1. SYNTHS+RET: [stems](#usb-audio-stems) for a DAW. At the next power-on (RESTART shows until then) |
 | PLAY | KEY VELOCITY | K5 | see [Velocity](#velocity) |
 | PLAY | BEND UP | K6 | the pitch wheel up, on the internal sounds (the selected synth track): OFF, 1, 2, 3, 4, 5, 7 or 12 semitones, default 7. MIDI IN's pitch bend has its own (GLO > MIDI 2 > BEND) |
 | PLAY | BEND DOWN | K7 | the same, down (default 7; e.g. +2 up, −12 down). The earlier BEND RANGE is read as both |
@@ -174,6 +175,27 @@ The jack is a MIDI **OUT** (UART1 on PC7, 31250 baud; there is no MIDI IN on the
 TRS-to-DIN MIDI adapter. The SMK-37 is listed with a **type A** TRS jack (a community spec sheet; M-Vave's manual
 only says "a 3.5 mm to MIDI adapter", and it has not been measured): if a synth does not respond, try a type B
 adapter.
+
+## USB audio stems
+
+HOME menu > USB > **USB LAYOUT** = **SYNTHS+RET** (at the next power-on): the USB audio input becomes 6 mono
+channels, 24 bit, 48 kHz, each named for the DAW:
+
+| Channel | SYNTHS+RET |
+|---|---|
+| 1–3 | SYN 1, SYN 2, SYN 3: each synth track after its own chain (DIST, INSERT, SLICER, FILTER), LEVEL, mute / solo and DUCK, before its pan and sends |
+| 4 | DRUMS: the drum track the same way, the kit as one stem |
+| 5–6 | RET L, RET R: the shared reverb, delay and chorus, with what every track sends to them |
+
+- Pan, trim and mix them in the DAW. The master stage (TEXTURE, DUST, the punch-ins, the DJ filter, the limiter) and
+  the metronome are on no stem; punch-ins on the stems are to come.
+- The level follows HOME menu > AUDIO > **USB AUDIO**: MASTER (the MASTER knob, either LIMITER curve) or FULL (fixed).
+  The stereo output's full scale sits at −12 dBFS in the stems: 12 dB of headroom and no limiter on them.
+- 48 kHz only (6 channels of 24 bit fill a full-speed USB packet). The FM-1's USB RATE does not apply.
+- Each layout is its own USB device with its own serial number, so a computer keeps its name (and your renames) in any
+  port; the first time a layout is used the computer sets it up once.
+- DRUMS+RET (the kit in four groups: KICK, SNARE, HATS, PERC) and ALL DRY (the synths, KICK, SNARE, HATS+PERC) are to
+  come, with per-kit stem groups and choke.
 
 ## DAW mode
 

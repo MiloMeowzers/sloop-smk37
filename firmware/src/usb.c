@@ -35,13 +35,32 @@
 #endif
 /* SMK-37, the stems' bring-up (smk37-port.yaml follow_up.stems first_tests): SMK_UAC_PROBE=1 describes the audio
  * input as 6 channels, 24 bit, 48 kHz only (packets up to 49 x 18 = 882 bytes) and sends test signals instead of
- * the music (uac6_packet), to see that the chip sends such packets and the host's class driver takes them.
+ * the music (uac6_probe_packet), to see that the chip sends such packets and the host's class driver takes them.
  * A test build only; 0 (the default) builds every package as before */
 #ifndef SMK_UAC_PROBE
 #define SMK_UAC_PROBE 0
 #endif
-#if SMK_UAC_PROBE && !(BOARD_SMK37 && FELUCCA_UAC_48K)
+/* SMK-37: the stems (smk37-port.yaml follow_up.stems). Menu USB > USB LAYOUT, at the next start (as USB RATE): STEREO
+ * (the master, as before), or 6 mono channels, 24 bit, 48 kHz only: DRUMS+RET (the drum groups + the shared FX
+ * return), SYNTHS+RET (the 3 synth tracks, the kit as one stem, the return), ALL DRY (the synths, KICK, SNARE,
+ * HATS+PERC). fx.c makes the channels, uac6_tap resamples them to 48 kHz into their own ring, uac6_ring_packet sends
+ * 47..49 frames a packet (up to 882 bytes) as the stereo stream does. Each layout its own device (bcdDevice, serial) */
+#if BOARD_SMK37 && FELUCCA_UAC_48K && !defined(FELUCCA_LOADER)
+#define UAC6 1
+#else
+#define UAC6 0
+#endif
+#if SMK_UAC_PROBE && !UAC6
 #error "SMK_UAC_PROBE: an SMK-37 build with the USB audio input at 48 kHz"
+#endif
+#if UAC6
+enum { UL_STEREO, UL_DRUMS, UL_SYNTHS, UL_DRY, UL_N };
+static uint8_t usb_layout;                      /* the menu's USB LAYOUT (project.c smkset), at the next start */
+static uint8_t usb_layout_mode;                 /* this start's (main.c, before usb_start) */
+#define uac6_on (SMK_UAC_PROBE || usb_layout_mode != UL_STEREO)
+static int usb_layout_now(void) { return usb_layout_mode; }   /* (the menu: what this start presents) */
+#else
+#define uac6_on 0
 #endif
 enum { S_FADDR = 0, S_POWER = 1, S_INTRTX1 = 2, S_INTRTX2 = 3, S_INTRRX1 = 4, S_INTRRX2 = 5, S_INTRUSB = 6,
        S_INTRTX1E = 7, S_INTRTX2E = 8, S_INTRRX1E = 9, S_INTRRX2E = 10, S_INTRUSBE = 11, S_FRAME1 = 12,
@@ -354,11 +373,7 @@ static int usb_rate_now(void) { return 0; }
  * owner's VB-Matrix lost its slots). "SMK37-" + the flash's unique ID folded to 12 hex digits (project.c reads it at
  * boot: fl_uid_ram) + "-" + the layout (ST stereo, P6 the stems probe; the stems layouts later): each layout its own
  * stable device in any port, two units apart. The FM-1 build and the update loader: no serial, as before */
-#if BOARD_SMK37 && FELUCCA_UAC && !defined(FELUCCA_LOADER)
-#define SMK_SN 1
-#else
-#define SMK_SN 0
-#endif
+#define SMK_SN UAC6
 #if SMK_SN
 static uint8_t smk_uid[16];                     /* the flash's unique ID (project.c persist_boot) */
 static uint8_t dev_sn[18], sn_str[2u + 2u * 21u];
@@ -379,8 +394,12 @@ static int sn_string(const uint8_t **d, uint16_t *l)
     for (i = 0; i < 6u; i++)
         s[n++] = HEX[f[i] >> 4], s[n++] = HEX[f[i] & 15u];
     s[n++] = '-';
-    s[n++] = SMK_UAC_PROBE ? 'P' : 'S';
-    s[n++] = SMK_UAC_PROBE ? '6' : 'T';
+    {
+        static const char TAG[UL_N + 1][3] = {"ST", "DR", "SY", "AD", "P6"};   /* (the probe last) */
+        const char *t = TAG[SMK_UAC_PROBE ? UL_N : usb_layout_mode % UL_N];
+        s[n++] = t[0];
+        s[n++] = t[1];
+    }
     for (i = 0; i < n; i++)
         sn_str[2u + 2u * i] = (uint8_t)s[i], sn_str[3u + 2u * i] = 0;
     sn_str[0] = (uint8_t)(2u + 2u * n);
@@ -391,10 +410,11 @@ static int sn_string(const uint8_t **d, uint16_t *l)
 }
 #endif
 
-#if SMK_UAC_PROBE
-/* the probe's descriptors, made from the ones above (CDC or not): the input terminal 6 channels with no spatial
+#if UAC6
+/* the stems' descriptors, made from the ones above (CDC or not): the input terminal 6 channels with no spatial
  * positions, named by strings 4..9 (iChannelNames); the format 6 x 24 bit (3-byte subframes) at 48000 only; EP4's
- * size 882; bcdDevice x.7x, a version of its own (hosts cache descriptors per version) */
+ * size 882; bcdDevice x.4x DRUMS+RET, x.5x SYNTHS+RET, x.6x ALL DRY, x.7x the probe: a version each (hosts cache
+ * descriptors per version) */
 #define U6_CH 6u
 #define U6_MAXF 49u
 #define U6_MAXP (U6_MAXF * U6_CH * 3u)
@@ -405,7 +425,7 @@ static void uac6_desc(const uint8_t **d, uint16_t *l, int cfg)
     uint32_t n = *l, off, k = 0;
     if (!cfg) {
         memcpy(dev_u6, src, 18);
-        dev_u6[12] = (uint8_t)((dev_u6[12] & 0x0Fu) | 0x70u);
+        dev_u6[12] = (uint8_t)((dev_u6[12] & 0x0Fu) | (SMK_UAC_PROBE ? 0x70u : 0x30u + 0x10u * usb_layout_mode));
         *d = dev_u6;
         return;
     }
@@ -436,16 +456,20 @@ static void uac6_desc(const uint8_t **d, uint16_t *l, int cfg)
     *d = cfg_u6;
     *l = (uint16_t)k;
 }
-/* the channel names (the DRUMS+RET layout), as USB string descriptors made when asked */
-static const char *const U6_NAMES[U6_CH] = {"KICK", "SNARE", "HATS", "PERC", "RET L", "RET R"};
-static uint8_t u6_str[2u + 2u * 8u];
+/* the channel names of each layout (the probe: DRUMS+RET's), as USB string descriptors made when asked */
+static const char *const U6_NAMES[UL_N][U6_CH] = {
+    {"", "", "", "", "", ""},
+    {"KICK", "SNARE", "HATS", "PERC", "RET L", "RET R"},
+    {"SYN 1", "SYN 2", "SYN 3", "DRUMS", "RET L", "RET R"},
+    {"SYN 1", "SYN 2", "SYN 3", "KICK", "SNARE", "HATS+PERC"}};
+static uint8_t u6_str[2u + 2u * 9u];
 static int uac6_str(uint32_t i, const uint8_t **d, uint16_t *l)
 {
     const char *s;
     uint32_t k = 0;
     if (i < 4u || i >= 4u + U6_CH)
         return 0;
-    for (s = U6_NAMES[i - 4u]; *s && k < 8u; s++, k++)
+    for (s = U6_NAMES[SMK_UAC_PROBE ? UL_DRUMS : usb_layout_mode % UL_N][i - 4u]; *s && k < 9u; s++, k++)
         u6_str[2u + 2u * k] = (uint8_t)*s, u6_str[3u + 2u * k] = 0;
     u6_str[0] = (uint8_t)(2u + 2u * k);
     u6_str[1] = 3;
@@ -466,8 +490,9 @@ static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
             *d = DEV_DESC_PLAIN;
 #endif
         rate_desc(d, l, 0);
-#if SMK_UAC_PROBE
-        uac6_desc(d, l, 0);
+#if UAC6
+        if (uac6_on)
+            uac6_desc(d, l, 0);
 #endif
 #if SMK_SN
         sn_desc(d);
@@ -483,8 +508,9 @@ static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
         }
 #endif
         rate_desc(d, l, 1);
-#if SMK_UAC_PROBE
-        uac6_desc(d, l, 1);
+#if UAC6
+        if (uac6_on)
+            uac6_desc(d, l, 1);
 #endif
         return 1;
     case 3:
@@ -506,8 +532,8 @@ static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
             return sn_string(d, l);
 #endif
         default:
-#if SMK_UAC_PROBE
-            return uac6_str(wvalue & 0xFFu, d, l);
+#if UAC6
+            return uac6_on && uac6_str(wvalue & 0xFFu, d, l);
 #else
             return 0;
 #endif
@@ -586,6 +612,10 @@ static void uac_rate_set(uint32_t hz)
 #if FELUCCA_UAC_48K
     if (usb_rate_mode == 1u || usb_rate_mode == 2u)
         r48 = (uint8_t)(usb_rate_mode == 2u);           /* (menu USB RATE: the one rate described) */
+#endif
+#if UAC6
+    if (uac6_on)
+        r48 = 1;                                        /* the stems: 48 kHz only (a host may never send SET_CUR) */
 #endif
     if (r48 == uac.r48)
         return;
@@ -1153,6 +1183,16 @@ static void ep3_tx(void)                                /* <= 63 bytes per packe
 #endif
 
 #if FELUCCA_UAC
+#if UAC6
+/* the stems' ring: frames of 6 x 3 bytes, as the packets carry them (the stereo ring's indexes ua_w / ua_r; one of
+ * the two rings runs), and the resampler's input history per channel (as rs: written twice, a window never wraps) */
+#define U6_FB (U6_CH * 3u)
+static uint8_t u6_ring[UA_N * U6_FB];
+static struct {
+    int32_t h[U6_CH][2u * RS_H];
+    uint32_t w, ph;
+} r6;
+#endif
 /* ---- the audio input: audio.c produces (render start, then each block), TIMER5 consumes ---- */
 static __attribute__((noinline)) void uac_render_start(void)   /* audio ISR, before a half buffer renders */
 {
@@ -1177,6 +1217,13 @@ static __attribute__((noinline)) void uac_render_start(void)   /* audio ISR, bef
                 rs.l[i] = rs.r[i] = 0;
             rs.w = rs.ph = 0;
         }
+#endif
+#if UAC6
+        if (uac6_on) {                                  /* the stems: their ring, their resampler */
+            memset(&r6, 0, sizeof r6);
+            for (i = 0; i < prime; i++)
+                memset(u6_ring + ((r + i) & (UA_N - 1u)) * U6_FB, 0, U6_FB);
+        } else
 #endif
         for (i = 0; i < prime; i++)
             ua_ring[(r + i) & (UA_N - 1u)] = 0;
@@ -1250,11 +1297,66 @@ static __attribute__((noinline)) void uac_tap48(const int32_t *out, uint32_t n)
 }
 #endif
 
+#if UAC6
+/* the stems, one block (audio ISR, after fx.c mix_block): the 6 channels of fx.c (mix units, 44.1 kHz) x the level
+ * m0 .. m1 over the block (Q12: the MASTER knob's, or 4096 with USB AUDIO = FULL) with the stereo output's full scale
+ * at -12 dBFS (x 64 / 4096 in 24 bit: 12 dB of headroom, no limiter), then 44.1 -> 48 kHz as uac_tap48 (the same
+ * taps, 64-bit sums: 24-bit samples) into the ring; a hard ceiling at 24-bit full scale */
+static __attribute__((noinline)) void uac6_tap(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1)
+{
+    uint32_t w = ua_w, i, j, c, k = 0, h = r6.w, ph = r6.ph;
+    if (!uac.feed)
+        return;
+    if (UA_N - (w - ua_r) < n + n / 8u + 2u) {         /* nobody reads: drop the block */
+        uac.overruns++;
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        uint32_t s = h & (RS_H - 1u);
+        int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
+        for (c = 0; c < U6_CH; c++)
+            r6.h[c][s] = r6.h[c][s + RS_H] = (int32_t)(((int64_t)ch[c][i] * m) >> 6);
+        h++;
+        s = (h - UAC_FIR_N) & (RS_H - 1u);              /* the window: oldest .. this frame */
+        do {
+            uint8_t *f = u6_ring + ((w + k++) & (UA_N - 1u)) * U6_FB;
+            const int16_t *c0;
+            int32_t dir;
+            if (ph < UAC_FIR_L / 2u)
+                c0 = UAC_FIR[ph], dir = 1;
+            else
+                c0 = &UAC_FIR[UAC_FIR_L - 1u - ph][UAC_FIR_N - 1u], dir = -1;   /* (symmetric: backwards) */
+            for (c = 0; c < U6_CH; c++, f += 3) {
+                const int32_t *x = &r6.h[c][s];
+                const int16_t *t = c0;
+                int64_t a = (int64_t)1 << (UAC_FIR_Q - 1);
+                int32_t v;
+                for (j = 0; j < UAC_FIR_N; j++, t += dir)
+                    a += (int64_t)*t * x[j];
+                a >>= UAC_FIR_Q;
+                v = a > 8388607 ? 8388607 : a < -8388608 ? -8388608 : (int32_t)a;
+                f[0] = (uint8_t)v, f[1] = (uint8_t)(v >> 8), f[2] = (uint8_t)(v >> 16);
+            }
+            ph += UAC_FIR_M;
+        } while (ph < UAC_FIR_L);
+        ph -= UAC_FIR_L;
+    }
+    r6.w = h;
+    r6.ph = ph;
+    RING_PUBLISH();
+    ua_w = w + k;
+}
+#endif
+
 static __attribute__((noinline)) void uac_tap(const int32_t *out, uint32_t n)   /* audio ISR: one block (Q15) */
 {
     uint32_t w = ua_w, i;
     if (!uac.feed)
         return;
+#if UAC6
+    if (uac6_on)                                        /* (the stems: uac6_tap) */
+        return;
+#endif
 #if FELUCCA_UAC_48K
     if (uac.ring48) {
         uac_tap48(out, n);
@@ -1336,6 +1438,45 @@ static uint32_t uac_packet(uint32_t *d)
     return n;
 }
 
+#if UAC6
+static uint8_t ep4tx6[U6_MAXP] __attribute__((aligned(4)));
+static uint8_t u6_last[U6_FB];
+/* the stems' next packet, as uac_packet at 48 kHz: 48 frames (+-1 to hold the ring's fill), from the ring or, until
+ * it is primed, silence; an empty ring repeats the last frame. Returns the frame count */
+static uint32_t uac6_ring_packet(uint8_t *d)
+{
+    uint32_t n = 48u, r, fill, k, i;
+    if (!uac.go || !uac.ring48) {                       /* not primed yet */
+        memset(d, 0, n * U6_FB);
+        return n;
+    }
+    if (uac.fill_min > UA_HI48) {
+        n++;
+        uac.adj_up++;
+    } else if (uac.fill_min < UA_LO48) {
+        n--;
+        uac.adj_down++;
+    }
+    r = ua_r;
+    fill = ua_w - r;
+    RING_PUBLISH();                                     /* the slots after the index */
+    k = fill < n ? fill : n;
+    for (i = 0; i < k; i++)
+        memcpy(d + i * U6_FB, u6_ring + ((r + i) & (UA_N - 1u)) * U6_FB, U6_FB);
+    if (k < n) {
+        uac.underruns++;
+        for (; i < n; i++)
+            memcpy(d + i * U6_FB, k ? d + (k - 1u) * U6_FB : u6_last, U6_FB);
+    }
+    memcpy(u6_last, d + (n - 1u) * U6_FB, U6_FB);
+    RING_PUBLISH();
+    ua_r = r + k;
+    uac.pkts++;
+    uac.frames += n;
+    return n;
+}
+#endif
+
 #if SMK_UAC_PROBE
 /* the probe's next packet: 48 frames, one of 49 and one of 47 every 50 packets (the largest packet, 882 bytes,
  * once a second at least twice; 48 a ms on average). Frame f, 24 bit, little endian, each channel its own:
@@ -1343,9 +1484,8 @@ static uint32_t uac_packet(uint32_t *d)
  *   ch 5     the frame counter, ((f & 0xFFFFF) << 3) - 2^22 (a ramp of ~22 s at half scale).
  * A lost, repeated or swapped frame or channel, or 16-bit samples, show in the recording (smk37-devtools
  * uac6_check.py) */
-static uint8_t ep4tx6[U6_MAXP] __attribute__((aligned(4)));
 static uint32_t u6_f, u6_k;
-static uint32_t uac6_packet(uint8_t *d)
+static uint32_t uac6_probe_packet(uint8_t *d)
 {
     static const uint32_t P[5] = {200, 160, 120, 100, 80};
     uint32_t n = 48u, i, c;
@@ -1399,13 +1539,20 @@ static void uac_service(void)
     }
     uac.queued = 1;
     uac.wait = 0;
+#if UAC6
+    if (uac6_on) {
 #if SMK_UAC_PROBE
-    n = uac6_packet(ep4tx6);
-    fm1_usb_ep4_send(ep4tx6, n * U6_CH * 3u);
+        n = uac6_probe_packet(ep4tx6);
 #else
+        n = uac6_ring_packet(ep4tx6);
+#endif
+        fm1_usb_ep4_send(ep4tx6, n * U6_FB);
+        sie_wr(S_TXCSR1, 0x01);                         /* TxPktRdy (and UnderRun cleared) */
+        return;
+    }
+#endif
     n = uac_packet(ep4tx);
     fm1_usb_ep4_send(ep4tx, n * 4u);
-#endif
     sie_wr(S_TXCSR1, 0x01);                             /* TxPktRdy (and UnderRun cleared) */
 }
 #endif

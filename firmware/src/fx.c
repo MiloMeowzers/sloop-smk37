@@ -181,6 +181,19 @@ static inline int32_t knee(int32_t x)
 static uint8_t usb_full;                 /* menu USB AUDIO: 0 MASTER (follows the knob), 1 FULL (panel.c lights_word) */
 static uint8_t usb_full_now;             /* this render fills usb_out (audio.c) */
 static int32_t usb_out[2u * CTL];
+#if BOARD_SMK37
+/* SMK-37: the stems (menu USB > USB LAYOUT, usb.c UL_*; smk37-port.yaml follow_up.stems). Each block, while the host
+ * records (stem_feed, audio.c), the 6 channels of the layout in mix units, before the master stage (TEXTURE, DUST,
+ * the punch-ins, the DJ filter, MASTER's limiter): a synth track after its own chain, its LEVEL, mute / solo and the
+ * DUCK, before its pan and sends (mix_part_run); the drum track the same, the kit as one mono stem (mix_drums); the
+ * shared reverb / delay / chorus return (wet_l, wet_r). The level: usb.c uac6_tap (stem_m0 .. stem_m1). The
+ * metronome on no stem */
+static uint8_t stem_layout;              /* this start's (main.c): 0 STEREO, none made; 2 SYNTHS+RET */
+static uint8_t stem_feed;                /* this render: the host records the stems (audio.c) */
+static int32_t stem_syn[NPART][CTL], stem_drum[CTL];
+static const int32_t *stem_ch[6];        /* the block's channels, in the layout's order (usb.c uac6_tap) */
+static int32_t stem_m0, stem_m1;         /* their level over the block, Q12 */
+#endif
 /* the visualiser's input (audio.c fills the scope with it): the mix as if MASTER were all the way up, so the
  * picture does not follow the volume knob, even at 0 (2.4). The same soft knee as the output, no limiter state */
 static int16_t vis_tap[2u * CTL];
@@ -733,11 +746,18 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         lvl0 = t->lvl, gl0 = t->gpl, gr0 = t->gpr;
         t->lvl = mix_glide(lvl0, lvl), t->gpl = mix_glide(gl0, gl), t->gpr = mix_glide(gr0, gr);
         dl = (t->lvl - lvl0) >> CTL_LOG2, dgl = t->gpl - gl0, dgr = t->gpr - gr0;
+#if BOARD_SMK37
+        int32_t *st = stem_feed ? stem_syn[(uint32_t)(t - trk) % NPART] : 0;   /* (the stems: this track's) */
+#endif
         for (i = 0; i < n; i++) {
             int32_t x = ((b[i] >> 2) * (lvl0 + dl * (int32_t)i)) >> 10, a;   /* pre-shift: 8 loud voices */
             int32_t xs, g = ga + (((gb - ga) * (int32_t)i) >> CTL_LOG2);
             if (g < 32767)
                 x = (x >> 4) * (g >> 3) >> 8;           /* (Q15 in two halves: no 32-bit overflow) */
+#if BOARD_SMK37
+            if (st)
+                st[i] = x;                              /* its stem: before the pan and the sends */
+#endif
             a = x < 0 ? -x : x;
             xs = clamp(x, -xmax, xmax);                 /* sends: mulq15 would overflow */
             if (a > pk)
@@ -860,7 +880,11 @@ static void mix_drums(uint32_t n, mixacc_t *mx)
     drums.a0 = TDRUM->att;                              /* the drum track's mute / solo fade */
     drums.a1 = 32767 - gain_next(TDRUM);
     flt = n <= CTL && djf_block(f, TDRUM->p[P_TFLT], &fc, tflt_reso());   /* the drum track's FILTER */
+#if BOARD_SMK37
+    if (flt || (n <= CTL && (TDRUM->p[P_ITYPE] | TDRUM->ins_run || stem_feed))) {   /* (or the stems: the kit apart) */
+#else
     if (flt || (n <= CTL && (TDRUM->p[P_ITYPE] | TDRUM->ins_run))) {   /* .. or its INSERT: left, right, the sends */
+#endif
         int32_t *dl = drum_buf[0], *dr = drum_buf[1], *dv = drum_buf[2], *dd = drum_buf[3];
         for (i = 0; i < n; i++)
             dl[i] = dr[i] = dv[i] = dd[i] = 0;
@@ -878,6 +902,11 @@ static void mix_drums(uint32_t n, mixacc_t *mx)
             mx->sr[i] += dv[i];
             mx->sd[i] += dd[i];
         }
+#if BOARD_SMK37
+        if (stem_feed)
+            for (i = 0; i < n; i++)
+                stem_drum[i] = (dl[i] + dr[i]) >> 1;    /* the kit as one stem (its pan centred: the sound itself) */
+#endif
     } else {
         slicer_drums(mx->l, mx->r, mx->sr, mx->sd, n);   /* drums_render, through the SLICER when on */
     }
@@ -1196,6 +1225,12 @@ static void mix_block(int32_t *out, uint32_t n)
     int32_t m0, m1, *mix_l = acc[0].l, *mix_r = acc[0].r;
     for (i = 0; i < n; i++)
         acc[0].l[i] = acc[0].r[i] = acc[0].sc[i] = acc[0].sd[i] = acc[0].sr[i] = 0;
+#if BOARD_SMK37
+    if (stem_feed) {                                    /* (a silent track writes nothing: its stem stays 0) */
+        memset(stem_syn, 0, sizeof stem_syn);
+        memset(stem_drum, 0, sizeof stem_drum);
+    }
+#endif
     {   /* REV / ECHO THROW (2.6): the sends glide to full and back over ~12 ms (17 blocks); set before the hand-off:
          * the units on both cores read them (send_thr) */
         uint32_t q = thr_req | thr_ed;                  /* (2.7: the editor's LIVE page too) */
@@ -1220,6 +1255,16 @@ static void mix_block(int32_t *out, uint32_t n)
                                                          * its units here, once (what it half did is this block's glitch) */
             for (i = 0; i < n; i++)
                 acc[1].l[i] = acc[1].r[i] = acc[1].sc[i] = acc[1].sd[i] = acc[1].sr[i] = 0;
+#if BOARD_SMK37
+            if (stem_feed) {                            /* (its units' stems too) */
+                uint32_t k;
+                for (k = 0; k < NPART; k++)
+                    if (c1 & (1u << k))
+                        memset(stem_syn[k], 0, sizeof stem_syn[k]);
+                if (c1 & U_DRUMS)
+                    memset(stem_drum, 0, sizeof stem_drum);
+            }
+#endif
             cpu1_units_job(c1 | n << 8);
         }
         for (i = 0; i < n; i++) {
@@ -1244,6 +1289,14 @@ static void mix_block(int32_t *out, uint32_t n)
     m1 = (int32_t)song.master_q12;
     m0 = master_cur < 0 ? m1 : master_cur;
     master_cur = m1;
+#if BOARD_SMK37
+    if (stem_feed) {                                    /* the stems' channels and level (audio.c -> usb.c uac6_tap) */
+        stem_m0 = usb_full ? 4096 : m0;                 /* USB AUDIO = FULL: as MASTER all the way up */
+        stem_m1 = usb_full ? 4096 : m1;
+        stem_ch[0] = stem_syn[0], stem_ch[1] = stem_syn[1], stem_ch[2] = stem_syn[2];   /* SYNTHS+RET */
+        stem_ch[3] = stem_drum, stem_ch[4] = wet_l, stem_ch[5] = wet_r;
+    }
+#endif
     if (n > CTL)
         n = CTL;                                        /* (the buffers' size) */
     {

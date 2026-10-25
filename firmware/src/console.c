@@ -218,8 +218,14 @@ static void con_status(void)
     con_kv("usb_max_gap_polls", (int32_t)usb.max_gap);
     con_kv("midi_rx_pkts", (int32_t)usb.rx_pkts);
     con_kv("midi_tx_pkts", (int32_t)usb.tx_pkts);
-#if SMK_UAC_PROBE
-    con_kv("uac6_alt", uac.alt);                         /* the stems probe (usb.c uac6_packet): 1 the host records */
+#if UAC6
+    con_kv("usb_layout", usb_layout_mode);               /* 0 STEREO, 1 DRUMS+RET, 2 SYNTHS+RET, 3 ALL DRY (usb.c) */
+    con_kv("uac6_alt", uac.alt);                         /* the stems' stream (usb.c): 1 the host records */
+    con_kv("uac6_underruns", (int32_t)uac.underruns);
+    con_kv("uac6_overruns", (int32_t)uac.overruns);
+    con_kv("uac6_adj", (int32_t)(uac.adj_up - uac.adj_down));
+    con_kv("uac6_fill_lo", (int32_t)uac.fill_lo);
+    con_kv("uac6_fill_hi", (int32_t)uac.fill_hi);
     con_kv("uac6_flowing", uac.flowing);
     con_kv("uac6_pkts", (int32_t)uac.pkts);
     con_kv("uac6_frames", (int32_t)uac.frames);
