@@ -29,12 +29,10 @@ static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 
 {
     uint32_t i;
     mix_block(out, n);
-#if UAC6
-    if (stem_feed)
-        uac6_tap(stem_ch, n, stem_m0, stem_m1);         /* SMK-37: the stems (menu USB > USB LAYOUT) */
-    else
-#endif
 #if FELUCCA_UAC
+#if UAC6
+    if (!stem_feed)                                     /* (SMK-37 stems: fx.c sets the block aside for uac6_tap) */
+#endif
     uac_tap(usb_full_now ? usb_out : out, n);           /* the USB audio input: the master output, or at full level */
 #endif
     for (i = 0; i < n; i++) {
@@ -73,6 +71,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         usb_full_now = (uint8_t)(usb_full && uac.feed);  /* menu USB AUDIO = FULL, while the computer records */
 #if UAC6
         stem_feed = (uint8_t)(uac6_on && uac.feed);     /* SMK-37: the stems, while the computer records them */
+        stem_tap = uac6_tap;                            /* (fx.c: either core resamples them) */
         if (stem_feed)
             usb_full_now = 0;                           /* (no stereo stream: no second limiter) */
 #endif

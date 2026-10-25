@@ -1300,8 +1300,12 @@ static __attribute__((noinline)) void uac_tap48(const int32_t *out, uint32_t n)
 #if UAC6
 /* the stems, one block (audio ISR, after fx.c mix_block): the 6 channels of fx.c (mix units, 44.1 kHz) x the level
  * m0 .. m1 over the block (Q12: the MASTER knob's, or 4096 with USB AUDIO = FULL) with the stereo output's full scale
- * at -12 dBFS (x 64 / 4096 in 24 bit: 12 dB of headroom, no limiter), then 44.1 -> 48 kHz as uac_tap48 (the same
- * taps, 64-bit sums: 24-bit samples) into the ring; a hard ceiling at 24-bit full scale */
+ * at -12 dBFS (x 64 / 4096 in 24 bit: 12 dB of headroom, no limiter), clamped at 24-bit full scale (the hard
+ * ceiling), then 44.1 -> 48 kHz as uac_tap48 (the same taps) into the ring. The sums in 32 bits, exact: each
+ * sample split x = 256 hi + lo (hi 16 bits, lo 0..255), the taps' sums of t hi and t lo apart (|sum t hi| < 2^31:
+ * the taps' absolute sum is 42156), then (256 A_hi + A_lo) >> 15 in two steps. On the unit the 64-bit sums cost
+ * ~15 % of core 0 (fx.c runs this on core 1 now). Runs on core 1 (fx.c cpu1_block_job) or core 0 */
+_Static_assert(UAC_FIR_Q == 15, "uac6_tap: (256 ah + al) >> 15 as ah >> 7 + ...");
 static __attribute__((noinline)) void uac6_tap(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1)
 {
     uint32_t w = ua_w, i, j, c, k = 0, h = r6.w, ph = r6.ph;
@@ -1314,8 +1318,10 @@ static __attribute__((noinline)) void uac6_tap(const int32_t *const *ch, uint32_
     for (i = 0; i < n; i++) {
         uint32_t s = h & (RS_H - 1u);
         int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
-        for (c = 0; c < U6_CH; c++)
-            r6.h[c][s] = r6.h[c][s + RS_H] = (int32_t)(((int64_t)ch[c][i] * m) >> 6);
+        for (c = 0; c < U6_CH; c++) {
+            int64_t y = ((int64_t)ch[c][i] * m) >> 6;
+            r6.h[c][s] = r6.h[c][s + RS_H] = y > 8388607 ? 8388607 : y < -8388608 ? -8388608 : (int32_t)y;
+        }
         h++;
         s = (h - UAC_FIR_N) & (RS_H - 1u);              /* the window: oldest .. this frame */
         do {
@@ -1329,12 +1335,13 @@ static __attribute__((noinline)) void uac6_tap(const int32_t *const *ch, uint32_
             for (c = 0; c < U6_CH; c++, f += 3) {
                 const int32_t *x = &r6.h[c][s];
                 const int16_t *t = c0;
-                int64_t a = (int64_t)1 << (UAC_FIR_Q - 1);
-                int32_t v;
-                for (j = 0; j < UAC_FIR_N; j++, t += dir)
-                    a += (int64_t)*t * x[j];
-                a >>= UAC_FIR_Q;
-                v = a > 8388607 ? 8388607 : a < -8388608 ? -8388608 : (int32_t)a;
+                int32_t ah = 0, al = 1 << (UAC_FIR_Q - 1), v;
+                for (j = 0; j < UAC_FIR_N; j++, t += dir) {
+                    ah += *t * (x[j] >> 8);
+                    al += *t * (x[j] & 255);
+                }
+                v = (ah >> 7) + ((((ah & 127) << 8) + al) >> UAC_FIR_Q);   /* (256 ah + al) >> 15 */
+                v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
                 f[0] = (uint8_t)v, f[1] = (uint8_t)(v >> 8), f[2] = (uint8_t)(v >> 16);
             }
             ph += UAC_FIR_M;

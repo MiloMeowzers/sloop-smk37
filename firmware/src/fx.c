@@ -186,13 +186,26 @@ static int32_t usb_out[2u * CTL];
  * records (stem_feed, audio.c), the 6 channels of the layout in mix units, before the master stage (TEXTURE, DUST,
  * the punch-ins, the DJ filter, MASTER's limiter): a synth track after its own chain, its LEVEL, mute / solo and the
  * DUCK, before its pan and sends (mix_part_run); the drum track the same, the kit as one mono stem (mix_drums); the
- * shared reverb / delay / chorus return (wet_l, wet_r). The level: usb.c uac6_tap (stem_m0 .. stem_m1). The
- * metronome on no stem */
+ * shared reverb / delay / chorus return (wet_l, wet_r). The metronome on no stem. The block is set aside (stem_stage)
+ * and usb.c uac6_tap levels and resamples it during the next block, on core 1 while core 0 renders its units
+ * (cpu1_block_job; on the unit the resampling on core 0 cost ~15 %), or on core 0 when core 1 is off: the stems one
+ * block (0.73 ms) later */
 static uint8_t stem_layout;              /* this start's (main.c): 0 STEREO, none made; 2 SYNTHS+RET */
 static uint8_t stem_feed;                /* this render: the host records the stems (audio.c) */
 static int32_t stem_syn[NPART][CTL], stem_drum[CTL];
-static const int32_t *stem_ch[6];        /* the block's channels, in the layout's order (usb.c uac6_tap) */
-static int32_t stem_m0, stem_m1;         /* their level over the block, Q12 */
+static int32_t stem_stage[6][CTL];       /* the last block's channels, in the layout's order */
+static const int32_t *const STEM_STAGE[6] = {stem_stage[0], stem_stage[1], stem_stage[2], stem_stage[3], stem_stage[4],
+                                             stem_stage[5]};
+static int32_t stem_sm0, stem_sm1;       /* their level over that block, Q12 */
+static uint32_t stem_sn;                 /* its samples */
+static volatile uint8_t stem_staged;     /* a block waits for the resampler */
+static void (*stem_tap)(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1);   /* usb.c uac6_tap (audio.c) */
+static void stem_tap_run(void)           /* (either core: the ring's producer is whichever runs it, one a block) */
+{
+    if (stem_staged && stem_tap)
+        stem_tap(STEM_STAGE, stem_sn, stem_sm0, stem_sm1);
+    stem_staged = 0;
+}
 #endif
 /* the visualiser's input (audio.c fills the scope with it): the mix as if MASTER were all the way up, so the
  * picture does not follow the volume knob, even at 0 (2.4). The same soft knee as the output, no limiter state */
@@ -944,6 +957,15 @@ static void cpu1_units_job(uint32_t arg)                /* core 1's job: the uni
     mix_units(arg & 0xFFu, arg >> 8, &acc[1], part_buf[1]);
     cpu1_job_ticks += cpu1_ticks() - t0;
 }
+#if BOARD_SMK37
+static void cpu1_block_job(uint32_t arg)                /* SMK-37: the stems' last block (resampled), then the units */
+{
+    uint32_t t0 = cpu1_ticks();
+    stem_tap_run();
+    cpu1_job_ticks += cpu1_ticks() - t0;
+    cpu1_units_job(arg);
+}
+#endif
 
 /* the units core 1 renders this block: the last part and the drums (cpu1_units when set: the menu, the tests),
  * less the parts that must stay here (above) */
@@ -1240,6 +1262,52 @@ static void mix_block(int32_t *out, uint32_t n)
     events_block(n);
     duck_block(n * (uint32_t)song.g[G_BPM]);
     c1 = cpu1_on() ? units_split() : 0;                 /* core 1's units this block */
+#if BOARD_SMK37
+    {   /* SMK-37: core 1 also resamples the stems' last block (cpu1_block_job), even with no unit of its own */
+        uint32_t st1 = stem_staged && cpu1_on() && cpu1_units != 0;   /* (2ND CORE OFF: none on core 1) */
+        if (c1 || st1) {
+            if (c1)
+                for (i = 0; i < n; i++)
+                    acc[1].l[i] = acc[1].r[i] = acc[1].sc[i] = acc[1].sd[i] = acc[1].sr[i] = 0;
+            if (!cpu1_run(cpu1_block_job, c1 | n << 8))
+                c1 = 0, st1 = 0;
+        }
+        if (stem_staged && !st1)
+            stem_tap_run();                             /* (core 1 off: here) */
+        mix_units(U_ALL & ~c1, n, &acc[0], part_buf[0]);   /* this core's units, meanwhile */
+        if (c1 || st1) {
+            uint32_t w0 = cpu1_ticks();
+            int late = cpu1_wait();
+            cpu1_wait_ticks += cpu1_ticks() - w0;
+            if (late) {                                 /* core 1 did not finish in time: held from now on (cpu1.h);
+                                                         * its units here, once (what it half did is this block's glitch;
+                                                         * a stems block it did not finish is lost) */
+                stem_staged = 0;
+                if (c1) {
+                    for (i = 0; i < n; i++)
+                        acc[1].l[i] = acc[1].r[i] = acc[1].sc[i] = acc[1].sd[i] = acc[1].sr[i] = 0;
+                    if (stem_feed) {                    /* (its units' stems too) */
+                        uint32_t k;
+                        for (k = 0; k < NPART; k++)
+                            if (c1 & (1u << k))
+                                memset(stem_syn[k], 0, sizeof stem_syn[k]);
+                        if (c1 & U_DRUMS)
+                            memset(stem_drum, 0, sizeof stem_drum);
+                    }
+                    cpu1_units_job(c1 | n << 8);
+                }
+            }
+            if (c1)
+                for (i = 0; i < n; i++) {
+                    acc[0].l[i] += acc[1].l[i];
+                    acc[0].r[i] += acc[1].r[i];
+                    acc[0].sc[i] += acc[1].sc[i];
+                    acc[0].sd[i] += acc[1].sd[i];
+                    acc[0].sr[i] += acc[1].sr[i];
+                }
+        }
+    }
+#else
     if (c1) {
         for (i = 0; i < n; i++)
             acc[1].l[i] = acc[1].r[i] = acc[1].sc[i] = acc[1].sd[i] = acc[1].sr[i] = 0;
@@ -1255,16 +1323,6 @@ static void mix_block(int32_t *out, uint32_t n)
                                                          * its units here, once (what it half did is this block's glitch) */
             for (i = 0; i < n; i++)
                 acc[1].l[i] = acc[1].r[i] = acc[1].sc[i] = acc[1].sd[i] = acc[1].sr[i] = 0;
-#if BOARD_SMK37
-            if (stem_feed) {                            /* (its units' stems too) */
-                uint32_t k;
-                for (k = 0; k < NPART; k++)
-                    if (c1 & (1u << k))
-                        memset(stem_syn[k], 0, sizeof stem_syn[k]);
-                if (c1 & U_DRUMS)
-                    memset(stem_drum, 0, sizeof stem_drum);
-            }
-#endif
             cpu1_units_job(c1 | n << 8);
         }
         for (i = 0; i < n; i++) {
@@ -1275,6 +1333,7 @@ static void mix_block(int32_t *out, uint32_t n)
             acc[0].sr[i] += acc[1].sr[i];
         }
     }
+#endif
     texture_mix(mix_l, mix_r, n);                       /* GLO > TEXTURE (2.6): the bed, dry; after both cores' units
                                                          * (what it adds does not depend on them: the same sum) */
     punch_freeze_feed(acc[0].sr, mix_l, mix_r, n);     /* punch-in FREEZE: the whole dry mix into the held reverb */
@@ -1290,11 +1349,16 @@ static void mix_block(int32_t *out, uint32_t n)
     m0 = master_cur < 0 ? m1 : master_cur;
     master_cur = m1;
 #if BOARD_SMK37
-    if (stem_feed) {                                    /* the stems' channels and level (audio.c -> usb.c uac6_tap) */
-        stem_m0 = usb_full ? 4096 : m0;                 /* USB AUDIO = FULL: as MASTER all the way up */
-        stem_m1 = usb_full ? 4096 : m1;
-        stem_ch[0] = stem_syn[0], stem_ch[1] = stem_syn[1], stem_ch[2] = stem_syn[2];   /* SYNTHS+RET */
-        stem_ch[3] = stem_drum, stem_ch[4] = wet_l, stem_ch[5] = wet_r;
+    if (stem_feed && n <= CTL) {                        /* the stems' block set aside, with its level (the next block
+                                                         * resamples it: stem_tap_run) */
+        const int32_t *src[6] = {stem_syn[0], stem_syn[1], stem_syn[2], stem_drum, wet_l, wet_r};   /* SYNTHS+RET */
+        uint32_t c;
+        for (c = 0; c < 6u; c++)
+            memcpy(stem_stage[c], src[c], n * sizeof(int32_t));
+        stem_sm0 = usb_full ? 4096 : m0;                /* USB AUDIO = FULL: as MASTER all the way up */
+        stem_sm1 = usb_full ? 4096 : m1;
+        stem_sn = n;
+        stem_staged = 1;
     }
 #endif
     if (n > CTL)

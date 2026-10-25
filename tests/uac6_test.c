@@ -191,6 +191,60 @@ static uint32_t stems_run(int32_t m, int32_t amp_dc)
     }
     return nf;
 }
+/* the 32-bit split sums against 64-bit ones: random full-range input and levels, every output sample */
+static void test_exact(void)
+{
+    static int32_t c[6][32], hist[6][32];
+    const int32_t *cp[6] = {c[0], c[1], c[2], c[3], c[4], c[5]};
+    uint32_t rnd = 12345u, b, i, ch, k, ph = 0, h = 0, w0, out = 0, bad = 0;
+    memset(&uac, 0, sizeof uac);
+    ua_w = ua_r = 0;
+    usb.up = 1, usb.config = 1, uac.alt = 1, uac.flowing = 1;
+    uac_rate_set(48000);
+    uac_render_start();                                 /* primes the ring (silence), the resampler from 0 */
+    w0 = ua_w;
+    memset(hist, 0, sizeof hist);
+    for (b = 0; b < 10u; b++) {
+        int32_t m0, m1;
+        rnd = rnd * 1664525u + 1013904223u, m0 = (int32_t)(rnd >> 20);   /* 0 .. 4095 */
+        rnd = rnd * 1664525u + 1013904223u, m1 = (int32_t)(rnd >> 20);
+        for (i = 0; i < 32u; i++)
+            for (ch = 0; ch < 6u; ch++) {
+                rnd = rnd * 1664525u + 1013904223u;
+                c[ch][i] = (int32_t)(rnd >> 12) - (1 << 19);   /* +-2^19 */
+            }
+        uac6_tap(cp, 32u, m0, m1);
+        for (i = 0; i < 32u; i++) {                     /* the reference, in 64 bits */
+            int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> 5);
+            for (ch = 0; ch < 6u; ch++) {
+                int64_t y = ((int64_t)c[ch][i] * m) >> 6;
+                hist[ch][h & 31u] = y > 8388607 ? 8388607 : y < -8388608 ? -8388608 : (int32_t)y;
+            }
+            h++;
+            do {
+                const uint8_t *f = u6_ring + ((w0 + out) & (UA_N - 1u)) * U6_FB;
+                for (ch = 0; ch < 6u; ch++) {
+                    int64_t a = 1 << 14;
+                    int32_t v;
+                    for (k = 0; k < UAC_FIR_N; k++) {
+                        int32_t x = hist[ch][(h - UAC_FIR_N + k) & 31u];
+                        int32_t t = ph < UAC_FIR_L / 2u ? UAC_FIR[ph][k] : UAC_FIR[UAC_FIR_L - 1u - ph][UAC_FIR_N - 1u - k];
+                        a += (int64_t)t * x;
+                    }
+                    a >>= 15;
+                    v = a > 8388607 ? 8388607 : a < -8388608 ? -8388608 : (int32_t)a;
+                    bad += s24(f + 3u * ch) != v;
+                }
+                out++;
+                ph += UAC_FIR_M;
+            } while (ph < UAC_FIR_L);
+            ph -= UAC_FIR_L;
+        }
+    }
+    printf("   %u frames compared\n", out);
+    check("the 32-bit split sums: every sample as 64-bit sums give it (random input and levels)",
+          bad == 0 && out == ua_w - w0 && out > 340u);
+}
 static void test_stems(void)
 {
     uint32_t nf, i, from = 9600, zc = 0, und, ovr;   /* (from 0.2 s: primed, the resampler settled) */
@@ -233,6 +287,7 @@ int main(void)
            T_CDC ? "on" : "off");
     test_descriptors();
 #if T_STEMS
+    test_exact();
     test_stems();
 #else
     test_packets();
