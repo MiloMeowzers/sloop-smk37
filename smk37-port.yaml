@@ -168,6 +168,10 @@ follow_up:                  # decided and planned, NOT in this port; all of it b
               stays under ~85 % on the unit (console build - cpu1); otherwise it is cut down, not shipped popping
     first_tests: (1) the chip's USB sends 882-byte isochronous packets (today 196 B; Melodee proved 540 B);
                  (2) Windows' class driver (usbaudio.sys) takes 6 ch / 24 bit; then macOS and an iPad
+    host_tests: "after the probe runs clean - (1) the DAW on Windows sees 6 inputs - Ableton through FlexASIO (WASAPI)
+                and ASIO4ALL, and MME/DirectX; REAPER on WASAPI; (2) the keyboard with another USB audio device
+                plugged in, direct and through a hub (882 B is ~76 % of a full-speed bus's periodic time - a single-TT
+                hub shared with another full-speed audio device may refuse the bandwidth); (3) macOS, an iPad"
     not_a_factor: isod89/sloop-fm1#99 (Pixel phones record USB audio distorted through Android's normal path) - an
                   Android compatibility issue, not headroom; the stems are for a DAW
     reference: Melodee (Kerem Kilic, keremimo/melodee, GPL-3.0) 4-track capture on the same chip (packets ~540 B work)
