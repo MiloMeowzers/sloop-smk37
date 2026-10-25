@@ -235,6 +235,11 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
               87cbdf2 (resampling on core 0, 64-bit) 64-71 %, worst render 89 %, voices shed; e6fc934 (32-bit, on core 1
               in the units' phase) core 1 41-52 %, core 0 waiting 8-48 %, worst 95 %, shed, 6 underruns - core 1 became
               the last to finish; next (3519c2c) core 1 resamples during core 0's FX / master phase"
+  stems_load_2: "44fe220 (the resampling shared by channel, the share following the measured work) - core 0 58-67 %, no
+                waiting, 1 voice shed in 10 s, a channel 33-44 us a block. d99cda4, the filter's three ways live
+                (stemfir), ~20 s each - Q12 one multiply 25-27 us, core 0 54-65 %, none shed; 64-bit 28-36 us, 55-67 %,
+                none shed; 32-bit split 36-38 us, 60-66 %, 5 shed. Kept - Q12, balanced (the stems ~21 % of a core in
+                all, shared)"
   pads: "e6fc934 DRUM KIT pads - the group colours, the selected track's base, every track's notes in their colour (owner -
         works like a treat)"
   not_yet: punch-in MIDI out with a DAW; the DAW mode
