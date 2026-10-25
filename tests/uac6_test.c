@@ -79,6 +79,19 @@ static void test_descriptors(void)
     }
     check("strings 4..9: KICK SNARE HATS PERC RET L RET R", names_ok);
     check("string 10: none", !get_desc(0x0300 | 10u, &s, &sl));
+    {   /* the serial number (SMK_SN): string 3, the flash's unique ID folded, the probe's layout tag */
+        static const uint8_t UID[16] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 1, 2, 3, 4, 5, 6, 7, 8};
+        const char *want = "SMK37-C9C2507299B8-P6";   /* byte k of the fold: the XOR of bytes k, k + 6, k + 12 */
+        uint32_t k, n = (uint32_t)strlen(want);
+        int sn_ok;
+        memcpy(smk_uid, UID, 16);
+        sn_ok = get_desc(0x0303, &s, &sl) && sl == 2u + 2u * n && s[0] == sl && s[1] == 3u;
+        for (k = 0; sn_ok && k < n; k++)
+            sn_ok = s[2u + 2u * k] == (uint8_t)want[k] && s[3u + 2u * k] == 0;
+        get_desc(0x0100, &dv, &dl);
+        check("device descriptor: iSerialNumber 3", dv[16] == 3u);
+        check("string 3: SMK37-<the unique ID folded>-P6", sn_ok);
+    }
 }
 
 static int32_t s24(const uint8_t *p) { return (int32_t)((uint32_t)p[0] << 8 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 24) >> 8; }

@@ -880,6 +880,10 @@ UI_SMALL static void persist_boot(void)                    /* before settings_in
     persist_t p;
     uint32_t f = irq_save();
     flash_ok = FL_JEDEC_OK(FL_FAR(fl_jedec_ram)());      /* the expected 1 MiB part, else stay RAM-only */
+#if SMK_SN
+    if (flash_ok)
+        FL_FAR(fl_uid_ram)(smk_uid);               /* SMK-37: the USB serial number (usb.c), before usb_start */
+#endif
     irq_restore(f);
     if (!flash_ok)
         return;

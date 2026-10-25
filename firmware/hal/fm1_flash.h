@@ -138,6 +138,20 @@ static RAMFN uint32_t fl_jedec_ram(void)                 /* expect 0x856014 (FL_
     return id;
 }
 
+#if BOARD_SMK37
+/* the flash's factory unique ID (4Bh: 3 address bytes and a dummy, then 16 bytes; read only, no write enable):
+ * the SMK-37's USB serial number (usb.c smk_sn). A part without it gives FF or 00 bytes (usb.c falls back) */
+static RAMFN void fl_uid_ram(uint8_t *dst)
+{
+    fl_saved_t s; uint32_t i;
+    if (fl_enter(&s)) return;
+    fl_cs(0); fl_tx(0x4B); fl_addr(0); fl_tx(0xFF);
+    for (i = 0; i < 16u; i++) dst[i] = fl_rx();
+    fl_cs(1);
+    fl_exit(&s);
+}
+#endif
+
 static RAMFN uint32_t fl_status_ram(void)                /* SR1 | SR2 << 8 */
 {
     fl_saved_t s; uint32_t v;

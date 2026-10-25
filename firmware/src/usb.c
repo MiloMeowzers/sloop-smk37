@@ -349,6 +349,48 @@ static void rate_desc(const uint8_t **d, uint16_t *l, int cfg) { (void)d, (void)
 static int usb_rate_now(void) { return 0; }
 #endif
 
+/* SMK-37: a USB serial number (string 3), one per unit and USB layout: without one Windows keys the device to the port
+ * it is in, so another port or another layout is a new device with new names and the user's renames are lost (the
+ * owner's VB-Matrix lost its slots). "SMK37-" + the flash's unique ID folded to 12 hex digits (project.c reads it at
+ * boot: fl_uid_ram) + "-" + the layout (ST stereo, P6 the stems probe; the stems layouts later): each layout its own
+ * stable device in any port, two units apart. The FM-1 build and the update loader: no serial, as before */
+#if BOARD_SMK37 && FELUCCA_UAC && !defined(FELUCCA_LOADER)
+#define SMK_SN 1
+#else
+#define SMK_SN 0
+#endif
+#if SMK_SN
+static uint8_t smk_uid[16];                     /* the flash's unique ID (project.c persist_boot) */
+static uint8_t dev_sn[18], sn_str[2u + 2u * 21u];
+static void sn_desc(const uint8_t **d)
+{
+    memcpy(dev_sn, *d, 18);
+    dev_sn[16] = 3;                                     /* iSerialNumber */
+    *d = dev_sn;
+}
+static int sn_string(const uint8_t **d, uint16_t *l)
+{
+    static const char HEX[] = "0123456789ABCDEF";
+    char s[22] = "SMK37-";
+    uint8_t f[6] = {0};
+    uint32_t i, n = 6;
+    for (i = 0; i < 16u; i++)
+        f[i % 6u] ^= smk_uid[i];
+    for (i = 0; i < 6u; i++)
+        s[n++] = HEX[f[i] >> 4], s[n++] = HEX[f[i] & 15u];
+    s[n++] = '-';
+    s[n++] = SMK_UAC_PROBE ? 'P' : 'S';
+    s[n++] = SMK_UAC_PROBE ? '6' : 'T';
+    for (i = 0; i < n; i++)
+        sn_str[2u + 2u * i] = (uint8_t)s[i], sn_str[3u + 2u * i] = 0;
+    sn_str[0] = (uint8_t)(2u + 2u * n);
+    sn_str[1] = 3;
+    *d = sn_str;
+    *l = sn_str[0];
+    return 1;
+}
+#endif
+
 #if SMK_UAC_PROBE
 /* the probe's descriptors, made from the ones above (CDC or not): the input terminal 6 channels with no spatial
  * positions, named by strings 4..9 (iChannelNames); the format 6 x 24 bit (3-byte subframes) at 48000 only; EP4's
@@ -427,6 +469,9 @@ static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
 #if SMK_UAC_PROBE
         uac6_desc(d, l, 0);
 #endif
+#if SMK_SN
+        sn_desc(d);
+#endif
         return 1;
     case 2:
         *d = CFG_DESC;
@@ -456,6 +501,10 @@ static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
             *d = STR2;
             *l = sizeof STR2;
             return 1;
+#if SMK_SN
+        case 3:
+            return sn_string(d, l);
+#endif
         default:
 #if SMK_UAC_PROBE
             return uac6_str(wvalue & 0xFFu, d, l);
