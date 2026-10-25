@@ -228,6 +228,9 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
   stems_probe_2: "5b15217 (EP4 also polled at 5 kHz) - uac6_check 20 s, WASAPI shared - 955200 frames, no counter
                  break, every sample bit exact (6 ch, 24 bit, 48 kHz); the keyboard - 20016 packets, 0 missed, 0
                  stalls; cpu_pct 14 idle (13 before). first_tests (1) and (2) passed on Windows 11"
+  stems_3a: "87cbdf2 (console Elite) - menu USB > USB LAYOUT = SYNTHS+RET after a power-on - the 6 channels recorded in the
+            owner's DAW through VB-Matrix, each part on its stem, the audio fine (owner); the load under a full
+            arrangement still to read (console cpu_pct, cpu1_busy_pct)"
   not_yet: punch-in MIDI out with a DAW; the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
