@@ -231,6 +231,12 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
   stems_3a: "87cbdf2 (console Elite) - menu USB > USB LAYOUT = SYNTHS+RET after a power-on - the 6 channels recorded in the
             owner's DAW through VB-Matrix, each part on its stem, the audio fine (owner); the load under a full
             arrangement still to read (console cpu_pct, cpu1_busy_pct)"
+  stems_load: "the same pattern, console builds - no USB audio 44-56 % core 0, no voices shed; SYNTHS+RET recording -
+              87cbdf2 (resampling on core 0, 64-bit) 64-71 %, worst render 89 %, voices shed; e6fc934 (32-bit, on core 1
+              in the units' phase) core 1 41-52 %, core 0 waiting 8-48 %, worst 95 %, shed, 6 underruns - core 1 became
+              the last to finish; next (3519c2c) core 1 resamples during core 0's FX / master phase"
+  pads: "e6fc934 DRUM KIT pads - the group colours, the selected track's base, every track's notes in their colour (owner -
+        works like a treat)"
   not_yet: punch-in MIDI out with a DAW; the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
