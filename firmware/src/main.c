@@ -70,6 +70,12 @@ void fm1_timer5_irq(void)
 {
     static uint32_t sub, owed;
     uint32_t t0 = fm1_ticks(), usb_due = sub % 5u == 0u;
+#if SMK_UAC_PROBE
+    /* the stems' packets (up to 882 bytes) take ~0.6 ms on the bus: polled at 2 kHz, the next one was queued after
+     * the host's next IN token in ~9 % of the frames (the probe, on a unit). EP4 at 5 kHz as well (two SIE
+     * accesses while a packet is out; none while the host does not record) */
+    uint32_t uac_due = usb_due || sub % 2u == 0u;
+#endif
     fm1_timer5_ack();
     felucca_dbg.timer_irqs++;
     fm1_input_tick();
@@ -95,7 +101,10 @@ void fm1_timer5_irq(void)
         sub = 0;
     if (felucca_dbg.in_audio) {
         felucca_dbg.nested++;
-#if FELUCCA_UAC
+#if SMK_UAC_PROBE
+        if (uac_due)
+            uac_service();
+#elif FELUCCA_UAC
         if (usb_due)
             uac_service();
 #endif
@@ -104,6 +113,10 @@ void fm1_timer5_irq(void)
     }
     if (owed & 1u)
         usb_poll();
+#if SMK_UAC_PROBE
+    else if (uac_due)
+        uac_service();                          /* (not nested: usb_poll does not run now, no interleaving) */
+#endif
 #if FELUCCA_UART
     if (owed & 2u)
         uart_midi_poll();
