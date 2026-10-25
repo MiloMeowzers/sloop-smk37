@@ -1341,10 +1341,70 @@ static int uac6_room(uint32_t n)
     }
     return 1;
 }
+#if FELUCCA_CDC
+/* console builds: the filter's other two ways, to measure each under the same load (console stemfir 0|1|2):
+ *   1 the first: the level and x 64 into the history (24 bit), the Q15 taps from flash, 64-bit sums;
+ *   2 the next: the same in 32 bits, each sample split 256 hi + lo, two multiplies a tap.
+ * The history differs from way 0's: a switch is a click on the stems (12 samples). Not in the packages */
+static volatile uint8_t uac6_kern;
+static __attribute__((noinline)) void uac6_tap_alt(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1,
+                                                   uint32_t c_lo, uint32_t c_hi)
+{
+    uint32_t w = ua_w, i, j, c, k = 0, h = r6.w, ph = r6.ph;
+    for (i = 0; i < n; i++) {
+        uint32_t s = h & (RS_H - 1u);
+        int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
+        for (c = c_lo; c < c_hi; c++) {
+            int64_t y = ((int64_t)ch[c][i] * m) >> 6;
+            r6.h[c][s] = r6.h[c][s + RS_H] = y > 8388607 ? 8388607 : y < -8388608 ? -8388608 : (int32_t)y;
+        }
+        h++;
+        s = (h - UAC_FIR_N) & (RS_H - 1u);
+        do {
+            uint8_t *f = u6_ring + ((w + k++) & (UA_N - 1u)) * U6_FB + 3u * c_lo;
+            const int16_t *c0;
+            int32_t dir;
+            if (ph < UAC_FIR_L / 2u)
+                c0 = UAC_FIR[ph], dir = 1;
+            else
+                c0 = &UAC_FIR[UAC_FIR_L - 1u - ph][UAC_FIR_N - 1u], dir = -1;
+            for (c = c_lo; c < c_hi; c++, f += 3) {
+                const int32_t *x = &r6.h[c][s];
+                const int16_t *t = c0;
+                int32_t v;
+                if (uac6_kern == 1u) {
+                    int64_t a = (int64_t)1 << (UAC_FIR_Q - 1);
+                    for (j = 0; j < UAC_FIR_N; j++, t += dir)
+                        a += (int64_t)*t * x[j];
+                    a >>= UAC_FIR_Q;
+                    v = a > 8388607 ? 8388607 : a < -8388608 ? -8388608 : (int32_t)a;
+                } else {
+                    int32_t ah = 0, al = 1 << (UAC_FIR_Q - 1);
+                    for (j = 0; j < UAC_FIR_N; j++, t += dir) {
+                        ah += *t * (x[j] >> 8);
+                        al += *t * (x[j] & 255);
+                    }
+                    v = (ah >> 7) + ((((ah & 127) << 8) + al) >> UAC_FIR_Q);
+                    v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
+                }
+                f[0] = (uint8_t)v, f[1] = (uint8_t)(v >> 8), f[2] = (uint8_t)(v >> 16);
+            }
+            ph += UAC_FIR_M;
+        } while (ph < UAC_FIR_L);
+        ph -= UAC_FIR_L;
+    }
+}
+#endif
 static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1,
                                                   uint32_t c_lo, uint32_t c_hi)
 {
     uint32_t w = ua_w, i, j, c, k = 0, h = r6.w, ph = r6.ph;
+#if FELUCCA_CDC
+    if (uac6_kern) {
+        uac6_tap_alt(ch, n, m0, m1, c_lo, c_hi);
+        return;
+    }
+#endif
     for (i = 0; i < n; i++) {
         uint32_t s = h & (RS_H - 1u);
         int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
