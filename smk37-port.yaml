@@ -211,6 +211,10 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
   round_3: the editor (4033cc7 - 4 x 40 KiB, "about 3.7 s", a USR3+4 big kit sent and played, a chopped break, FM-1
            backup restore); the slot read-back (6b76627, branch editor-slot-readback) - load from the keyboard and the
            pages filled after a restore - ok (owner)
+  stems_probe_1: "e09f7c4 (SMK_UAC_PROBE, console) on Windows 11 - enumerated as a 6-channel input (usbaudio.sys, WASAPI
+                 48000); WASAPI shared gave the samples exactly (levels and low bytes, 24 bit); exclusive and WDM-KS did
+                 not open. 882-byte packets go out, but 2989 of 32266 IN tokens found no packet queued (9 %, EP4 polled
+                 at 2 kHz, a packet ~0.6 ms on the bus) and 3 packets lost in 20 s; next - EP4 polled at 5 kHz too"
   not_yet: punch-in MIDI out with a DAW; the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
