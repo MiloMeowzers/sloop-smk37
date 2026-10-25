@@ -200,7 +200,8 @@ each named for the DAW:
 - Pan, trim and mix them in the DAW. The master stage (TEXTURE, DUST, the punch-ins, the DJ filter, the limiter) and
   the metronome are on no stem; punch-ins on the stems are to come.
 - The level follows HOME menu > AUDIO > **USB AUDIO**: MASTER (the MASTER knob, either LIMITER curve) or FULL (fixed).
-  The stereo output's full scale sits at −12 dBFS in the stems: 12 dB of headroom and no limiter on them.
+  The stereo output's full scale sits at −6 dBFS in the stems: 6 dB of headroom and no limiter on them. For stems, USB
+  AUDIO = FULL gives a fixed level that does not follow the knob.
 - 48 kHz only (6 channels of 24 bit fill a full-speed USB packet). The FM-1's USB RATE does not apply. The stems are
   resampled on both cores, shared by the work each has; they are one 0.7 ms block later than the stereo output.
 - Each layout is its own USB device with its own serial number, so a computer keeps its name (and your renames) in any

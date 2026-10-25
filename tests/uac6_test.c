@@ -9,7 +9,7 @@
  *                channels 0..4 follow it, the low bytes are there (24 bit, not 16)
  *   stems        (T_STEMS) renders of 256 frames at 44.1 kHz through uac6_tap (6 channels: sines, DC, silence) against
  *                packets at 1 kHz (uac6_ring_packet), 3 s: 48 frames a ms, no underrun or overrun once primed, DC
- *                x 64 (the stereo output's full scale at -12 dBFS), the sines' level and frequency (no frame lost or
+ *                x 128 (the stereo output's full scale at -6 dBFS), the sines' level and frequency (no frame lost or
  *                doubled), the level m scales, the 24-bit ceiling
  * The SIE is never touched. */
 #include <stdint.h>
@@ -284,7 +284,7 @@ static void test_exact(void)
                     int64_t a = 2048, v;
                     for (k = 0; k < UAC_FIR_N; k++)
                         a += (int64_t)r6_taps[ph][k] * hist[ch][(h - UAC_FIR_N + k) & 31u];
-                    v = ((a >> 12) * m) >> 5;
+                    v = ((a >> 12) * m) >> 4;
                     v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
                     bad += s24(f + 3u * ch) != (int32_t)v;
                 }
@@ -318,7 +318,7 @@ static void test_stems(void)
     nf = stems_run(4096, 30000);
     und = uac.underruns, ovr = uac.overruns;
     for (i = from; i < nf; i++) {
-        int32_t d2 = got[i][2] - 64000, d3 = got[i][3] + 128000, d5 = got[i][5] - 1920000;
+        int32_t d2 = got[i][2] - 128000, d3 = got[i][3] + 256000, d5 = got[i][5] - 3840000;
         e2 = abs(d2) > e2 ? abs(d2) : e2, e3 = abs(d3) > e3 ? abs(d3) : e3, e5 = abs(d5) > e5 ? abs(d5) : e5;
         z1 = abs(got[i][1]) > z1 ? abs(got[i][1]) : z1;
         pk0 = abs(got[i][0]) > pk0 ? abs(got[i][0]) : pk0;
@@ -330,20 +330,20 @@ static void test_stems(void)
            e2, e3, e5, pk0, pk4, zc);
     check("SYNTHS+RET: 48 frames a ms (3 s: 144000 +-100)", nf > 143900u && nf < 144100u);
     check("no underrun, no overrun", und == 0 && ovr == 0);
-    check("DC x 64: the stereo output's full scale at -12 dBFS (24 bit)", e2 <= 2 && e3 <= 2 && e5 <= 3);
+    check("DC x 128: the stereo output's full scale at -6 dBFS (24 bit)", e2 <= 2 && e3 <= 2 && e5 <= 3);
     check("a silent channel stays 0", z1 == 0);
-    check("1 kHz at 8000 -> 512000 (+-2 %), 3 kHz at 4000 -> 256000 (+-3 %)",
-          abs(pk0 - 512000) <= 10240 && abs(pk4 - 256000) <= 7680);
+    check("1 kHz at 8000 -> 1024000 (+-2 %), 3 kHz at 4000 -> 512000 (+-3 %)",
+          abs(pk0 - 1024000) <= 20480 && abs(pk4 - 512000) <= 15360);
     check("1 kHz: 1000 rising zero crossings in a second of 48 kHz frames (none lost or doubled)", zc >= 999u && zc <= 1001u);
     nf = stems_run(2048, 300000);                       /* half the level; a channel past the ceiling */
     e2 = 0, e5 = 0;
     for (i = from; i < nf; i++) {
-        int32_t d2 = got[i][2] - 32000;
+        int32_t d2 = got[i][2] - 64000;
         e2 = abs(d2) > e2 ? abs(d2) : e2;
         e5 = got[i][5] > e5 ? got[i][5] : e5;
     }
     check("the level m: 2048 halves it", e2 <= 2);
-    check("the 24-bit ceiling: 300000 x 32 clamps at 8388607", e5 == 8388607);
+    check("the 24-bit ceiling: 300000 x 64 clamps at 8388607", e5 == 8388607);
 }
 #endif
 

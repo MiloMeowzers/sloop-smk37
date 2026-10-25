@@ -1311,10 +1311,11 @@ static __attribute__((noinline)) void uac_tap48(const int32_t *out, uint32_t n)
 #if UAC6
 /* the stems, one block: the 6 channels of fx.c (mix units, 44.1 kHz) resampled to 48 kHz with the stereo stream's
  * filter (uac_fir.h), then x the level m0 .. m1 over the block (Q12: the MASTER knob's, or 4096 with USB AUDIO = FULL)
- * with the stereo output's full scale at -12 dBFS (x 64 / 4096 in 24 bit: 12 dB of headroom, no limiter), clamped at
+ * with the stereo output's full scale at -6 dBFS (x 128 / 4096 in 24 bit: 6 dB of headroom, no limiter; 12 dB until the
+ * owner found the stems low), clamped at
  * 24-bit full scale (the hard ceiling), into the ring. One 32-bit multiply a tap: the taps in RAM, each phase forwards
  * (r6_taps), rounded to Q12 with each phase's sum kept at exactly 4096 (unity: DC exact), the input halved and clamped
- * at +12 dB (2^18 mix units: |sum| < 5270 x 2^18 < 2^31); the level once an output sample. The resolution: half a
+ * at 2^18 (2^19 mix units, +24 dB: |sum| < 5270 x 2^18 < 2^31); the level once an output sample. The resolution: half a
  * mix unit (half the stereo output's step). (On the unit, the Q15 taps read from flash in two directions with two
  * multiplies a tap cost ~38 us a channel a block, a third of a core for the 6.) The channels are independent: fx.c
  * gives some to core 1 and the rest to core 0 in the same block (stem_balance): uac6_room (core 0) decides whether the
@@ -1369,7 +1370,7 @@ static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint
                 int32_t a = 2048, v;
                 for (j = 0; j < UAC_FIR_N; j++)
                     a += t[j] * x[j];
-                v = ((a >> 12) * m) >> 5;               /* (half mix units x m / 4096 x 64 x 2) */
+                v = ((a >> 12) * m) >> 4;               /* (half mix units x m / 4096 x 128 x 2) */
                 v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
                 f[0] = (uint8_t)v, f[1] = (uint8_t)(v >> 8), f[2] = (uint8_t)(v >> 16);
             }
