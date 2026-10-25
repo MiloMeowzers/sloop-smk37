@@ -1304,35 +1304,43 @@ static __attribute__((noinline)) void uac_tap48(const int32_t *out, uint32_t n)
  * ceiling), then 44.1 -> 48 kHz as uac_tap48 (the same taps) into the ring. The sums in 32 bits, exact: each
  * sample split x = 256 hi + lo (hi 16 bits, lo 0..255), the taps' sums of t hi and t lo apart (|sum t hi| < 2^31:
  * the taps' absolute sum is 42156), then (256 A_hi + A_lo) >> 15 in two steps. On the unit the 64-bit sums cost
- * ~15 % of core 0 (fx.c runs this on core 1 now). Runs on core 1 (fx.c cpu1_block_job) or core 0 */
-_Static_assert(UAC_FIR_Q == 15, "uac6_tap: (256 ah + al) >> 15 as ah >> 7 + ...");
-static __attribute__((noinline)) void uac6_tap(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1)
+ * ~15 % of core 0. The channels are independent: fx.c gives some to core 1 and the rest to core 0 in the same block
+ * (as much to each as balances the two cores' work): uac6_room (core 0) decides whether the block goes in at all,
+ * uac6_tap_ch fills channels c_lo .. c_hi - 1 of its frames (either core, from the same state; nothing else is
+ * written), uac6_commit (core 0, once both are done) moves the state and the ring on */
+_Static_assert(UAC_FIR_Q == 15, "uac6_tap_ch: (256 ah + al) >> 15 as ah >> 7 + ...");
+static int uac6_room(uint32_t n)
+{
+    if (!uac.feed)
+        return 0;
+    if (UA_N - (ua_w - ua_r) < n + n / 8u + 2u) {       /* nobody reads: drop the block */
+        uac.overruns++;
+        return 0;
+    }
+    return 1;
+}
+static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1,
+                                                  uint32_t c_lo, uint32_t c_hi)
 {
     uint32_t w = ua_w, i, j, c, k = 0, h = r6.w, ph = r6.ph;
-    if (!uac.feed)
-        return;
-    if (UA_N - (w - ua_r) < n + n / 8u + 2u) {         /* nobody reads: drop the block */
-        uac.overruns++;
-        return;
-    }
     for (i = 0; i < n; i++) {
         uint32_t s = h & (RS_H - 1u);
         int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
-        for (c = 0; c < U6_CH; c++) {
+        for (c = c_lo; c < c_hi; c++) {
             int64_t y = ((int64_t)ch[c][i] * m) >> 6;
             r6.h[c][s] = r6.h[c][s + RS_H] = y > 8388607 ? 8388607 : y < -8388608 ? -8388608 : (int32_t)y;
         }
         h++;
         s = (h - UAC_FIR_N) & (RS_H - 1u);              /* the window: oldest .. this frame */
         do {
-            uint8_t *f = u6_ring + ((w + k++) & (UA_N - 1u)) * U6_FB;
+            uint8_t *f = u6_ring + ((w + k++) & (UA_N - 1u)) * U6_FB + 3u * c_lo;
             const int16_t *c0;
             int32_t dir;
             if (ph < UAC_FIR_L / 2u)
                 c0 = UAC_FIR[ph], dir = 1;
             else
                 c0 = &UAC_FIR[UAC_FIR_L - 1u - ph][UAC_FIR_N - 1u], dir = -1;   /* (symmetric: backwards) */
-            for (c = 0; c < U6_CH; c++, f += 3) {
+            for (c = c_lo; c < c_hi; c++, f += 3) {
                 const int32_t *x = &r6.h[c][s];
                 const int16_t *t = c0;
                 int32_t ah = 0, al = 1 << (UAC_FIR_Q - 1), v;
@@ -1348,10 +1356,29 @@ static __attribute__((noinline)) void uac6_tap(const int32_t *const *ch, uint32_
         } while (ph < UAC_FIR_L);
         ph -= UAC_FIR_L;
     }
-    r6.w = h;
+}
+static void uac6_commit(uint32_t n)                    /* the block's frames written: the state and the ring move on */
+{
+    uint32_t i, k = 0, ph = r6.ph;
+    for (i = 0; i < n; i++) {
+        do {
+            k++;
+            ph += UAC_FIR_M;
+        } while (ph < UAC_FIR_L);
+        ph -= UAC_FIR_L;
+    }
+    r6.w += n;
     r6.ph = ph;
     RING_PUBLISH();
-    ua_w = w + k;
+    ua_w += k;
+}
+/* the whole block on one core (the host tests) */
+static void uac6_tap(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1)
+{
+    if (!uac6_room(n))
+        return;
+    uac6_tap_ch(ch, n, m0, m1, 0, U6_CH);
+    uac6_commit(n);
 }
 #endif
 

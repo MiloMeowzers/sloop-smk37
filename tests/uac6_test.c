@@ -191,6 +191,48 @@ static uint32_t stems_run(int32_t m, int32_t amp_dc)
     }
     return nf;
 }
+/* the channels shared between the cores (fx.c stem_k): any split, block by block, the same bytes as all 6 at once */
+static void test_split(void)
+{
+    static int32_t c[6][32];
+    static uint8_t whole[UA_N * U6_FB];
+    const int32_t *cp[6] = {c[0], c[1], c[2], c[3], c[4], c[5]};
+    uint32_t pass, b, i, ch, rnd, w0 = 0, nb = 0;
+    for (pass = 0; pass < 2u; pass++) {
+        memset(&uac, 0, sizeof uac);
+        ua_w = ua_r = 0;
+        usb.up = 1, usb.config = 1, uac.alt = 1, uac.flowing = 1;
+        uac_rate_set(48000);
+        uac_render_start();
+        w0 = ua_w;
+        rnd = 777u;
+        for (b = 0; b < 10u; b++) {
+            uint32_t k;
+            for (i = 0; i < 32u; i++)
+                for (ch = 0; ch < 6u; ch++) {
+                    rnd = rnd * 1664525u + 1013904223u;
+                    c[ch][i] = (int32_t)(rnd >> 12) - (1 << 19);
+                }
+            rnd = rnd * 1664525u + 1013904223u;
+            k = (rnd >> 16) % 7u;                       /* core 1's share this block, 0..6 */
+            if (!pass) {
+                uac6_tap(cp, 32u, 4096, 3000);
+            } else if (uac6_room(32u)) {
+                uac6_tap_ch(cp, 32u, 4096, 3000, 0, k);   /* (core 1) */
+                uac6_tap_ch(cp, 32u, 4096, 3000, k, 6);   /* (core 0) */
+                uac6_commit(32u);
+            }
+        }
+        nb = ua_w - w0;
+        if (!pass)
+            for (i = 0; i < nb; i++)
+                memcpy(whole + i * U6_FB, u6_ring + ((w0 + i) & (UA_N - 1u)) * U6_FB, U6_FB);
+    }
+    for (i = 0, b = 0; i < nb; i++)
+        b += memcmp(whole + i * U6_FB, u6_ring + ((w0 + i) & (UA_N - 1u)) * U6_FB, U6_FB) != 0;
+    printf("   %u frames compared\n", nb);
+    check("the channels shared between the cores, any split: the same bytes as on one core", b == 0 && nb > 340u);
+}
 /* the 32-bit split sums against 64-bit ones: random full-range input and levels, every output sample */
 static void test_exact(void)
 {
@@ -288,6 +330,7 @@ int main(void)
     test_descriptors();
 #if T_STEMS
     test_exact();
+    test_split();
     test_stems();
 #else
     test_packets();

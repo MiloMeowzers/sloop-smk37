@@ -221,6 +221,8 @@ static void con_status(void)
 #if UAC6
     con_kv("usb_layout", usb_layout_mode);               /* 0 STEREO, 1 DRUMS+RET, 2 SYNTHS+RET, 3 ALL DRY (usb.c) */
     con_kv("uac6_alt", uac.alt);                         /* the stems' stream (usb.c): 1 the host records */
+    con_kv("stem_k", stem_k);                            /* of the 6 channels, those core 1 resamples (fx.c stem_balance) */
+    con_kv("stem_ch_us", (int32_t)(stem_tch / 24u));    /* a channel's resampling, a block, us (TIMER4: 24 a us) */
     con_kv("uac6_underruns", (int32_t)uac.underruns);
     con_kv("uac6_overruns", (int32_t)uac.overruns);
     con_kv("uac6_adj", (int32_t)(uac.adj_up - uac.adj_down));

@@ -71,7 +71,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         usb_full_now = (uint8_t)(usb_full && uac.feed);  /* menu USB AUDIO = FULL, while the computer records */
 #if UAC6
         stem_feed = (uint8_t)(uac6_on && uac.feed);     /* SMK-37: the stems, while the computer records them */
-        stem_tap = uac6_tap;                            /* (fx.c: either core resamples them) */
+        stem_room = uac6_room, stem_tap_ch = uac6_tap_ch, stem_commit = uac6_commit;   /* (fx.c: both cores resample them) */
         if (stem_feed)
             usb_full_now = 0;                           /* (no stereo stream: no second limiter) */
 #endif
