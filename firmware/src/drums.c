@@ -43,7 +43,18 @@ static struct {
     int32_t a0, a1;              /* the drum track's mute / solo attenuation over this block (fx.c), Q15, 0 = heard */
     int32_t glv, ggl, ggr;       /* (2.7) LEVEL and PAN as last mixed: a change glides (~3 ms, fx.c mix_glide) */
     uint8_t gon;
+#if BOARD_SMK37
+    uint8_t grp[NDRUM];          /* SMK-37: the stem group of the voice's sound (DRUM_GROUP_DEF; fx.c drum groups) */
+    uint8_t tail_g;              /* .. and of the voice last added to the declick tail */
+#endif
 } drums = {.set = -2};
+#if BOARD_SMK37
+/* SMK-37, the stems' drum groups (fx.c mix_drums_groups): set, the mono render goes to the voice's group's buffer */
+static int32_t *const *drum_grp;
+#define DRUM_TAIL_G(vi) (drums.tail_g = drums.grp[vi])
+#else
+#define DRUM_TAIL_G(vi) ((void)0)
+#endif
 
 static int32_t ds_buf[CTL];
 
@@ -228,6 +239,7 @@ static void __attribute__((noinline)) drum_synth_on(uint32_t note, uint32_t vel,
             if (drums.v[i].active && drums.v[i].note == 46u) {
                 drums.v[i].active = 0;
                 drums.tail += drums.v[i].s[7];
+                DRUM_TAIL_G(i);
             }
     for (i = 0; i < NDRUM; i++) {
         if (!drums.v[i].active) {
@@ -237,8 +249,10 @@ static void __attribute__((noinline)) drum_synth_on(uint32_t note, uint32_t vel,
         if (drums.v[i].age < v->age)
             v = &drums.v[i];
     }
-    if (v->active)
+    if (v->active) {
         drums.tail += v->s[7];
+        DRUM_TAIL_G(v - drums.v);
+    }
     i = (uint32_t)(v - drums.v);
     v->note = (uint8_t)note;
     v->vel = (uint8_t)vel;
@@ -249,6 +263,9 @@ static void __attribute__((noinline)) drum_synth_on(uint32_t note, uint32_t vel,
     drums.kit[i] = (uint8_t)kit;
     {
         uint32_t ln = lane_of_note(note);
+#if BOARD_SMK37
+        drums.grp[i] = DRUM_GROUP_DEF[ln % DRUM_LANES];
+#endif
         tweak = tweak && !DRUM_CLICK(note);
         ds_on(&drums.ds[i], snd, crush, note, vel, tweak ? drum_tune[ln] * 16 : 0, tweak ? (uint32_t)(drum_dec[ln] + 4) : 4u);
     }
@@ -316,6 +333,7 @@ static void drum_on(uint32_t note, uint32_t vel)
             if (drums.v[i].active && drums.v[i].note == 46u) {
                 drums.v[i].active = 0;
                 drums.tail += drums.v[i].s[7];          /* fade what it was playing, not a step */
+                DRUM_TAIL_G(i);
             }
     for (i = 0; i < NDRUM; i++) {                   /* free voice, else the oldest */
         if (!drums.v[i].active) {
@@ -325,8 +343,10 @@ static void drum_on(uint32_t note, uint32_t vel)
         if (drums.v[i].age < v->age)
             v = &drums.v[i];
     }
-    if (v->active)
+    if (v->active) {
         drums.tail += v->s[7];                      /* stolen voice: fade its last value */
+        DRUM_TAIL_G(v - drums.v);
+    }
     v->note = (uint8_t)note;
     v->vel = (uint8_t)vel;
     v->active = 1;
@@ -345,6 +365,9 @@ static void drum_on(uint32_t note, uint32_t vel)
         uint32_t ln = lane_of_note(v->note), tw = !DRUM_CLICK(v->note);
         int32_t shift = kit == 1u ? (note <= 36u ? -5 : -2) : kit == 3u ? 2 : kit == 4u ? -1 : 0;
         drums.kit[vi] = (uint8_t)kit;
+#if BOARD_SMK37
+        drums.grp[vi] = DRUM_GROUP_DEF[ln % DRUM_LANES];
+#endif
         drums.synth[vi] = 0;
         drums.filter[vi] = 0;
         drums.env[vi] = 32767;
@@ -373,7 +396,11 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
     gr = drums.ggr = mix_glide(drums.ggr, gr);
     for (i = 0; i < n && drums.tail; i++) {         /* declick tail, ~0.4 ms */
         if (mono) {
+#if BOARD_SMK37
+            (drum_grp ? drum_grp[drums.tail_g & 3u] : mono)[i] += drums.tail;
+#else
             mono[i] += drums.tail;
+#endif
         } else {
             ml[i] += drums.tail;
             mr[i] += drums.tail;
@@ -393,7 +420,11 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
             if (s > pk || -s > pk)
                 pk = s < 0 ? -s : s;
             if (mono) {
+#if BOARD_SMK37
+                (drum_grp ? drum_grp[drums.grp[k] & 3u] : mono)[i] += s;
+#else
                 mono[i] += s;
+#endif
                 continue;
             }
             ml[i] += (s * gl) >> 12;
@@ -405,6 +436,7 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
         }
         if (!v->active) {
             drums.tail += v->s[7];                  /* ended: no step at the end */
+            DRUM_TAIL_G(k);
             v->s[7] = 0;
         }
     }
@@ -454,7 +486,11 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
             if (s > pk || -s > pk)
                 pk = s < 0 ? -s : s;
             if (mono) {
+#if BOARD_SMK37
+                (drum_grp ? drum_grp[drums.grp[k] & 3u] : mono)[i] += s;
+#else
                 mono[i] += s;
+#endif
                 continue;
             }
             ml[i] += (s * gl) >> 12;

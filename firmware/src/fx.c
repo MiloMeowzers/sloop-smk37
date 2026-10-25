@@ -903,6 +903,77 @@ static void drum_insert(int32_t *l, int32_t *r, int32_t *v, int32_t *d, uint32_t
 }
 /* the drum track with the metronome: drums_render, through the SLICER when it is on (slicer.c), then through its
  * INSERT (2.6) and the track's FILTER when they are on (into drum_buf, left, right and the two sends apart, then added) */
+#if BOARD_SMK37
+/* SMK-37, the stems' drum groups (USB LAYOUT DRUMS+RET, ALL DRY; smk37-port.yaml follow_up.stems): the kit rendered mono
+ * into four buffers, each voice into its sound's group (drums.c drum_grp: KICK, SNARE, HATS, PERC), each group through
+ * the drum track's chain - the SLICER GATE (the same gain on every group: the gate run on a unit signal), its INSERT
+ * and its FILTER (the drum track's own four states, the kit's L, R, REV, DLY's in the stereo mix, one a group here)
+ * - then the drum track's pan and sends into the mix, as slicer_drums does the mono kit. The groups are the stems
+ * (fx.c staging: drum_buf). Linear effects as on the kit; INSERT's drive and fold act on each group, not the kit. A
+ * group silent for 64 blocks skips its INSERT and FILTER (their states at rest). SLICER STUT records the track (8 KB
+ * a track: four groups' would not fit in RAM): while it runs, 0 - the kit as before, one stem (mix_drums) */
+static uint8_t dg_ran;                   /* this block's drums went through the groups (the staging's choice) */
+static uint8_t dg_idle[DG_N];            /* blocks a group has been silent (64: its effects skipped) */
+static int mix_drums_groups(uint32_t n, mixacc_t *mx, int flt, const tsvf_t *fc)
+{
+    static int32_t gu[CTL];              /* the gate's gain (a unit signal through the SLICER), Q14 */
+    track_t *t = TDRUM;
+    const sl_t *s = &sl[TRK_DRUM];
+    int32_t *G[DG_N] = {drum_buf[0], drum_buf[1], drum_buf[2], drum_buf[3]};
+    uint32_t i, g;
+    int gate;
+    if (t->p[P_SLCR] == SL_STUT || s->w || s->loop)
+        return 0;
+    for (g = 0; g < DG_N; g++)
+        for (i = 0; i < n; i++)
+            G[g][i] = 0;
+    drum_grp = G;
+    drums_render_mono(G[0], n);
+    drum_grp = 0;
+    gate = t->p[P_SLCR] != SL_OFF || s->gc;
+    if (gate) {
+        for (i = 0; i < n; i++)
+            gu[i] = 16384;
+        slicer_track(t, gu, n);
+    } else {
+        slicer_track(t, 0, n);                          /* (the step clock runs on) */
+    }
+    for (g = 0; g < DG_N; g++) {
+        uint32_t live = 0;
+        for (i = 0; i < n; i++)
+            live |= (uint32_t)G[g][i];
+        dg_idle[g] = live ? 0 : (uint8_t)(dg_idle[g] < 255u ? dg_idle[g] + 1u : 255u);
+        if (gate)
+            for (i = 0; i < n; i++)
+                G[g][i] = (int32_t)(((int64_t)G[g][i] * gu[i]) >> 14);
+    }
+    if (t->p[P_ITYPE] | t->ins_run) {                   /* the INSERT, a state a group */
+        int run = 0;
+        for (g = 0; g < DG_N; g++)
+            if (dg_idle[g] < 64u)
+                run |= ins_run(&ins[NPART + g], t->p, G[g], n);
+        t->ins_run = (uint8_t)run;
+    }
+    if (flt)                                            /* the FILTER, a state a group */
+        for (g = 0; g < DG_N; g++)
+            if (dg_idle[g] < 64u)
+                tflt_run(&tflt[TRK_DRUM], fc, G[g], n, g);
+    {   /* the pan and the sends, as slicer_drums */
+        int32_t send = send_thr(song.g[G_DRREV] * 258, thr_rev), dsend = send_thr(song.g[G_DRDLY] * 258, thr_dly), pan = t->p[P_PAN];
+        int32_t gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
+        for (i = 0; i < n; i++) {
+            int32_t x = G[0][i] + G[1][i] + G[2][i] + G[3][i];
+            mx->l[i] += (x * gl) >> 12;
+            mx->r[i] += (x * gr) >> 12;
+            if (send)
+                mx->sr[i] += mulq15(x, send);
+            if (dsend)
+                mx->sd[i] += mulq15(x, dsend);
+        }
+    }
+    return 1;
+}
+#endif
 static void mix_drums(uint32_t n, mixacc_t *mx)
 {
     uint32_t i;
@@ -913,6 +984,12 @@ static void mix_drums(uint32_t n, mixacc_t *mx)
     drums.a1 = 32767 - gain_next(TDRUM);
     flt = n <= CTL && djf_block(f, TDRUM->p[P_TFLT], &fc, tflt_reso());   /* the drum track's FILTER */
 #if BOARD_SMK37
+    dg_ran = 0;
+    if (stem_feed && n <= CTL && (stem_layout == 1u || stem_layout == 3u) && mix_drums_groups(n, mx, flt, &fc)) {
+        dg_ran = 1;                                     /* (DRUMS+RET, ALL DRY: the kit in its groups) */
+        click_render(mx->l, mx->r, n);
+        return;
+    }
     if (flt || (n <= CTL && (TDRUM->p[P_ITYPE] | TDRUM->ins_run || stem_feed))) {   /* (or the stems: the kit apart) */
 #else
     if (flt || (n <= CTL && (TDRUM->p[P_ITYPE] | TDRUM->ins_run))) {   /* .. or its INSERT: left, right, the sends */
@@ -1384,10 +1461,21 @@ static void mix_block(int32_t *out, uint32_t n)
 #if BOARD_SMK37
     if (stem_feed && n <= CTL) {                        /* the stems' block set aside, with its level (the next block
                                                          * resamples it, both cores done with the last) */
+        static const int32_t ZERO[CTL];
         const int32_t *src[6] = {stem_syn[0], stem_syn[1], stem_syn[2], stem_drum, wet_l, wet_r};   /* SYNTHS+RET */
-        uint32_t c;
+        uint32_t c, i;
+        if (stem_layout == 1u) {                        /* DRUMS+RET: the groups (STUT: the kit on KICK's) */
+            src[0] = dg_ran ? drum_buf[0] : stem_drum, src[1] = dg_ran ? drum_buf[1] : ZERO;
+            src[2] = dg_ran ? drum_buf[2] : ZERO, src[3] = dg_ran ? drum_buf[3] : ZERO;
+        } else if (stem_layout == 3u) {                 /* ALL DRY: the synths, KICK, SNARE, HATS + PERC */
+            src[3] = dg_ran ? drum_buf[0] : stem_drum, src[4] = dg_ran ? drum_buf[1] : ZERO;
+            src[5] = ZERO;
+        }
         for (c = 0; c < 6u; c++)
             memcpy(stem_stage[c], src[c], n * sizeof(int32_t));
+        if (stem_layout == 3u && dg_ran)
+            for (i = 0; i < n; i++)
+                stem_stage[5][i] = drum_buf[2][i] + drum_buf[3][i];
         stem_sm0 = usb_full ? 4096 : m0;                /* USB AUDIO = FULL: as MASTER all the way up */
         stem_sm1 = usb_full ? 4096 : m1;
         stem_sn = n;

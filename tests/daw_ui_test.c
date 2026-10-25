@@ -228,13 +228,17 @@ int main(int argc, char **argv)
           MS_FIRST[MS_USB] == MI_LAYOUT && MI_FRESO + 1 == MI_LAYOUT && MS_FIRST[MS_SEQ] == MI_ADV && MI_LAYOUT + 1 == MI_ADV &&
           MS_FIRST[MS_PLAY] == MI_DPREV + 1,
           "SCREEN: KNOB LAYOUT, KNOB ACCEL; AUDIO ends with FILTER RESO; USB: USB LAYOUT; SEQ; PLAY: KEY VELOCITY, BEND UP, BEND DOWN, LIMITER; MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4");
-    {   /* USB LAYOUT: the layouts this build makes (STEREO, SYNTHS+RET), the knob stops at the ends, OCT+ round */
+    {   /* USB LAYOUT: STEREO, DRUMS+RET, SYNTHS+RET, ALL DRY; the knob stops at the ends, OCT+ round */
         uint16_t col;
         usb_layout = UL_STEREO;
         mi_set(MI_LAYOUT, 1);
+        check(usb_layout == UL_DRUMS && !strcmp(mi_value(MI_LAYOUT, &col), "DRUMS+RET"), "USB LAYOUT: right DRUMS+RET");
+        mi_set(MI_LAYOUT, 1);
         check(usb_layout == UL_SYNTHS && !strcmp(mi_value(MI_LAYOUT, &col), "SYNTHS+RET"), "USB LAYOUT: right SYNTHS+RET");
         mi_set(MI_LAYOUT, 1);
-        check(usb_layout == UL_SYNTHS, "USB LAYOUT: stops at the end");
+        check(usb_layout == UL_DRY && !strcmp(mi_value(MI_LAYOUT, &col), "ALL DRY"), "USB LAYOUT: right ALL DRY");
+        mi_set(MI_LAYOUT, 1);
+        check(usb_layout == UL_DRY, "USB LAYOUT: stops at the end");
         mi_set(MI_LAYOUT, 0);
         check(usb_layout == UL_STEREO && !strcmp(mi_value(MI_LAYOUT, &col), "STEREO"), "USB LAYOUT: OCT+ round to STEREO");
         mi_set(MI_LAYOUT, -1);

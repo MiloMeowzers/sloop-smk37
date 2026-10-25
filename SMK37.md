@@ -151,7 +151,7 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 |---|---|---|---|
 | SCREEN | KNOB LAYOUT | K7 | FM-1 (default): K1 MASTER, K2 SELECT, K3 ALGORITHM, K4 PRESETS, K5–K8 the dials. SMK: K1–K4 the dials, K5 MASTER, K6 SELECT, K7 PRESETS, K8 ALGORITHM. The knobs are endless: the new layout works at once. Switched to SMK, the menu's rows move to K1–K4 (K3 switches back) |
 | SCREEN | KNOB ACCEL | K8 | SLOOP's: ON (default), a fast turn moves further; OFF, one value a detent |
-| USB | USB LAYOUT | K5 | STEREO (default): the USB audio input as on the FM-1. SYNTHS+RET: [stems](#usb-audio-stems) for a DAW. At the next power-on (RESTART shows until then) |
+| USB | USB LAYOUT | K5 | STEREO (default): the USB audio input as on the FM-1. DRUMS+RET, SYNTHS+RET, ALL DRY: [stems](#usb-audio-stems) for a DAW. At the next power-on (RESTART shows until then) |
 | PLAY | KEY VELOCITY | K5 | see [Velocity](#velocity) |
 | PLAY | BEND UP | K6 | the pitch wheel up, on the internal sounds (the selected synth track): OFF, 1, 2, 3, 4, 5, 7 or 12 semitones, default 7. MIDI IN's pitch bend has its own (GLO > MIDI 2 > BEND) |
 | PLAY | BEND DOWN | K7 | the same, down (default 7; e.g. +2 up, −12 down). The earlier BEND RANGE is read as both |
@@ -178,24 +178,33 @@ adapter.
 
 ## USB audio stems
 
-HOME menu > USB > **USB LAYOUT** = **SYNTHS+RET** (at the next power-on): the USB audio input becomes 6 mono
-channels, 24 bit, 48 kHz, each named for the DAW:
+HOME menu > USB > **USB LAYOUT** (at the next power-on): the USB audio input becomes 6 mono channels, 24 bit, 48 kHz,
+each named for the DAW:
 
-| Channel | SYNTHS+RET |
-|---|---|
-| 1–3 | SYN 1, SYN 2, SYN 3: each synth track after its own chain (DIST, INSERT, SLICER, FILTER), LEVEL, mute / solo and DUCK, before its pan and sends |
-| 4 | DRUMS: the drum track the same way, the kit as one stem |
-| 5–6 | RET L, RET R: the shared reverb, delay and chorus, with what every track sends to them |
+| Channel | DRUMS+RET | SYNTHS+RET | ALL DRY |
+|---|---|---|---|
+| 1 | KICK | SYN 1 | SYN 1 |
+| 2 | SNARE | SYN 2 | SYN 2 |
+| 3 | HATS | SYN 3 | SYN 3 |
+| 4 | PERC | DRUMS (the kit as one stem) | KICK |
+| 5 | RET L | RET L | SNARE |
+| 6 | RET R | RET R | HATS+PERC |
 
+- A synth track's stem is the track after its own chain (DIST, INSERT, SLICER, FILTER), LEVEL, mute / solo and DUCK,
+  before its pan and sends. RET L / R: the shared reverb, delay and chorus, with what every track sends to them.
+- The drum groups: each sound in its group (KICK: KICK, KICK 2 / SNARE: SNARE, CLAP, RIM, SNARE 2 / HATS: HAT, OPEN
+  HAT, PEDAL, CRASH, RIDE / PERC: the toms, SHAKER, CONGA, COWBELL; the pads show them in their colours), each group
+  through the drum track's SLICER GATE, INSERT and FILTER, before the track's pan and sends. INSERT's drive and fold act
+  on each group (on the kit in the stereo mix). While SLICER **STUT** runs on the drum track the kit goes out as one
+  stem on KICK's channel (STUT records the whole track). Per-kit groups and choke are to come.
 - Pan, trim and mix them in the DAW. The master stage (TEXTURE, DUST, the punch-ins, the DJ filter, the limiter) and
   the metronome are on no stem; punch-ins on the stems are to come.
 - The level follows HOME menu > AUDIO > **USB AUDIO**: MASTER (the MASTER knob, either LIMITER curve) or FULL (fixed).
   The stereo output's full scale sits at −12 dBFS in the stems: 12 dB of headroom and no limiter on them.
-- 48 kHz only (6 channels of 24 bit fill a full-speed USB packet). The FM-1's USB RATE does not apply.
+- 48 kHz only (6 channels of 24 bit fill a full-speed USB packet). The FM-1's USB RATE does not apply. The stems are
+  resampled on both cores, shared by the work each has; they are one 0.7 ms block later than the stereo output.
 - Each layout is its own USB device with its own serial number, so a computer keeps its name (and your renames) in any
   port; the first time a layout is used the computer sets it up once.
-- DRUMS+RET (the kit in four groups: KICK, SNARE, HATS, PERC) and ALL DRY (the synths, KICK, SNARE, HATS+PERC) are to
-  come, with per-kit stem groups and choke.
 
 ## DAW mode
 

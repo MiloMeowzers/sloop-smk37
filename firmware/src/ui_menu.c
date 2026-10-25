@@ -107,10 +107,10 @@ UI_SMALL static uint32_t mi_sec(uint32_t i)                 /* the section of it
 UI_SMALL static uint32_t mi_row(uint32_t i) { return i - MS_FIRST[mi_sec(i)]; }   /* its row: KNOB 1 + row sets it */
 
 #if BOARD_SMK37
-/* USB LAYOUT (usb.c UL_*): the names as the menu shows them, the layouts this build makes (3b: the drum groups for
- * DRUMS+RET and ALL DRY to come) and the knob's step through them */
+/* USB LAYOUT (usb.c UL_*): the names as the menu shows them, the layouts this build makes and the knob's step
+ * through them */
 static const char *const UL_MENU_NAME[UL_N] = {"STEREO", "DRUMS+RET", "SYNTHS+RET", "ALL DRY"};
-static int ul_offered(uint32_t l) { return l == UL_STEREO || l == UL_SYNTHS; }
+static int ul_offered(uint32_t l) { return l < UL_N; }
 UI_SMALL static uint32_t ul_step(uint32_t l, int32_t s)
 {
     uint32_t k, n = l % UL_N;
