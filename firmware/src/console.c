@@ -222,7 +222,6 @@ static void con_status(void)
     con_kv("usb_layout", usb_layout_mode);               /* 0 STEREO, 1 DRUMS+RET, 2 SYNTHS+RET, 3 ALL DRY (usb.c) */
     con_kv("uac6_alt", uac.alt);                         /* the stems' stream (usb.c): 1 the host records */
     con_kv("stem_k", stem_k);                            /* of the 6 channels, those core 1 resamples (fx.c stem_balance) */
-    con_kv("stemfir", uac6_kern);                        /* the filter's way (stemfir): 0 Q12, 1 64-bit, 2 32-bit split */
     con_kv("stem_ch_us", (int32_t)(stem_tch / 24u));    /* a channel's resampling, a block, us (TIMER4: 24 a us) */
     con_kv("uac6_underruns", (int32_t)uac.underruns);
     con_kv("uac6_overruns", (int32_t)uac.overruns);
@@ -384,19 +383,6 @@ static void con_exec(const char *p)
     else if (con_word(&p, "memr"))
         con_memr(p);
 #if FELUCCA_CPU1
-#if UAC6
-    else if (con_word(&p, "stemfir")) {                  /* stemfir 0|1|2: the stems' filter (usb.c uac6_tap_alt), live */
-        int ok;
-        uint32_t v = con_num(&p, &ok);
-        if (!ok || v > 2u) {
-            con_puts("usage: stemfir 0 (Q12, one multiply) | 1 (64-bit) | 2 (32-bit split)\r\n");
-            return;
-        }
-        uac6_kern = (uint8_t)v;
-        stem_tch = 0;                                    /* (stem_ch_us measures this one from now) */
-        con_kv("stemfir", (int32_t)v);
-    }
-#endif
     else if (con_word(&p, "cpu1")) {                     /* cpu1 units MASK | auto: the render units core 1 gets (fx.c
                                                          * units_split: bit k = synth part k, bit 3 = the drums), live */
         if (con_word(&p, "units")) {
