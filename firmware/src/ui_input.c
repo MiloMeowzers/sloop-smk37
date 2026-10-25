@@ -371,15 +371,34 @@ UI_SMALL static void ui_leds(void)
                 else
                     padled_set(c, 40, 40, 40);
             }
-        } else if (smk_pad_drums) {                /* DRUM KIT: the kit in the drum track's colour, a pad a sound: lit
-                                                    * while it sounds or is held, the others dim (never dark) */
-            const uint8_t *dc = PAL[TRK_DRUM % NTRK];
-            uint32_t snd = keys_sounding(TDRUM);
+        } else if (smk_pad_drums) {                /* DRUM KIT: a pad a sound (pad c = white key c = drum sound c), never
+                                                    * dark. The drum track selected: each pad dim in its sound's stem group
+                                                    * colour (drums.c DRUM_GROUP_DEF: KICK red, SNARE white, HATS cyan,
+                                                    * PERC violet), bright while it sounds or is held. A synth track
+                                                    * selected: the pads dim in its colour (it follows SELECT at once), a
+                                                    * drum hit or a held pad bright in its group's. Either way the synth
+                                                    * tracks' notes flash in their own colours (a note on the pad of its
+                                                    * white key; the selected track's on top) */
+            static const uint8_t GRP[DG_N][3] = {{255, 40, 30}, {200, 200, 200}, {40, 200, 255}, {190, 60, 255}};
+            const uint8_t *sc = PAL[song.sel % NTRK];
+            uint32_t snd[NTRK], k, dsel = is_drum(TSEL);
+            for (k = 0; k < NTRK; k++)
+                snd[k] = keys_sounding(&trk[k]);
             for (c = 0; c < 16u; c++) {
-                if (((snd >> key_of_white(c)) & 1u) || ((pad_drum_on >> c) & 1u))
-                    padled_set(SMK_PAD_OF_WHITE(c), dc[0], dc[1], dc[2]);
+                uint32_t kb = 1u << key_of_white(c);
+                const uint8_t *gc = GRP[DRUM_GROUP_DEF[c % DRUM_LANES] % DG_N], *fc = 0, *bc = dsel ? gc : sc;
+                if (((pad_drum_on >> c) & 1u) || (snd[TRK_DRUM] & kb && (dsel || !(snd[song.sel % NTRK] & kb))))
+                    fc = gc;                       /* (a synth track selected: its note on top of a drum hit) */
+                else if (snd[song.sel % NTRK] & kb)
+                    fc = sc;
                 else
-                    padled_set(SMK_PAD_OF_WHITE(c), (uint8_t)(dc[0] * 3u >> 3), (uint8_t)(dc[1] * 3u >> 3), (uint8_t)(dc[2] * 3u >> 3));
+                    for (k = 0; k < NPART && !fc; k++)
+                        if (snd[k] & kb)
+                            fc = PAL[k];
+                if (fc)
+                    padled_set(SMK_PAD_OF_WHITE(c), fc[0], fc[1], fc[2]);
+                else
+                    padled_set(SMK_PAD_OF_WHITE(c), (uint8_t)(bc[0] * 3u >> 3), (uint8_t)(bc[1] * 3u >> 3), (uint8_t)(bc[2] * 3u >> 3));
             }
         } else {                                   /* the track's colour: lit bright; playing, its steps normal */
             if (ui.layer == LY_PLAY && !kb_grid) { /* playing: the steps in reading order, the notes low at the bottom */

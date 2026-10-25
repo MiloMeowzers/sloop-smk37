@@ -74,6 +74,13 @@ static int32_t drum_set(void)
  * (the sampled kits: their samples; the synthesised kits: drum_synth.c DS_MAP). A black key plays
  * the lane of the white key left of it (two fingers on one sound). */
 static const uint8_t LANE_NOTE[DRUM_LANES] = {36, 35, 38, 39, 42, 46, 44, 37, 40, 43, 48, 49, 51, 70, 63, 56};
+#if BOARD_SMK37
+/* SMK-37: the default stem group of each sound (smk37-port.yaml follow_up.stems groups; per kit later): 0 KICK (KICK,
+ * KICK 2), 1 SNARE (SNARE, CLAP, RIM, SNARE 2), 2 HATS (HAT, OPEN HAT, PEDAL, CRASH, RIDE), 3 PERC (the toms, SHAKER,
+ * CONGA, COWBELL). The pads show them in their colours (ui_input.c) */
+enum { DG_KICK, DG_SNARE, DG_HATS, DG_PERC, DG_N };
+static const uint8_t DRUM_GROUP_DEF[DRUM_LANES] = {0, 0, 1, 1, 2, 2, 2, 1, 1, 3, 3, 2, 2, 3, 3, 3};
+#endif
 static const char *const LANE_NAME[DRUM_LANES] = {
     "KICK", "KICK 2", "SNARE", "CLAP", "HAT", "OPEN HAT", "PEDAL", "RIM",
     "SNARE 2", "LOW TOM", "HI TOM", "CRASH", "RIDE", "SHAKER", "CONGA", "COWBELL"};
