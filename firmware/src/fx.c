@@ -209,17 +209,19 @@ static uint8_t stem_k = 3;               /* the channels core 1 resamples (0..6)
 static uint32_t stem_t0, stem_t1, stem_tch, stem_nb;   /* this half: core 0's and core 1's work (units + channels),
                                                          * ticks; a channel's cost (smoothed); blocks */
 static volatile uint32_t stem_c1_ticks;  /* core 1's job this block (written there) */
-static void stem_balance(uint32_t t0, uint32_t t1, uint32_t tch)   /* a block's measures; every 8: stem_k moves */
+#define STEM_NB 32u                      /* blocks a decision (23 ms): a block's own ups and downs average out */
+static void stem_balance(uint32_t t0, uint32_t t1, uint32_t tch)   /* a block's measures; every STEM_NB: stem_k moves */
 {
     stem_t0 += t0, stem_t1 += t1;
     if (tch)
-        stem_tch = stem_tch ? (stem_tch * 7u + tch) / 8u : tch;
-    if (++stem_nb < 8u)
+        stem_tch = stem_tch ? (stem_tch * 15u + tch) / 16u : tch;
+    if (++stem_nb < STEM_NB)
         return;
-    if (stem_t1 > stem_t0 + stem_tch * 2u && stem_k > 0u)        /* core 0 waited: core 1 has too much */
+    if (stem_t1 > stem_t0 + stem_tch * (STEM_NB / 2u) && stem_k > 0u)   /* core 1 longer by half a channel a block:
+                                                                       * core 0 waits, one fewer for core 1 */
         stem_k--;
-    else if (stem_t0 > stem_t1 + stem_tch * 12u && stem_k < 6u)  /* core 0 longer by over a channel (8 blocks of
-                                                                  * 1.5 channels): one more for core 1 */
+    else if (stem_t0 > stem_t1 + stem_tch * (STEM_NB * 3u / 2u) && stem_k < 6u)   /* core 0 longer by 1.5 channels
+                                                                                * a block: one more for core 1 */
         stem_k++;
     stem_t0 = stem_t1 = stem_nb = 0;
 }

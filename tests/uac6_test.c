@@ -256,26 +256,22 @@ static void test_exact(void)
                 c[ch][i] = (int32_t)(rnd >> 12) - (1 << 19);   /* +-2^19 */
             }
         uac6_tap(cp, 32u, m0, m1);
-        for (i = 0; i < 32u; i++) {                     /* the reference, in 64 bits */
+        for (i = 0; i < 32u; i++) {                     /* the reference, in 64 bits (an overflow would show) */
             int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> 5);
             for (ch = 0; ch < 6u; ch++) {
-                int64_t y = ((int64_t)c[ch][i] * m) >> 6;
-                hist[ch][h & 31u] = y > 8388607 ? 8388607 : y < -8388608 ? -8388608 : (int32_t)y;
+                int32_t x = c[ch][i] >> 1;
+                hist[ch][h & 31u] = x > 262143 ? 262143 : x < -262144 ? -262144 : x;
             }
             h++;
             do {
                 const uint8_t *f = u6_ring + ((w0 + out) & (UA_N - 1u)) * U6_FB;
                 for (ch = 0; ch < 6u; ch++) {
-                    int64_t a = 1 << 14;
-                    int32_t v;
-                    for (k = 0; k < UAC_FIR_N; k++) {
-                        int32_t x = hist[ch][(h - UAC_FIR_N + k) & 31u];
-                        int32_t t = ph < UAC_FIR_L / 2u ? UAC_FIR[ph][k] : UAC_FIR[UAC_FIR_L - 1u - ph][UAC_FIR_N - 1u - k];
-                        a += (int64_t)t * x;
-                    }
-                    a >>= 15;
-                    v = a > 8388607 ? 8388607 : a < -8388608 ? -8388608 : (int32_t)a;
-                    bad += s24(f + 3u * ch) != v;
+                    int64_t a = 2048, v;
+                    for (k = 0; k < UAC_FIR_N; k++)
+                        a += (int64_t)r6_taps[ph][k] * hist[ch][(h - UAC_FIR_N + k) & 31u];
+                    v = ((a >> 12) * m) >> 5;
+                    v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
+                    bad += s24(f + 3u * ch) != (int32_t)v;
                 }
                 out++;
                 ph += UAC_FIR_M;
@@ -284,8 +280,21 @@ static void test_exact(void)
         }
     }
     printf("   %u frames compared\n", out);
-    check("the 32-bit split sums: every sample as 64-bit sums give it (random input and levels)",
+    check("one 32-bit multiply a tap: every sample as 64-bit sums give it (random full-range input and levels)",
           bad == 0 && out == ua_w - w0 && out > 340u);
+    {   /* the taps in RAM: each phase sums to exactly 4096 (unity), each tap near uac_fir.h's */
+        uint32_t p, j, unity = 1, near = 1;
+        for (p = 0; p < UAC_FIR_L; p++) {
+            int32_t sum = 0;
+            for (j = 0; j < UAC_FIR_N; j++) {
+                int32_t t = p < UAC_FIR_L / 2u ? UAC_FIR[p][j] : UAC_FIR[UAC_FIR_L - 1u - p][UAC_FIR_N - 1u - j];
+                sum += r6_taps[p][j];
+                near &= abs(r6_taps[p][j] * 8 - t) <= 4 + 8 * 6;   /* (the remainder on the largest: a few steps) */
+            }
+            unity &= sum == 4096;
+        }
+        check("the taps in RAM: every phase sums to unity, each tap as uac_fir.h's within the rounding", unity && near);
+    }
 }
 static void test_stems(void)
 {

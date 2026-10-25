@@ -1192,6 +1192,8 @@ static struct {
     int32_t h[U6_CH][2u * RS_H];
     uint32_t w, ph;
 } r6;
+static uint8_t r6_taps_ok;                     /* (uac6_taps_init: the taps in RAM, made once) */
+static void uac6_taps_init(void);
 #endif
 /* ---- the audio input: audio.c produces (render start, then each block), TIMER5 consumes ---- */
 static __attribute__((noinline)) void uac_render_start(void)   /* audio ISR, before a half buffer renders */
@@ -1220,6 +1222,8 @@ static __attribute__((noinline)) void uac_render_start(void)   /* audio ISR, bef
 #endif
 #if UAC6
         if (uac6_on) {                                  /* the stems: their ring, their resampler */
+            if (!r6_taps_ok)
+                uac6_taps_init();
             memset(&r6, 0, sizeof r6);
             for (i = 0; i < prime; i++)
                 memset(u6_ring + ((r + i) & (UA_N - 1u)) * U6_FB, 0, U6_FB);
@@ -1298,17 +1302,35 @@ static __attribute__((noinline)) void uac_tap48(const int32_t *out, uint32_t n)
 #endif
 
 #if UAC6
-/* the stems, one block (audio ISR, after fx.c mix_block): the 6 channels of fx.c (mix units, 44.1 kHz) x the level
- * m0 .. m1 over the block (Q12: the MASTER knob's, or 4096 with USB AUDIO = FULL) with the stereo output's full scale
- * at -12 dBFS (x 64 / 4096 in 24 bit: 12 dB of headroom, no limiter), clamped at 24-bit full scale (the hard
- * ceiling), then 44.1 -> 48 kHz as uac_tap48 (the same taps) into the ring. The sums in 32 bits, exact: each
- * sample split x = 256 hi + lo (hi 16 bits, lo 0..255), the taps' sums of t hi and t lo apart (|sum t hi| < 2^31:
- * the taps' absolute sum is 42156), then (256 A_hi + A_lo) >> 15 in two steps. On the unit the 64-bit sums cost
- * ~15 % of core 0. The channels are independent: fx.c gives some to core 1 and the rest to core 0 in the same block
- * (as much to each as balances the two cores' work): uac6_room (core 0) decides whether the block goes in at all,
- * uac6_tap_ch fills channels c_lo .. c_hi - 1 of its frames (either core, from the same state; nothing else is
- * written), uac6_commit (core 0, once both are done) moves the state and the ring on */
-_Static_assert(UAC_FIR_Q == 15, "uac6_tap_ch: (256 ah + al) >> 15 as ah >> 7 + ...");
+/* the stems, one block: the 6 channels of fx.c (mix units, 44.1 kHz) resampled to 48 kHz with the stereo stream's
+ * filter (uac_fir.h), then x the level m0 .. m1 over the block (Q12: the MASTER knob's, or 4096 with USB AUDIO = FULL)
+ * with the stereo output's full scale at -12 dBFS (x 64 / 4096 in 24 bit: 12 dB of headroom, no limiter), clamped at
+ * 24-bit full scale (the hard ceiling), into the ring. One 32-bit multiply a tap: the taps in RAM, each phase forwards
+ * (r6_taps), rounded to Q12 with each phase's sum kept at exactly 4096 (unity: DC exact), the input halved and clamped
+ * at +12 dB (2^18 mix units: |sum| < 5270 x 2^18 < 2^31); the level once an output sample. The resolution: half a
+ * mix unit (half the stereo output's step). (On the unit, the Q15 taps read from flash in two directions with two
+ * multiplies a tap cost ~38 us a channel a block, a third of a core for the 6.) The channels are independent: fx.c
+ * gives some to core 1 and the rest to core 0 in the same block (stem_balance): uac6_room (core 0) decides whether the
+ * block goes in at all, uac6_tap_ch fills channels c_lo .. c_hi - 1 of its frames (either core, from the same state;
+ * nothing else is written), uac6_commit (core 0, once both are done) moves the state and the ring on */
+static int16_t r6_taps[UAC_FIR_L][UAC_FIR_N];          /* phase p's taps, oldest sample first, Q12 */
+static void uac6_taps_init(void)                       /* (core 0, before the first stream: uac_render_start) */
+{
+    uint32_t p, j, big;
+    for (p = 0; p < UAC_FIR_L; p++) {
+        int32_t sum = 0;
+        big = 0;
+        for (j = 0; j < UAC_FIR_N; j++) {
+            int32_t t = p < UAC_FIR_L / 2u ? UAC_FIR[p][j] : UAC_FIR[UAC_FIR_L - 1u - p][UAC_FIR_N - 1u - j];
+            r6_taps[p][j] = (int16_t)((t + 4) >> 3);
+            sum += r6_taps[p][j];
+            if ((r6_taps[p][j] < 0 ? -r6_taps[p][j] : r6_taps[p][j]) > (r6_taps[p][big] < 0 ? -r6_taps[p][big] : r6_taps[p][big]))
+                big = j;
+        }
+        r6_taps[p][big] = (int16_t)(r6_taps[p][big] + 4096 - sum);   /* (unity: the rounding's remainder on the largest) */
+    }
+    r6_taps_ok = 1;
+}
 static int uac6_room(uint32_t n)
 {
     if (!uac.feed)
@@ -1327,28 +1349,20 @@ static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint
         uint32_t s = h & (RS_H - 1u);
         int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
         for (c = c_lo; c < c_hi; c++) {
-            int64_t y = ((int64_t)ch[c][i] * m) >> 6;
-            r6.h[c][s] = r6.h[c][s + RS_H] = y > 8388607 ? 8388607 : y < -8388608 ? -8388608 : (int32_t)y;
+            int32_t x = ch[c][i] >> 1;
+            r6.h[c][s] = r6.h[c][s + RS_H] = x > 262143 ? 262143 : x < -262144 ? -262144 : x;
         }
         h++;
         s = (h - UAC_FIR_N) & (RS_H - 1u);              /* the window: oldest .. this frame */
         do {
             uint8_t *f = u6_ring + ((w + k++) & (UA_N - 1u)) * U6_FB + 3u * c_lo;
-            const int16_t *c0;
-            int32_t dir;
-            if (ph < UAC_FIR_L / 2u)
-                c0 = UAC_FIR[ph], dir = 1;
-            else
-                c0 = &UAC_FIR[UAC_FIR_L - 1u - ph][UAC_FIR_N - 1u], dir = -1;   /* (symmetric: backwards) */
+            const int16_t *t = r6_taps[ph];
             for (c = c_lo; c < c_hi; c++, f += 3) {
                 const int32_t *x = &r6.h[c][s];
-                const int16_t *t = c0;
-                int32_t ah = 0, al = 1 << (UAC_FIR_Q - 1), v;
-                for (j = 0; j < UAC_FIR_N; j++, t += dir) {
-                    ah += *t * (x[j] >> 8);
-                    al += *t * (x[j] & 255);
-                }
-                v = (ah >> 7) + ((((ah & 127) << 8) + al) >> UAC_FIR_Q);   /* (256 ah + al) >> 15 */
+                int32_t a = 2048, v;
+                for (j = 0; j < UAC_FIR_N; j++)
+                    a += t[j] * x[j];
+                v = ((a >> 12) * m) >> 5;               /* (half mix units x m / 4096 x 64 x 2) */
                 v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
                 f[0] = (uint8_t)v, f[1] = (uint8_t)(v >> 8), f[2] = (uint8_t)(v >> 16);
             }
