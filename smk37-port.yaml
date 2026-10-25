@@ -174,6 +174,11 @@ follow_up:                  # decided and planned, NOT in this port; all of it b
                   (e.g. from the unit's key_mac, read only, + ST / DR / SY / AD), so each layout is its own stable
                   Windows device that keeps its name and renames in any port; the FM-1 build unchanged. To check on
                   the unit: stable names across ports and replugs, the editor and installer still find the keyboard"
+    stem_fx: "decided (owner) - HOME > USB > STEM FX, for the stem layouts - SLICER (as now; the punch-ins on the master
+             only), PUNCH (per-stem punch rings at 22 kHz in the master ring's 64 KB + the SLICER STUT recordings' 32 KB;
+             STUTTER, LOOP 16 / 32, GATE, HALF, STOP, REVERSE, REWIND, LOOP 8T on every stem, the same grid; STUT off),
+             PUNCH HQ (the rings at 44.1 kHz, half the times). The tonal punch-ins (filters, kills, CRUSH, ECHO, FREEZE)
+             stay on the master only"
     host_tests: "after the probe runs clean - (1) the DAW on Windows sees 6 inputs - Ableton through FlexASIO (WASAPI)
                 and ASIO4ALL, and MME/DirectX; REAPER on WASAPI; (2) the keyboard with another USB audio device
                 plugged in, direct and through a hub (882 B is ~76 % of a full-speed bus's periodic time - a single-TT
@@ -242,7 +247,14 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
                 all, shared)"
   pads: "e6fc934 DRUM KIT pads - the group colours, the selected track's base, every track's notes in their colour (owner -
         works like a treat)"
-  not_yet: punch-in MIDI out with a DAW; the DAW mode
+  punch_midi: "punch-in FX MIDI out recorded in the owner's DAW and played back into SLOOP - works flawlessly (owner)"
+  drums_ret: "8a8b54b DRUMS+RET recording - core 0 47-63 %, core 1 24-36 %, no voice shed, the stream clean (the groups
+             cost nothing measurable); the channels' content to confirm (owner)"
+  levels: "owner - the stereo USB recording too hot, clipping (USB AUDIO = MASTER, the knob at 80-90, still clipping
+          turned down: to measure with smk37-devtools stereo_check.py); the stems low (12 dB headroom + the knob's SOFT
+          curve) -> 6 dB of headroom (decided); drums lower than the synths in the stems (to compare with a clean
+          stereo take)"
+  not_yet: the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
   - "Snoop37 look (SNOOP37=1, opt-in; genkigenki's smk37-snoop-look branch: boot splash + jingle, BOOT LOGO setting):
