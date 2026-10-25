@@ -225,6 +225,9 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
                  48000); WASAPI shared gave the samples exactly (levels and low bytes, 24 bit); exclusive and WDM-KS did
                  not open. 882-byte packets go out, but 2989 of 32266 IN tokens found no packet queued (9 %, EP4 polled
                  at 2 kHz, a packet ~0.6 ms on the bus) and 3 packets lost in 20 s; next - EP4 polled at 5 kHz too"
+  stems_probe_2: "5b15217 (EP4 also polled at 5 kHz) - uac6_check 20 s, WASAPI shared - 955200 frames, no counter
+                 break, every sample bit exact (6 ch, 24 bit, 48 kHz); the keyboard - 20016 packets, 0 missed, 0
+                 stalls; cpu_pct 14 idle (13 before). first_tests (1) and (2) passed on Windows 11"
   not_yet: punch-in MIDI out with a DAW; the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
