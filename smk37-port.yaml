@@ -205,6 +205,36 @@ follow_up:                  # decided and planned, NOT in this port; all of it b
               goes out as one stem while STUT is on. Assignment is free per kit (toms in KICK, perc unused, ...)"
     stut: decided - per group if the RAM is there, else the whole kit as one stem while STUT is on
 
+next_spec:                  # the owner's decisions after the c17079c tests (2026-10-26); to build in order, behind BOARD_SMK37
+  levels: "the stems at a fixed level, not following MASTER (as FULL always); 18 dB of headroom (RET, the sum of every
+          send, hit the ceiling at 6); maybe a STEM LEVEL setting -18 / -12 / -6 dB. The stereo clipping: measure first
+          (smk37-devtools stereo_check.py)"
+  cpu: "open - a STEM RATE 44.1 option (no resampling: the stems' steady 15-20 % gone; the PC converts) beside 48 kHz,
+       and / or a shorter resampling filter (8 taps, ~1/3 less; quality measured first)"
+  punch_fixes: "REVERSE on the stems - the writer must leave the span played backwards (as punch.c punch_owns); REWIND
+               short on short rings (it fades where the past ends): keep or master-only; PUNCH HQ the main mode (the
+               owner - far superior), PUNCH (22 kHz) kept as the long one"
+  freeze_stems: "FREEZE on the stems - RET holds (the reverb), the dry stems fade under it as the master's mix does (a
+                gain on every stem, as GATE)"
+  punch_page: "STEM FX = PUNCH / HQ - its own punch-in page and pads, 3 rows (decided): LOOP 4 / 8 / 16 / 32 (loops,
+              orange) - STUTTER, REVERSE, STOP, HALF (time and tape, cyan) - LOOP 8T (loop colour), GATE (rhythm,
+              green), REWIND (tape), FREEZE (space, violet); the screen's tiles in the pads' colours, a held one white;
+              the header the stem mode and quality (stems - PUNCH HQ). Keys and MIDI notes unchanged (recorded punch-ins
+              replay as they were). FADE OUT left out (the owner: FREEZE and STOP do it)"
+  fx_lock: "FADER BANK toggles the FX layer locked open (SLOOP's lock: FX held + PATCH tapped; any other button but PLAY,
+           REC, OCT lets it go): no holding FX (the owner: performance, and button wear)"
+  seq_fx: "row 4 of the stem punch page, sequencer effects (what plays changes: every stem, the stereo mix, MIDI out
+          follow; no RAM, no CPU): SEQ FLIP (held: backwards from the current step); LOOP BACK (on press the loop ends
+          at the playhead and starts 1 bar / 1/2 bar / 3 beats / 2 beats before, played forwards while held: a loop of
+          what has just played); RAMP UP / RAMP DOWN (held: quantised steps on a 1/4, 1/8, 1/16 grid, straight or
+          dotted, each step 1/(steps a bar) of the starting tempo - a bar's worth to the floor or to double; the floor
+          1 BPM, 20 BPM with CLOCK OUT (a DAW's range: Live's least is 20); release snaps back at once). FLIP RETURN
+          SLIP / CARRY (a user option: both creative) for FLIP and LOOP BACK. Live controls on the page: < > FLIP
+          RETURN, PRESETS / ALGORITHM the LOOP BACK length and the RAMP grid. FX CH notes 80..83 for MIDI recording"
+  tempo_sync: "to decide before the tempo effects - SLOOP's own clock: all fine; CLOCK OUT: the DAW follows a ramp within
+              its range, recording against a moving tempo; IN = CLOCK: FLIP / LOOP BACK fine (SLIP returns to the clock's
+              place), RAMP greyed, or local (the sequencer ramps, the DAW keeps time, snap back in sync on release)"
+
 pedal: none
 
 modes: {}                   # the layer's DAW mode (< + >) is kept as it is
