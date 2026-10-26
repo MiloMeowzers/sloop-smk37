@@ -254,6 +254,17 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
           turned down: to measure with smk37-devtools stereo_check.py); the stems low (12 dB headroom + the knob's SOFT
           curve) -> 6 dB of headroom (decided); drums lower than the synths in the stems (to compare with a clean
           stereo take)"
+  stem_fx_test: "c17079c (owner, SYNTHS+RET and others): LOOP 4 / 8 / 16 / 32 usable; REVERSE the only one with notable
+                pops and breakage, depending on the layout and what plays; REWIND sometimes effective, sometimes not;
+                PUNCH and PUNCH HQ each a feel; HQ in most cases far superior, the only one with clarity and power;
+                PUNCH (22 kHz) notably weaker and blurred"
+  stem_load_3: "the same pattern at 120 BPM with MIDI from the DAW - no stems 48-57 % core 0, none shed; stems with STEM FX
+               SLICER 69-71 %, ~4 voices shed a second; PUNCH HQ 56-73 %, ~7 a second, a few underruns. The stems'
+               steady 15-20 % (the 48 kHz resampling) lifts a busy pattern's peaks over SLOOP's 85 % shedding line"
+  stem_levels_2: "owner - much clipping: MASTER at 80-88, the stems (6 dB headroom, following MASTER) peak at 0 dBFS; RET
+                 hardest, ~0 dBFS on entry; all stems summed in the DAW clip at a low output. (The stems' level follows
+                 the MASTER knob, so it moves with it; the internal mix runs well above the stereo output's full scale
+                 at a high MASTER, the stereo limiter hides that)"
   not_yet: the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
