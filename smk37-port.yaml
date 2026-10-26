@@ -231,9 +231,14 @@ next_spec:                  # the owner's decisions after the c17079c tests (202
           1 BPM, 20 BPM with CLOCK OUT (a DAW's range: Live's least is 20); release snaps back at once). FLIP RETURN
           SLIP / CARRY (a user option: both creative) for FLIP and LOOP BACK. Live controls on the page: < > FLIP
           RETURN, PRESETS / ALGORITHM the LOOP BACK length and the RAMP grid. FX CH notes 80..83 for MIDI recording"
-  tempo_sync: "to decide before the tempo effects - SLOOP's own clock: all fine; CLOCK OUT: the DAW follows a ramp within
-              its range, recording against a moving tempo; IN = CLOCK: FLIP / LOOP BACK fine (SLIP returns to the clock's
-              place), RAMP greyed, or local (the sequencer ramps, the DAW keeps time, snap back in sync on release)"
+  tempo_sync: "decided - Live (or any DAW) stays the master: with IN = CLOCK a RAMP, FLIP or LOOP BACK pad takes SLOOP's
+              sequencer off the clock only while held (its own clock, the ramp from the current tempo), counting the
+              DAW's clock meanwhile; on release it is back on the clock at the DAW's place (SLIP; CARRY means nothing
+              here). The DAW's transport and tempo never move (other instruments on its clock carry on). Own clock /
+              CLOCK OUT: the ramp is SLOOP's tempo (CLOCK OUT: the DAW follows). Recorded: the FX CH note (its length the
+              hold), its velocity the grid (RAMP) or the length (LOOP BACK), so a replay is exact whatever the knobs; an
+              optional TEMPO CC while ramping (off by default: to draw the ramp into the DAW's tempo envelope later, never
+              mapped to it while recording)"
 
 pedal: none
 
