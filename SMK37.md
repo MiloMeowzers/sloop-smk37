@@ -220,7 +220,7 @@ each named for the DAW:
 - **FREEZE** with STEM FX: the reverb holds (the RET stems) and the dry stems fade under it as the master's dry mix
   does.
 - **FX + FADER BANK** locks the FX layer open (FADER BANK lit): no holding FX. FADER BANK again, or any other button but
-  PLAY, REC and OCT, lets it go (as SLOOP's FX + HOME).
+  PLAY, REC and OCT, lets it go. (SLOOP's own lock, FX held + PATCH tapped, works too.)
 - A fixed level: the stems follow neither MASTER nor USB AUDIO (set the levels in the DAW). The stereo output's full
   scale sits at −18 dBFS in the stems: 18 dB of headroom for the sum of six of them, and no limiter on them.
 - One rate at a time (6 channels of 24 bit fill a full-speed USB packet): **STEM RATE** 48 KHZ (default) or 44.1 KHZ.
