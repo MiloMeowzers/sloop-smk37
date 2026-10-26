@@ -209,8 +209,12 @@ next_spec:                  # the owner's decisions after the c17079c tests (202
   levels: "the stems at a fixed level, not following MASTER (as FULL always); 18 dB of headroom (RET, the sum of every
           send, hit the ceiling at 6); maybe a STEM LEVEL setting -18 / -12 / -6 dB. The stereo clipping: measure first
           (smk37-devtools stereo_check.py)"
-  cpu: "open - a STEM RATE 44.1 option (no resampling: the stems' steady 15-20 % gone; the PC converts) beside 48 kHz,
-       and / or a shorter resampling filter (8 taps, ~1/3 less; quality measured first)"
+  cpu: "decided - both, as HOME > USB settings, chosen per session by the load: STEM RATE 48 KHZ (default) / 44.1 KHZ
+       (no resampling, the engines' own samples; the PC converts) and STEM FILTER FULL (12 taps, default) / LIGHT (8
+       taps, ~1/3 less; its response measured and shown to the owner first; greyed at 44.1). A short guide line under
+       each value (48: RESAMPLED ON THE KEYBOARD; 44.1: LIGHTEST - THE PC CONVERTS; FULL: CLEANEST TOP END; LIGHT: 1/3
+       LESS CPU - BUSY PATTERNS). STEM FILTER live; STEM RATE and USB LAYOUT by a live USB re-plug (~1 s, the sound
+       and sequencer run on; each rate and layout its own device and serial) instead of a power cycle"
   punch_fixes: "REVERSE on the stems - the writer must leave the span played backwards (as punch.c punch_owns); REWIND
                short on short rings (it fades where the past ends): keep or master-only; PUNCH HQ the main mode (the
                owner - far superior), PUNCH (22 kHz) kept as the long one"
