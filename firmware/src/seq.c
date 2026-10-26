@@ -441,6 +441,13 @@ static uint32_t trk_grid(const track_t *t, uint32_t *into, uint32_t *len)
     return grid_at(div, swings(div) ? swing_units(t->p[P_SSWING] + song.g[G_SWING], div_units(div)) : 0u, into, len);
 }
 static uint32_t trk_len(const track_t *t) { return t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u; }
+#if BOARD_SMK37
+static int mclk_on(void);
+#include "smk_seqfx.h"                   /* SMK-37: FLIP, LOOP BACK, RAMP (the stem punch-in page's row 4) */
+#define SQ_IDX(t, abs, len) sq_idx(t, abs, len)
+#else
+#define SQ_IDX(t, abs, len) ((abs) % (len))
+#endif
 
 /* ------------------------------------------------------------- undo --- */
 /* One step back (and forward again) for the pattern of one track: what it was before the last
@@ -654,7 +661,7 @@ UI_SMALL static void hold_restart(track_t *t, uint32_t j, uint32_t len, uint32_t
  * step ends the hold before (the step model ties the notes of one step only). */
 UI_SMALL static void rec_note(track_t *t, uint32_t note, uint32_t vel, uint32_t rat, int hold)
 {
-    uint32_t len = trk_len(t), later, abs = rec_target(t, &later), idx = abs % len, k;
+    uint32_t len = trk_len(t), later, abs = rec_target(t, &later), idx = SQ_IDX(t, abs, len), k;
     int was_empty = !(t->step[idx % NSTEP].time == ST_NOTE && t->step[idx % NSTEP].n);
     step_t *st = &t->step[idx % NSTEP];
     uint8_t ch[4], keep[4];
@@ -736,7 +743,7 @@ UI_SMALL static void rec_note(track_t *t, uint32_t note, uint32_t vel, uint32_t 
 static uint8_t roll_rec;                         /* (2.7) a roll's hit is being recorded (roll_hit) */
 static void rec_hit(track_t *t, uint32_t lane, uint32_t lvl, uint32_t rat)
 {
-    uint32_t later, abs = rec_target(t, &later), idx = abs % trk_len(t);
+    uint32_t later, abs = rec_target(t, &later), idx = SQ_IDX(t, abs, trk_len(t));
     int was_empty = !(t->dstep[idx % NSTEP].on[0] | t->dstep[idx % NSTEP].on[1]);
     undo_mark(t, UNDO_REC(t));
     dstep_set(&t->dstep[idx], lane, lvl, rat);
@@ -1935,9 +1942,25 @@ static void punch_midi_on(uint32_t k)
 /* the stem punch-in page (smk_tpunch.h TP_PAGE): pad c holds its effect as the effect's key would (its note on FX CH
  * too, so a DAW records the key's note), its release lets it go unless a key or MIDI took it over meanwhile */
 static uint8_t pfx_pad_held;                      /* the pad holding it, + 1 (0: none) */
+static uint8_t sq_out_vel[SQ_N];                  /* row 4: the note on sent on FX CH (its velocity, 0: none) */
+static uint8_t sq_out_ch[SQ_N];
 static void pfx_pad(uint32_t c, uint32_t v)
 {
     uint32_t fx;
+    if (c >= TP_PAGE_N && c < TP_PAGE_N + SQ_N) {     /* row 4: FLIP, LOOP BACK, RAMP UP, RAMP DOWN, with the page's
+                                                       * settings; out on FX CH as 80..83, the setting + 1 the velocity */
+        uint32_t k = c - TP_PAGE_N, s = sq_setting(k);
+        int32_t ch = song.g[G_FXCH];
+        sq_set(k, v != 0u, s);
+        if (v && ch >= 1 && ch <= 16) {
+            sq_out_ch[k] = (uint8_t)(ch - 1), sq_out_vel[k] = (uint8_t)(s + 1u);
+            midi_out_note(sq_out_ch[k], SQ_NOTE0 + k, sq_out_vel[k]);
+        } else if (!v && sq_out_vel[k]) {
+            midi_out_note(sq_out_ch[k], SQ_NOTE0 + k, 0);
+            sq_out_vel[k] = 0;
+        }
+        return;
+    }
     if (c >= TP_PAGE_N)
         return;
     fx = TP_PAGE[c];
@@ -2615,6 +2638,9 @@ static void seq_reset_tracks(uint32_t pos)
         roll[i].last = SEQ_NONE - 1u;               /* (a roll held over the start: on the grid from here) */
     clk_beat = 0;
     clk_pos = pos;
+#if BOARD_SMK37
+    sq_reset();                                    /* (FLIP, LOOP BACK, RAMP: from the top, none) */
+#endif
 #if FELUCCA_ARRANGER
     live_bar = 0xFFFFFFFFu;                        /* (bar 0 is a new bar: SONG REC can start on it) */
 #endif
@@ -2844,7 +2870,7 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
  * (micro >= 0), or how far before its step (micro < 0, as a negative number) */
 static int32_t micro_units(const track_t *t, uint32_t abs, uint32_t slen)
 {
-    int32_t m = t->micro[abs % trk_len(t) % NSTEP];
+    int32_t m = t->micro[SQ_IDX(t, abs, trk_len(t)) % NSTEP];
     return (int32_t)(slen / 64u) * m;                /* |m| <= 32: fits */
 }
 
@@ -2890,7 +2916,7 @@ static void seq_tick(track_t *t, uint32_t adv)
     }
     if (fire) {                                      /* a new step: one a block at most */
         t->seq_abs = nabs;
-        idx = nabs % len;
+        idx = SQ_IDX(t, nabs, len);
         t->seq_idx = (uint16_t)idx;
         t->rat_done[0] = t->rat_done[1] = t->rat_done[2] = t->rat_done[3] = 0;
         t->rat_lanes = 0;
@@ -3301,7 +3327,11 @@ static void clkout_block(uint32_t n)
         midi_out_event(0x0Fu | 0xFCu << 8);           /* STOP */
     }
     mco_play = (uint8_t)(song.playing != 0);
+#if BOARD_SMK37
+    mco_u += sq_r.dir && song.playing ? sq_r.last : n * (uint32_t)song.g[G_BPM];   /* (RAMP: the DAW follows) */
+#else
     mco_u += n * (uint32_t)song.g[G_BPM];
+#endif
     while (mco_u >= MCLK_PULSE_U) {
         mco_u -= MCLK_PULSE_U;
         midi_out_event(0x0Fu | 0xF8u << 8);           /* a pulse */
@@ -3368,6 +3398,9 @@ static void events_block(uint32_t n)
     if (rec_wait && song.playing)
         rec_begin();                                /* started some other way: record now */
     adv = mclk_on() && song.playing ? mclk_adv(n) : n * (uint32_t)song.g[G_BPM];   /* (after a START) */
+#if BOARD_SMK37
+    adv = sq_adv(n, adv);                           /* RAMP held: its tempo (the DAW's pulses counted meanwhile) */
+#endif
     clkout_block(n);                                  /* (2.7) CLK OUT */
     ft_block();
 #if FELUCCA_ARRANGER
@@ -3487,6 +3520,12 @@ static void events_block(uint32_t n)
         }
         if (song.g[G_FXCH] && ch == (uint32_t)song.g[G_FXCH] - 1u && song.g[G_ROUTE] != 1 &&
             (st == 0x90u || st == 0x80u)) {           /* 2.7: the punch-in FX's channel (GLO > MIDI 3), before IN = CH n */
+#if BOARD_SMK37
+            if (d1 >= SQ_NOTE0 && d1 < SQ_NOTE0 + SQ_N) {   /* SMK-37: FLIP, LOOP BACK, RAMP, the setting in the velocity */
+                sq_midi(d1, st == 0x90u && d2, d2);
+                continue;
+            }
+#endif
             midi_fx(d1, st == 0x90u && d2);
             continue;
         }

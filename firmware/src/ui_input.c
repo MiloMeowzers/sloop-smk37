@@ -334,8 +334,12 @@ UI_SMALL static void ui_leds(void)
                                                     * the one playing white (as the tiles) */
             for (c = 0; c < 16u; c++) {
                 const uint8_t *k;
-                if (c >= TP_PAGE_N) {
-                    padled_set(c, 0, 0, 0);
+                if (c >= TP_PAGE_N) {                  /* row 4: the sequencer effects, yellow; held white */
+                    k = TP_KIND_RGB[TPK_SEQ];
+                    if ((sq_held >> (c - TP_PAGE_N)) & 1u)
+                        padled_set(c, 200, 200, 200);
+                    else
+                        padled_set(c, (uint8_t)(k[0] * 3u >> 3), (uint8_t)(k[1] * 3u >> 3), (uint8_t)(k[2] * 3u >> 3));
                     continue;
                 }
                 k = TP_KIND_RGB[TP_PAGE_K[c]];
@@ -1304,6 +1308,10 @@ UI_SMALL static void ui_input(void)
     if (pressed & (1u << SMK_BTN_LEFT | 1u << SMK_BTN_RIGHT)) {   /* < >: SEQ held: the step pages; the visualiser:
                                                                 * its style; else the pages, as SELECT (never the tempo) */
         int32_t d = (pressed >> SMK_BTN_RIGHT) & 1u ? 1 : -1;
+        if (ui.layer == LY_FX && tp_page_on()) {          /* the stem punch-in page: FLIP RETURN, < SLIP, > CARRY */
+            sq_carry = (uint8_t)(d > 0);
+            ui.force = 1;
+        } else
         if (pick_shown())
             pick_turn(d);
         else if (fb_shown())                              /* the FADER BANK screen: the banks */

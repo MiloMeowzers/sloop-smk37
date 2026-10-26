@@ -479,6 +479,19 @@ UI_SMALL static void layer_knobs(uint32_t layer)
     uint32_t k;
     int32_t s;
     track_t *t = TSEL;
+#if BOARD_SMK37
+    if (layer == LY_FX && tp_page_on()) {                /* the stem punch-in page: PRESETS LOOP BACK's length, ALGORITHM
+                                                          * RAMP's grid (row 4; the knob stops at the ends) */
+        if ((s = panel_enc(EN_PRESET)) != 0) {
+            ui.layer_used = 1;
+            sq_lb = (uint8_t)clamp((int32_t)sq_lb + (s > 0 ? 1 : -1), 0, SQ_LB_N - 1);
+        }
+        if ((s = panel_enc(EN_ALGO)) != 0) {
+            ui.layer_used = 1;
+            sq_grid = (uint8_t)clamp((int32_t)sq_grid + (s > 0 ? 1 : -1), 0, SQ_GRID_N - 1);
+        }
+    }
+#endif
     if (layer == LY_STEP && ui.step_held) {              /* a step held: PRESETS the lock's value, ALGORITHM its parameter
                                                           * (neither browses a sound nor selects a track meanwhile) */
         if ((s = panel_enc(EN_PRESET)) != 0) {
@@ -755,13 +768,36 @@ UI_SMALL static void layer_screen_draw(void)
         if (tp_page_on()) {                             /* SMK-37 STEM FX: the effects on the stems, by kind */
             static const char *const TSHORT[TP_PAGE_N] = {"loop 4", "loop 8", "loop16", "loop32", "stutt", "rev",
                                                           "stop", "half", "loop8t", "gate", "rewind", "freeze"};
-            if (!thr_req)
-                str_cpy(sub, stem_fx == SFX_HQ ? "stems  punch hq" : "stems  punch", sizeof sub);
+            static const char *const LBS[SQ_LB_N] = {"1bar", "3bt", "2bt", "1bt"};
+            static const char *const GRS[SQ_GRID_N] = {"4", "8", "16", "4.", "8.", "16."};
+            if (!thr_req) {
+                str_cpy(sub, stem_fx == SFX_HQ ? "stems  punch hq  " : "stems  punch  ", sizeof sub);
+                str_cpy(sub + str_len(sub), sq_carry ? "carry" : "slip", 6);
+            }
+            if (sq_tempo_shown()) {                     /* a RAMP held: the tempo it is at */
+                str_cpy(sub, "ramp ", sizeof sub);
+                fmt_int(sub + 5, (int32_t)sq_tempo_shown());
+                str_cpy(sub + str_len(sub), " bpm", 5);
+            }
             for (i = 0; i < 16u; i++) {
                 const uint8_t *k;
                 int on;
-                if (i >= TP_PAGE_N) {
-                    tl[i].bg = C_BLACK, tl[i].fg = TE_G3, tl[i].lab[0] = 0;
+                if (i >= TP_PAGE_N) {                   /* row 4: FLIP, LOOP BACK, RAMP UP / DOWN with their settings */
+                    uint32_t q = i - TP_PAGE_N;
+                    k = TP_KIND_RGB[TPK_SEQ];
+                    on = (sq_held >> q) & 1u;
+                    if (q == SQ_FLIP) {
+                        str_cpy(tl[i].lab, "flip", 8);
+                    } else if (q == SQ_LOOPBK) {
+                        str_cpy(tl[i].lab, "lb ", 8);
+                        str_cpy(tl[i].lab + 3, LBS[sq_lb % SQ_LB_N], 5);
+                    } else {
+                        str_cpy(tl[i].lab, q == SQ_UP ? "up " : "dn ", 8);
+                        str_cpy(tl[i].lab + 3, GRS[sq_grid % SQ_GRID_N], 5);
+                    }
+                    tl[i].bg = on ? C_WHITE : RGB(k[0] * 3u >> 3, k[1] * 3u >> 3, k[2] * 3u >> 3);
+                    tl[i].fg = on ? C_BLACK : C_WHITE;
+                    tl[i].top = on ? 0 : RGB(k[0], k[1], k[2]);
                     continue;
                 }
                 k = TP_KIND_RGB[TP_PAGE_K[i]];

@@ -29,6 +29,9 @@ mkdir -p "$OUT"
 CC="${CC:-cc} -O1 -Wall -Wno-unused-function"
 fail=0
 run() { echo "== $1"; shift; "$@" || fail=1; }
+# a test that does not build stops the script (set -e): say so, so CI counts it (it read no FAIL and passed)
+reached_end=0
+trap '[ "$reached_end" = 1 ] || echo "FAIL: run_tests.sh stopped before its end (a test did not build?)"' EXIT
 
 [ -f build/felucca.fwsc ] || { echo "run ./build.sh first"; exit 1; }
 # the generated headers the FM6 engine needs (tools/build.py generate() makes them too; no Pillow needed)
@@ -217,8 +220,10 @@ $CC -DT_CDC=0 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_nocdc" tests/uac6_test.c -l
 run "SMK-37 stems probe (SMK_UAC_PROBE): descriptors and test packets (without CDC)" "$OUT/uac6_test_nocdc"
 $CC -DT_CDC=0 -DT_STEMS=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_stems" tests/uac6_test.c -lm
 run "SMK-37 stems, SYNTHS+RET: descriptors, 44.1 -> 48 kHz x 6, the ring and packets, levels" "$OUT/uac6_test_stems"
-$CC -o "$OUT/smk_tpunch_test" tests/smk_tpunch_test.c
+$CC -o "$OUT/smk_tpunch_test" tests/smk_tpunch_test.c -lm
 run "SMK-37 STEM FX rings: REVERSE keeps its span, the loops read only what they captured (PUNCH, HQ, every layout)" "$OUT/smk_tpunch_test"
+$CC -o "$OUT/smk_seqfx_test" tests/smk_seqfx_test.c
+run "SMK-37 FLIP, LOOP BACK, RAMP: steps, SLIP / CARRY, the ramp on its grid and floor, back on the DAW's clock" "$OUT/smk_seqfx_test"
 
 $CC -o "$OUT/ota_test" tests/ota_test.c
 run "M-UPGRADE entry" "$OUT/ota_test" build/felucca.fwsc
@@ -292,4 +297,5 @@ fi
 if [ -f build/preview/sloop-preview.wasm ]; then
     run "the editor's audio preview: WASM == host, all 12 engines" sh tests/run_preview_tests.sh
 fi
+reached_end=1
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }

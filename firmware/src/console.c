@@ -228,6 +228,10 @@ static void con_status(void)
     con_kv("stem_fx", stem_fx);                          /* 0 SLICER, 1 PUNCH, 2 PUNCH HQ (smk_tpunch.h) */
     con_kv("tp_xfade", tp_xfl);                          /* PUNCH > XFADE: 0 2.9 ms, 1 1.5 ms, 2 5.8 ms */
     con_kv("tp_linear", tp_lin);                         /* PUNCH > CURVE: 0 EQUAL, 1 LINEAR */
+    con_kv("sq_held", sq_held);                          /* row 4 held: bit 0 FLIP, 1 LOOP BACK, 2 RAMP UP, 3 DOWN */
+    con_kv("sq_mode", sq_mode);                          /* the step effect: 0 none, 1 FLIP, 2 LOOP BACK */
+    con_kv("sq_ramp_bpm", (int32_t)sq_tempo_shown());    /* a RAMP's tempo now (0: none) */
+    con_kv("sq_off0", sq_t[0].off);                      /* CARRY: track 1's offset, steps */
     con_kv("tp_on", tp_on);                              /* the stems' punch-ins set up (a stem layout and PUNCH / HQ) */
     con_kv("tp_rings", tp.n);
     con_kv("tp_ring_ms", tp.n ? (int32_t)(tp.cap * tp.s * 1000u / 44100u) : 0);   /* a ring's past */

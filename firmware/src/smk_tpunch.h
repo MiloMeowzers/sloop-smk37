@@ -72,10 +72,11 @@ _Static_assert(TP_POOL - TP_MRING <= 4u * 65536u, "a ring's slots fit tp_wi (16 
 #define TP_PAGE_N 12u
 static const uint8_t TP_PAGE[TP_PAGE_N] = {PX_LOOP4, PX_LOOP8, PX_LOOP16, PX_LOOP32, PX_STUT, PX_REV, PX_STOP, PX_HALF,
                                            PX_LOOP8T, PX_GATE, PX_RWD, PX_FREEZE};
-enum { TPK_LOOP, TPK_TAPE, TPK_RHYTHM, TPK_SPACE, TPK_N };
+enum { TPK_LOOP, TPK_TAPE, TPK_RHYTHM, TPK_SPACE, TPK_SEQ, TPK_N };   /* (TPK_SEQ: row 4, smk_seqfx.h) */
 static const uint8_t TP_PAGE_K[TP_PAGE_N] = {TPK_LOOP, TPK_LOOP, TPK_LOOP, TPK_LOOP, TPK_TAPE, TPK_TAPE, TPK_TAPE,
                                              TPK_TAPE, TPK_LOOP, TPK_RHYTHM, TPK_TAPE, TPK_SPACE};
-static const uint8_t TP_KIND_RGB[TPK_N][3] = {{255, 110, 0}, {0, 190, 255}, {40, 220, 60}, {190, 60, 255}};
+static const uint8_t TP_KIND_RGB[TPK_N][3] = {{255, 110, 0}, {0, 190, 255}, {40, 220, 60}, {190, 60, 255},
+                                              {255, 220, 40}};
 static int tp_page_on(void) { return tp_on != 0u; }    /* (the UI: this page instead of the 27 keys) */
 
 static int tp_fx(int32_t fx)            /* the rhythmic ones: on the stems with STEM FX */

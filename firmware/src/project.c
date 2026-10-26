@@ -811,9 +811,12 @@ typedef struct {
                                                      * (smk_tpunch.h). A record of 12 bytes (before them) reads as 0:
                                                      * 48 KHZ, FULL, 2.9 MS, EQUAL; an older build reads the first 12
                                                      * bytes of this one (st_load: up to its size) */
+    uint8_t sqcarry, sqlb, sqgrid, spare;           /* the stem page's FLIP RETURN, LOOP BACK length, RAMP grid
+                                                     * (smk_seqfx.h; 0 in a 16-byte record: SLIP, 1 bar, 1/4) */
 } smkset_t;
 #define SMKSET_V1 12u
-_Static_assert(sizeof(smkset_t) == 16u, "smkset: 12 bytes, then the stems' rate and filter");
+#define SMKSET_V2 16u
+_Static_assert(sizeof(smkset_t) == 20u, "smkset: 12 bytes, the stems' 4, the stem page's 4");
 static smkset_t smkset_saved;
 static uint8_t smkset_old_ml[3], smkset_old_have;  /* the MIDI part's last three bytes as read (midi_part_read) */
 static void smkset_fill(smkset_t *s)
@@ -832,6 +835,9 @@ static void smkset_fill(smkset_t *s)
     s->sfilt = (uint8_t)(stem_light != 0u);
     s->xfl = (uint8_t)(tp_xfl % TPX_N);
     s->lin = (uint8_t)(tp_lin != 0u);
+    s->sqcarry = (uint8_t)(sq_carry != 0u);
+    s->sqlb = (uint8_t)(sq_lb % SQ_LB_N);
+    s->sqgrid = (uint8_t)(sq_grid % SQ_GRID_N);
 }
 static void smkset_boot(void)                      /* after the settings (persist_boot, dsu_boot) */
 {
@@ -839,7 +845,7 @@ static void smkset_boot(void)                      /* after the settings (persis
     int n;
     memset(&s, 0, sizeof s);
     n = st_load(OBJ_SMKSET, &s, sizeof s);
-    if ((n == (int)sizeof s || n == (int)SMKSET_V1) && s.magic == SMKSET_MAGIC) {
+    if ((n == (int)sizeof s || n == (int)SMKSET_V2 || n == (int)SMKSET_V1) && s.magic == SMKSET_MAGIC) {
         vel_mode = (uint8_t)(s.vel < VEL_N ? s.vel : VEL_DYNAMIC);
         trs_out = (uint8_t)(s.trs != 0u);
         bend_up = (uint8_t)bend_up_of_byte(s.bup);
@@ -852,6 +858,9 @@ static void smkset_boot(void)                      /* after the settings (persis
         stem_light = (uint8_t)(s.sfilt & 1u);
         tp_xfl = (uint8_t)(s.xfl < TPX_N ? s.xfl : TPX_128);
         tp_lin = (uint8_t)(s.lin & 1u);
+        sq_carry = (uint8_t)(s.sqcarry & 1u);
+        sq_lb = (uint8_t)(s.sqlb < SQ_LB_N ? s.sqlb : 0u);
+        sq_grid = (uint8_t)(s.sqgrid < SQ_GRID_N ? s.sqgrid : 0u);
         knob_layout_apply();
         smkset_fill(&smkset_saved);
         return;
