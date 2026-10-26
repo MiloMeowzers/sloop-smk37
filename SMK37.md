@@ -210,9 +210,8 @@ each named for the DAW:
   top end above ~10 kHz goes while a punch-in plays, as the SLICER's STUT); PUNCH HQ keeps the full band and half the
   time. A punch-in longer than that past (a slow tempo: REVERSE plays a beat, HALF and STOP 1/8 note and more) plays
   what there is: REVERSE shorter, STOP and REWIND fade where the past ends.
-- The level follows HOME menu > AUDIO > **USB AUDIO**: MASTER (the MASTER knob, either LIMITER curve) or FULL (fixed).
-  The stereo output's full scale sits at −6 dBFS in the stems: 6 dB of headroom and no limiter on them. For stems, USB
-  AUDIO = FULL gives a fixed level that does not follow the knob.
+- A fixed level: the stems follow neither MASTER nor USB AUDIO (set the levels in the DAW). The stereo output's full
+  scale sits at −18 dBFS in the stems: 18 dB of headroom for the sum of six of them, and no limiter on them.
 - 48 kHz only (6 channels of 24 bit fill a full-speed USB packet). The FM-1's USB RATE does not apply. The stems are
   resampled on both cores, shared by the work each has; they are one 0.7 ms block later than the stereo output.
 - Each layout is its own USB device with its own serial number, so a computer keeps its name (and your renames) in any

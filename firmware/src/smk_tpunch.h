@@ -61,7 +61,9 @@ static void tp_setup(uint32_t mode, uint32_t layout)
     for (i = 0; i < NTRK; i++)                          /* the SLICERs: no STUT recording or repeat left */
         sl[i].loop = 0, sl[i].rec_on = 0, sl[i].rec = 0, sl[i].w = 0;
     punch.cur = -1, punch.g = 0, punch.w = 0;
-    tp.cur = -1, tp.g = 0, tp.own_n = 0, tp.ws = 0, tp.t = 0;
+    tp.cur = -1, tp.g = 0, tp.own_n = 0, tp.t = 0;
+    tp.ws = TP_POOL;                                    /* (a whole ring ahead of 0: a span behind it never wraps
+                                                         * the counter, so idx % cap stays continuous) */
     if (mode == SFX_SLICER || !layout) {                /* (0: STEREO) */    /* as SLOOP: the master's whole ring, the SLICER's STUT */
         punch_ring = smk_fxpool + NTRK * SL_LEN, punch_cap = PUNCH_N;
         tp.n = 0, tp_on = 0, sl_mem_lent = 0;
@@ -99,13 +101,21 @@ static void tp_start(int32_t fx)
             tp.k = back;
         }
     }
-    if (fx == PX_REV)
+    tp.own_n = 0;
+    if (tp.s == 2u)
+        tp.start--;                                     /* PUNCH: a slot behind the writer (it fills a slot on a pair's
+                                                         * second sample: the first pass read the one not yet written,
+                                                         * a ring old, half of every sample) */
+    if (fx == PX_REV) {
+        uint32_t back = len / tp.s + 1u;                /* (the storage samples it reads, the interpolation's too) */
         tp.start = tp.ws - 1u;                          /* (backwards from the last whole sample) */
+        tp.own_lo = tp.start - back, tp.own_n = back + 1u;   /* already captured: the writer leaves it from now (it
+                                                         * came round over the span's oldest part: the pops) */
+    }
     tp.rp = (int64_t)(tp.ws - 1u) << 16;
     tp.spd = 65536u;
     tp.dspd = 65536u / len + 1u;
     tp.v = 65536;
-    tp.own_n = 0;
     tp.gp = song.playing ? clk_samples() % (beat / 4u ? beat / 4u : 1u) : 0u;
 }
 
@@ -148,7 +158,8 @@ static void tp_block(uint32_t n, int32_t want)
         if (fx >= 0) {
             if (tp.pre) {                               /* waiting for the division: dry */
                 if (!--tp.pre)
-                    tp.start = tp.ws + 1u, tp.k = 0;
+                    tp.start = tp.ws + 3u - 2u * tp.s, tp.k = 0;   /* (PUNCH: two slots behind: either
+                                                         * parity, the slots read are written; see tp_start) */
             } else if (fx == PX_GATE) {
                 uint32_t p = tp.gp;
                 wg = p < step / 2u ? 32767 : 0;

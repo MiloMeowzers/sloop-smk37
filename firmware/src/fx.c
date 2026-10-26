@@ -1558,8 +1558,8 @@ static void mix_block(int32_t *out, uint32_t n)
         if (stem_layout == 3u && dg_ran)
             for (i = 0; i < n; i++)
                 stem_stage[5][i] = drum_buf[2][i] + drum_buf[3][i];
-        stem_sm0 = usb_full ? 4096 : m0;                /* USB AUDIO = FULL: as MASTER all the way up */
-        stem_sm1 = usb_full ? 4096 : m1;
+        stem_sm0 = stem_sm1 = 4096;                     /* a fixed level: the stems do not follow MASTER (the DAW
+                                                         * mixes them; usb.c leaves 18 dB of headroom) */
         stem_sn = n;
         stem_staged = 1;
     }

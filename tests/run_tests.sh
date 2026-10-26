@@ -217,6 +217,8 @@ $CC -DT_CDC=0 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_nocdc" tests/uac6_test.c -l
 run "SMK-37 stems probe (SMK_UAC_PROBE): descriptors and test packets (without CDC)" "$OUT/uac6_test_nocdc"
 $CC -DT_CDC=0 -DT_STEMS=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_stems" tests/uac6_test.c -lm
 run "SMK-37 stems, SYNTHS+RET: descriptors, 44.1 -> 48 kHz x 6, the ring and packets, levels" "$OUT/uac6_test_stems"
+$CC -o "$OUT/smk_tpunch_test" tests/smk_tpunch_test.c
+run "SMK-37 STEM FX rings: REVERSE keeps its span, the loops read only what they captured (PUNCH, HQ, every layout)" "$OUT/smk_tpunch_test"
 
 $CC -o "$OUT/ota_test" tests/ota_test.c
 run "M-UPGRADE entry" "$OUT/ota_test" build/felucca.fwsc

@@ -1370,7 +1370,7 @@ static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint
                 int32_t a = 2048, v;
                 for (j = 0; j < UAC_FIR_N; j++)
                     a += t[j] * x[j];
-                v = ((a >> 12) * m) >> 4;               /* (half mix units x m / 4096 x 128 x 2) */
+                v = ((a >> 12) * m) >> 6;               /* (half mix units x m / 4096 x 128 x 2 / 4: 18 dB of headroom) */
                 v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
                 f[0] = (uint8_t)v, f[1] = (uint8_t)(v >> 8), f[2] = (uint8_t)(v >> 16);
             }
