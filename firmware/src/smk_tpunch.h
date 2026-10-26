@@ -48,6 +48,18 @@ static int32_t tp_fr[CTL];              /* the position between them, Q15 */
 static int32_t tp_wg[CTL], tp_xg[CTL];  /* the effect's gain, Q15; the crossfade (wet share), Q15 */
 _Static_assert(TP_POOL - TP_MRING <= 4u * 65536u, "a ring's slots fit tp_wi (16 bits) for every ring count");
 
+/* the stem punch-in page (FX held, STEM FX = PUNCH / HQ in a stem layout): the effects that play on the stems, three
+ * rows of four tiles and pads, coloured by kind: the loops orange, time and tape cyan, rhythm green, space violet. A
+ * pad picks its effect (seq.c pfx_pad: as the effect's key, its MIDI note on FX CH too); the keys stay as they are */
+#define TP_PAGE_N 12u
+static const uint8_t TP_PAGE[TP_PAGE_N] = {PX_LOOP4, PX_LOOP8, PX_LOOP16, PX_LOOP32, PX_STUT, PX_REV, PX_STOP, PX_HALF,
+                                           PX_LOOP8T, PX_GATE, PX_RWD, PX_FREEZE};
+enum { TPK_LOOP, TPK_TAPE, TPK_RHYTHM, TPK_SPACE, TPK_N };
+static const uint8_t TP_PAGE_K[TP_PAGE_N] = {TPK_LOOP, TPK_LOOP, TPK_LOOP, TPK_LOOP, TPK_TAPE, TPK_TAPE, TPK_TAPE,
+                                             TPK_TAPE, TPK_LOOP, TPK_RHYTHM, TPK_TAPE, TPK_SPACE};
+static const uint8_t TP_KIND_RGB[TPK_N][3] = {{255, 110, 0}, {0, 190, 255}, {40, 220, 60}, {190, 60, 255}};
+static int tp_page_on(void) { return tp_on != 0u; }    /* (the UI: this page instead of the 27 keys) */
+
 static int tp_fx(int32_t fx)            /* the rhythmic ones: on the stems with STEM FX */
 {
     return (fx >= PX_LOOP4 && fx <= PX_HALF) || fx == PX_GATE || fx == PX_RWD || fx == PX_LOOP8T;

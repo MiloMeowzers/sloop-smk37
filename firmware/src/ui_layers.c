@@ -723,6 +723,28 @@ UI_SMALL static void layer_screen_draw(void)
         col = TE_DRUM;
         str_cpy(sub, thr_req == 3u ? "rev + echo throw" : thr_req == 2u ? "echo throw" : thr_req ? "rev throw" : "hold + key",
                 sizeof sub);
+#if BOARD_SMK37
+        if (tp_page_on()) {                             /* SMK-37 STEM FX: the effects on the stems, by kind */
+            static const char *const TSHORT[TP_PAGE_N] = {"loop 4", "loop 8", "loop16", "loop32", "stutt", "rev",
+                                                          "stop", "half", "loop8t", "gate", "rewind", "freeze"};
+            if (!thr_req)
+                str_cpy(sub, stem_fx == SFX_HQ ? "stems  punch hq" : "stems  punch", sizeof sub);
+            for (i = 0; i < 16u; i++) {
+                const uint8_t *k;
+                int on;
+                if (i >= TP_PAGE_N) {
+                    tl[i].bg = C_BLACK, tl[i].fg = TE_G3, tl[i].lab[0] = 0;
+                    continue;
+                }
+                k = TP_KIND_RGB[TP_PAGE_K[i]];
+                on = punch.req == (int8_t)TP_PAGE[i];
+                str_cpy(tl[i].lab, TSHORT[i], 8);
+                tl[i].bg = on ? C_WHITE : RGB(k[0] * 3u >> 3, k[1] * 3u >> 3, k[2] * 3u >> 3);
+                tl[i].fg = on ? C_BLACK : C_WHITE;
+                tl[i].top = on ? 0 : RGB(k[0], k[1], k[2]);
+            }
+        } else
+#endif
         for (i = 0; i < PUNCH_NFX; i++) {
             static const char *const PSHORT[PUNCH_NFX] = {"loop 4", "loop 8", "loop16", "loop32", "stutt", "rev", "stop",
                                                           "half", "low", "high", "phone", "crush", "alias", "gate", "echo",
@@ -1036,7 +1058,11 @@ UI_SMALL static void layer_screen_draw(void)
     }
     layer_sub_shown = sub;
     layer_title(LAYER_NAME[layer % LY_COUNT], sub, col, &head);
-    if (layer == LY_FX)
+    if (layer == LY_FX
+#if BOARD_SMK37
+        && !tp_page_on()                                /* (the stem page: 12 tiles of the 16) */
+#endif
+       )
         punch_tiles_draw(tl, &tiles);
     else
         tiles_draw(tl, &tiles);

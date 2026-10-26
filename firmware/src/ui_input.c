@@ -296,10 +296,12 @@ UI_SMALL static void ui_leds(void)
     for (c = 0; c < SMK_NLED; c++)                 /* the buttons: on / off (no dim layers) */
         fm1_led[c] = nl[c];
     smk_pad_piano = ui.layer == LY_SCALE;          /* SCALE held: the pads are a little piano (smk_input.h) */
-    fm1_led[SMK_BTN_FADER_BANK] = fb_shown();      /* FADER BANK lit while its screen is up (one bank screen at a time) */
+    fm1_led[SMK_BTN_FADER_BANK] = fb_shown() || ly_lock == LY_FX;   /* FADER BANK lit while its screen is up (one bank
+                                                    * screen at a time), or while it holds the FX layer open */
     fm1_led[SMK_BTN_KNOB_BANK] = pick_pin || (int32_t)(fm1_ms - pick_k4_until) < 0;   /* KNOB BANK: picker pinned, PRESETS turning */
     smk_pad_pick = (uint16_t)(pick_shown() ? 0xFFFFu : 0u);   /* (these pads: no notes) */
     smk_pad_grid = (uint8_t)padgrid_on();          /* (steps and tiles: reading order) */
+    smk_pad_pfx = (uint8_t)(ui.layer == LY_FX && tp_page_on());   /* (the stem punch-in page: the pads its own) */
     smk_pad_drums = (uint8_t)(!pad_steps && ui.layer == LY_PLAY && !smk_pad_grid);   /* the pads: DRUM KIT or STEPS */
     smk_pad_steps = (uint8_t)(pad_steps && ui.layer == LY_PLAY && !smk_pad_grid);
     if (!is_drum(TSEL) && TSEL->p[P_AMODE])        /* ARP lit while the selected track's arpeggiator runs */
@@ -327,6 +329,20 @@ UI_SMALL static void ui_leds(void)
                     padled_set(c, 0, 30, 0);
                 else
                     padled_set(c, 6, 6, 6);
+            }
+        } else if (ui.layer == LY_FX && tp_page_on()) {   /* the stem punch-in page: each pad dim in its kind's colour,
+                                                    * the one playing white (as the tiles) */
+            for (c = 0; c < 16u; c++) {
+                const uint8_t *k;
+                if (c >= TP_PAGE_N) {
+                    padled_set(c, 0, 0, 0);
+                    continue;
+                }
+                k = TP_KIND_RGB[TP_PAGE_K[c]];
+                if (punch.req == (int8_t)TP_PAGE[c])
+                    padled_set(c, 200, 200, 200);
+                else
+                    padled_set(c, (uint8_t)(k[0] * 3u >> 3), (uint8_t)(k[1] * 3u >> 3), (uint8_t)(k[2] * 3u >> 3));
             }
         } else if (ui.layer == LY_SONG) {          /* SAVE held: slots A..D used green, free white; store armed red */
             uint32_t ready = arrangement_ready();
@@ -1322,6 +1338,18 @@ UI_SMALL static void ui_input(void)
             }
         } else if (pressed & fbk) {
             pd_fbank = smk_fbank;
+        }
+    }
+    if ((pressed & 1u << SMK_BTN_FADER_BANK) && (ly_lock == LY_FX || (fm1_in.buttons & ly_bit[LY_FX]))) {
+        pressed &= ~(1u << SMK_BTN_FADER_BANK);                 /* FX held (or locked) + FADER BANK: the FX layer locked
+                                                                 * open / let go (as FX + HOME; any other button but
+                                                                 * PLAY, REC, OCT lets it go too): no holding FX */
+        if (ly_lock == LY_FX) {
+            layer_unlock();
+        } else {
+            ly_lock = LY_FX;
+            ui.layer = LY_FX;
+            ui.force = 1;
         }
     }
     if (pressed & 1u << SMK_BTN_FADER_BANK) {                   /* FADER BANK: its screen; pressed again the next bank */

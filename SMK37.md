@@ -212,6 +212,15 @@ each named for the DAW:
   top end above ~10 kHz goes while a punch-in plays, as the SLICER's STUT); PUNCH HQ keeps the full band and half the
   time. A punch-in longer than that past (a slow tempo: REVERSE plays a beat, HALF and STOP 1/8 note and more) plays
   what there is: REVERSE shorter, STOP and REWIND fade where the past ends.
+- **The stem punch-in page** (FX held, STEM FX = PUNCH / HQ): the screen and the pads show only what plays on the
+  stems, three rows by kind: LOOP 4 / 8 / 16 / 32 (orange), STUTTER, REVERSE, STOP, HALF (cyan), LOOP 8T (orange),
+  GATE (green), REWIND (cyan), FREEZE (violet); the one playing white. The header says stems and PUNCH or PUNCH HQ. A
+  pad holds its effect while held, and sends the effect's key note on FX CH as the key does. The keys keep all 27
+  effects (the tonal ones on the master); MIDI on FX CH is unchanged.
+- **FREEZE** with STEM FX: the reverb holds (the RET stems) and the dry stems fade under it as the master's dry mix
+  does.
+- **FX + FADER BANK** locks the FX layer open (FADER BANK lit): no holding FX. FADER BANK again, or any other button but
+  PLAY, REC and OCT, lets it go (as SLOOP's FX + HOME).
 - A fixed level: the stems follow neither MASTER nor USB AUDIO (set the levels in the DAW). The stereo output's full
   scale sits at −18 dBFS in the stems: 18 dB of headroom for the sum of six of them, and no limiter on them.
 - One rate at a time (6 channels of 24 bit fill a full-speed USB packet): **STEM RATE** 48 KHZ (default) or 44.1 KHZ.

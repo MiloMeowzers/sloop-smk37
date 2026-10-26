@@ -1558,6 +1558,17 @@ static void mix_block(int32_t *out, uint32_t n)
         if (stem_layout == 3u && dg_ran)
             for (i = 0; i < n; i++)
                 stem_stage[5][i] = drum_buf[2][i] + drum_buf[3][i];
+        if (tp_on && punch.cur == PX_FREEZE && punch.g) {   /* STEM FX: FREEZE on the stems: the dry ones fade under
+                                                         * the held reverb (RET) as the master's dry mix does (PX_FRZ_CAP
+                                                         * samples, by the punch-in's share); ALL DRY: all six */
+            uint32_t c1 = stem_layout == 3u ? 6u : 4u, t0 = punch.t >= n ? punch.t - n : 0u;
+            for (i = 0; i < n; i++) {
+                int32_t f = t0 + i < PX_FRZ_CAP ? (int32_t)((t0 + i) << 2) : 32767;
+                int32_t g = 32767 - (int32_t)(((int64_t)f * punch.g) >> 15);
+                for (c = 0; c < c1; c++)
+                    stem_stage[c][i] = (int32_t)(((int64_t)stem_stage[c][i] * g) >> 15);
+            }
+        }
         stem_sm0 = stem_sm1 = 4096;                     /* a fixed level: the stems do not follow MASTER (the DAW
                                                          * mixes them; usb.c leaves 18 dB of headroom) */
         stem_sn = n;

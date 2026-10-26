@@ -116,6 +116,10 @@ static volatile uint8_t smk_pad_drums, smk_pad_steps;
  * hardware pad (seq.c daw_pad); its release too, whatever the mode is by then */
 static volatile uint8_t smk_pad_daw;
 #define SMK_EXT_DAW 0x60u
+/* the stem punch-in page (the UI sets smk_pad_pfx: FX held, STEM FX on): a pad goes to the outer-key queue as
+ * SMK_EXT_PFX + the pad (seq.c pfx_pad), not as its white key, so the keys keep their effects */
+static volatile uint8_t smk_pad_pfx;
+#define SMK_EXT_PFX 0x70u
 #define SMK_WHITE_OF_PAD(p) ((p) < 8u ? (p) + 8u : (p) - 8u)
 #define SMK_PAD_OF_KEY(w) (smk_pad_grid ? (w) : SMK_PAD_OF_WHITE(w))   /* white key -> pad, as the pads are now */
 
@@ -466,6 +470,11 @@ static void smk__padq(uint32_t pad, uint32_t vel)     /* a pad hit (vel) or rele
         }
         if ((smk_pad_pick >> pad) & 1u) {
             smk_pick_hits |= (uint16_t)(1u << pad);
+            return;
+        }
+        if (smk_pad_pfx && smk_pad_grid && !smk_pad_piano) {   /* the stem punch-in page: the pad itself */
+            smk_pad_note[pad] = (uint8_t)(SMK_EXT_PFX + pad);
+            smk__extq(SMK_EXT_PFX + pad, vel);
             return;
         }
         if ((smk_pad_drums || smk_pad_steps) && !smk_pad_piano && !smk_pad_grid) {   /* DRUM KIT / STEPS: no note key */

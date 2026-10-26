@@ -1932,6 +1932,28 @@ static void punch_midi_on(uint32_t k)
     pfx_ch = (uint8_t)(c - 1), pfx_key = (uint8_t)(k + 1u);
     midi_out_note(pfx_ch, 53u + k, 100u);
 }
+/* the stem punch-in page (smk_tpunch.h TP_PAGE): pad c holds its effect as the effect's key would (its note on FX CH
+ * too, so a DAW records the key's note), its release lets it go unless a key or MIDI took it over meanwhile */
+static uint8_t pfx_pad_held;                      /* the pad holding it, + 1 (0: none) */
+static void pfx_pad(uint32_t c, uint32_t v)
+{
+    uint32_t fx;
+    if (c >= TP_PAGE_N)
+        return;
+    fx = TP_PAGE[c];
+    if (v) {
+        punch.req = (int8_t)fx;
+        punch.keybit = 0;
+        pfx_pad_held = (uint8_t)(c + 1u);
+        punch_midi_on(punch_key_of_fx(fx));
+    } else if (pfx_pad_held == c + 1u) {
+        pfx_pad_held = 0;
+        if (punch.req == (int8_t)fx && !punch.keybit)
+            punch.req = -1;
+        if (pfx_key == punch_key_of_fx(fx) + 1u)
+            punch_midi_off();
+    }
+}
 #endif
 
 static void key_down(uint32_t k)
@@ -2328,6 +2350,11 @@ static void ext_keys_block(void)
     while ((e = smk_extkey_take()) >= 0) {
         uint32_t k = (uint32_t)e >> 8, v = vel_apply(vel_mode, (uint32_t)e & 0xFFu), sel = song.sel % NTRK, mc;
         track_t *t = &trk[sel];
+        if (k >= SMK_EXT_PFX) {                           /* the stem punch-in page: a pad */
+            if (k - SMK_EXT_PFX < SMK_NPAD)
+                pfx_pad(k - SMK_EXT_PFX, v);
+            continue;
+        }
         if (k >= SMK_EXT_DAW) {                           /* DAW mode: a pad */
             if (k - SMK_EXT_DAW < SMK_NPAD)
                 daw_pad(k - SMK_EXT_DAW, v);
