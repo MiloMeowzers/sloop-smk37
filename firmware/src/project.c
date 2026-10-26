@@ -807,9 +807,10 @@ typedef struct {
     uint32_t magic;
     uint8_t vel, trs, bup, bdn, lim, klay, ulay, sfx;   /* bup / bdn: smk_wheel.h bend_*_byte; ulay: USB LAYOUT, sfx:
                                                      * STEM FX (0 in the records before them: STEREO, SLICER) */
-    uint8_t srate, sfilt, spare[2];                 /* STEM RATE, STEM FILTER (usb.c). A record of 12 bytes (before
-                                                     * them) reads as 0: 48 KHZ, FULL; an older build reads the first
-                                                     * 12 bytes of this one (st_load: up to its size) */
+    uint8_t srate, sfilt, xfl, lin;                 /* STEM RATE, STEM FILTER (usb.c), PUNCH > XFADE, CURVE
+                                                     * (smk_tpunch.h). A record of 12 bytes (before them) reads as 0:
+                                                     * 48 KHZ, FULL, 2.9 MS, EQUAL; an older build reads the first 12
+                                                     * bytes of this one (st_load: up to its size) */
 } smkset_t;
 #define SMKSET_V1 12u
 _Static_assert(sizeof(smkset_t) == 16u, "smkset: 12 bytes, then the stems' rate and filter");
@@ -829,6 +830,8 @@ static void smkset_fill(smkset_t *s)
     s->sfx = (uint8_t)(stem_fx % SFX_N);
     s->srate = (uint8_t)(stem_rate != 0u);
     s->sfilt = (uint8_t)(stem_light != 0u);
+    s->xfl = (uint8_t)(tp_xfl % TPX_N);
+    s->lin = (uint8_t)(tp_lin != 0u);
 }
 static void smkset_boot(void)                      /* after the settings (persist_boot, dsu_boot) */
 {
@@ -847,6 +850,8 @@ static void smkset_boot(void)                      /* after the settings (persis
         stem_fx = (uint8_t)(s.sfx < SFX_N ? s.sfx : SFX_SLICER);
         stem_rate = (uint8_t)(s.srate & 1u);
         stem_light = (uint8_t)(s.sfilt & 1u);
+        tp_xfl = (uint8_t)(s.xfl < TPX_N ? s.xfl : TPX_128);
+        tp_lin = (uint8_t)(s.lin & 1u);
         knob_layout_apply();
         smkset_fill(&smkset_saved);
         return;

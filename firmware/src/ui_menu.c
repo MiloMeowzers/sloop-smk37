@@ -29,9 +29,12 @@ enum { MI_COLOR, MI_ZOOM,
        MI_FRESO,
 #if BOARD_SMK37
        MI_LAYOUT,                                  /* SMK-37: USB > USB LAYOUT (usb.c usb_layout; main.c re-plugs USB) */
-       MI_SFX,                                     /* SMK-37: USB > STEM FX (smk_tpunch.h stem_fx, live) */
        MI_SRATE,                                   /* SMK-37: USB > STEM RATE (usb.c stem_rate; main.c re-plugs USB) */
        MI_SFILT,                                   /* SMK-37: USB > STEM FILTER (usb.c stem_light, live) */
+       MI_SFX,                                     /* SMK-37: PUNCH > STEM FX (smk_tpunch.h stem_fx, live) */
+       MI_PFADE,                                   /* SMK-37: PUNCH > FADE (GLO G_FXFADE: as SELECT on the FX page) */
+       MI_XFADE,                                   /* SMK-37: PUNCH > XFADE (smk_tpunch.h tp_xfl, live) */
+       MI_CURVE,                                   /* SMK-37: PUNCH > CURVE (smk_tpunch.h tp_lin, live) */
 #endif
        MI_ADV, MI_DPREV,
 #if BOARD_SMK37
@@ -58,7 +61,8 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #endif
                                               "FILTER RESO",
 #if BOARD_SMK37
-                                              "USB LAYOUT", "STEM FX", "STEM RATE", "STEM FILTER",
+                                              "USB LAYOUT", "STEM RATE", "STEM FILTER", "STEM FX", "FADE", "XFADE",
+                                              "CURVE",
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
 #if BOARD_SMK37
@@ -68,11 +72,13 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "2ND CORE", "HARDWARE CALIBRATION", "MIDI LEARN CLEAR", "ABOUT"};
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
-static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "SEQ", "PLAY", "MIDI", "DAW", "SYSTEM"};
-static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_ADV, MI_VEL, MI_TRS, MI_DMAP,
-                                               MI_SYS0, MI_COUNT};
-_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_ADV - MI_LAYOUT <= 4 && MI_VEL - MI_ADV <= 4 &&
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SEQ", "PLAY", "MIDI", "DAW",
+                                              "SYSTEM"};
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_ADV, MI_VEL, MI_TRS,
+                                               MI_DMAP, MI_SYS0, MI_COUNT};
+_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_ADV - MI_SFX <= 4 &&
+               MI_VEL - MI_ADV <= 4 &&
                MI_TRS - MI_VEL <= 4 &&
                MI_DMAP - MI_TRS <= 4 && MI_SYS0 - MI_DMAP <= 4 && MI_COUNT - MI_SYS0 <= 4,
                "SMK-37: four rows a section (K5..K8)");
@@ -229,6 +235,19 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         *c = usb_layout_now() ? C_HI : C_DIM;          /* (STEREO: no stems, no effect) */
         return N[stem_fx % SFX_N];
     }
+    case MI_PFADE: {                                  /* the punch-ins' fade (0 the shortest .. 15) */
+        static char b[4];
+        fmt_int(b, song.g[G_FXFADE]);
+        return b;
+    }
+    case MI_XFADE: {                                  /* the stems' shortest stitch (dim without STEM FX) */
+        static const char *const N[TPX_N] = {"2.9 MS", "1.5 MS", "5.8 MS"};
+        *c = usb_layout_now() && stem_fx ? C_HI : C_DIM;
+        return N[tp_xfl % TPX_N];
+    }
+    case MI_CURVE:
+        *c = usb_layout_now() && stem_fx ? C_HI : C_DIM;
+        return tp_lin ? "LINEAR" : "EQUAL";
     case MI_SRATE:                                    /* the stems' rate (STEREO: USB RATE's, this one dim) */
         *c = usb_layout != UL_STEREO ? C_HI : C_DIM;
         return stem_rate ? "44.1 KHZ" : "48 KHZ";
@@ -275,7 +294,8 @@ UI_SMALL static void draw_menu(void)
 #if BOARD_SMK37
     sig += vel_mode * 179424673u + trs_out * 373587883u + smo.dead * 573259391u + bend_up * 817504243u +
            bend_dn * 941083987u + lim_classic * 1500450271u + knob_layout * 2147483647u + usb_layout * 433494437u +
-           stem_fx * 160481183u + stem_rate * 275604541u + stem_light * 393342743u +
+           stem_fx * 160481183u + stem_rate * 275604541u + stem_light * 393342743u + tp_xfl * 694847539u +
+           tp_lin * 795918341u + (uint32_t)song.g[G_FXFADE] * 899809363u +
            (uint32_t)usb_layout_now() * 452930459u + (uint32_t)replug_pending() * 553105243u;
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
@@ -529,6 +549,19 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
                                                         * (stops at the ends), OCT+ round; main.c re-plugs USB once
                                                         * it settles */
         usb_layout = (uint8_t)ul_step(usb_layout, s);
+        break;
+    case MI_PFADE:                                     /* 0 .. 15, the knob stops at the ends; OCT+ back to 0 */
+        song.g[G_FXFADE] = (int16_t)(s ? clamp(song.g[G_FXFADE] + s, 0, 15) : 0);
+        break;
+    case MI_XFADE: {                                   /* 1.5, 2.9, 5.8 ms (stops at the ends); OCT+ round */
+        static const uint8_t ORD[TPX_N] = {TPX_64, TPX_128, TPX_256};
+        uint32_t k = tp_xfl == TPX_64 ? 0u : tp_xfl == TPX_128 ? 1u : 2u;
+        k = s > 0 ? (k < 2u ? k + 1u : k) : s < 0 ? (k ? k - 1u : 0u) : (k + 1u) % TPX_N;
+        tp_xfl = ORD[k];
+        break;
+    }
+    case MI_CURVE:                                     /* right LINEAR, left EQUAL; OCT+ toggles */
+        tp_lin = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !tp_lin);
         break;
     case MI_SRATE:                                     /* right 44.1, left 48; OCT+ toggles; re-plugged as LAYOUT */
         stem_rate = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !stem_rate);

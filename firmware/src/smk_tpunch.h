@@ -20,6 +20,13 @@
 #define TP_MAXR 7u
 enum { SFX_SLICER, SFX_PUNCH, SFX_HQ, SFX_N };
 static uint8_t stem_fx;                 /* the menu's STEM FX (project.c smkset); live */
+/* HOME > PUNCH > XFADE, CURVE (project.c smkset; live): a stitch on the stems (a punch in or out between unrelated
+ * audio) takes at least XFADE (FADE may make it longer); EQUAL keeps the level through it (unrelated audio summed
+ * linearly dips ~3 dB half way), LINEAR is the old ramp. A stitch between the same audio (a fresh loop's punch-in:
+ * it plays what comes in) stays linear either way (equal power there is a 3 dB bump) */
+enum { TPX_128, TPX_64, TPX_256, TPX_N };   /* (0: the default, 2.9 ms) */
+static uint8_t tp_xfl;                  /* XFADE: TPX_* */
+static uint8_t tp_lin;                  /* CURVE: 0 EQUAL, 1 LINEAR */
 static uint8_t tp_on;                   /* this start's layout and STEM FX: the stems' punch-ins (tp_mode) */
 static uint8_t tp_live;                 /* this block: one of them plays or fades */
 static struct {
@@ -36,16 +43,27 @@ static struct {
     int32_t v;                          /* REWIND: the speed Q16 (signed) */
     uint32_t gp;                        /* GATE: samples into the 1/16 step */
     uint32_t own_lo, own_n;             /* the captured span the writer leaves when it comes round (storage), 0: none */
+    uint8_t eq;                         /* this one's stitches equal power (CURVE, and unrelated audio) */
 } tp = {.mode = 0xFFu, .cur = -1};
 static int16_t *tp_ring[TP_MAXR];
 static int32_t tp_half[TP_MAXR];        /* PUNCH: the first sample of a pair */
 /* the block's timeline, per output sample (core 0 writes it before the units, the units read it) */
 static uint8_t tp_wr[CTL];              /* 1: a storage sample is written (PUNCH: the pair's second), 3: its slot kept */
 static uint16_t tp_wi[CTL];             /* .. its slot */
-static uint8_t tp_md[CTL];              /* 0: dry, 1: the ring at tp_ia / tp_fr x tp_wg, 2: the signal x tp_wg (GATE) */
+static uint8_t tp_md[CTL];              /* 0: dry, 1: the ring at tp_ia / tp_fr x tp_wg, 2: the signal x tp_wg (GATE),
+                                         * 3: a loop's seam, the ring at tp_ia x tp_wg + at tp_ic x tp_gb */
 static uint16_t tp_ia[CTL], tp_ib[CTL]; /* the ring slots read, either side of the position */
 static int32_t tp_fr[CTL];              /* the position between them, Q15 */
 static int32_t tp_wg[CTL], tp_xg[CTL];  /* the effect's gain, Q15; the crossfade (wet share), Q15 */
+static int32_t tp_xd[CTL];              /* .. and the dry share, Q15 (LINEAR: 32767 - tp_xg; EQUAL: the cosine) */
+static uint16_t tp_ic[CTL], tp_id[CTL]; /* the seam: the second position's slots .. */
+static int32_t tp_fr2[CTL], tp_gb[CTL]; /* .. between them, Q15, and its gain, Q15 */
+/* a loop's seam: over its last TP_SEAM samples (a quarter of a short loop) each pass blends, equal power, into the
+ * audio a loop's length before (forwards: just before the span's start; REVERSE: just after its turn), so the wrap
+ * lands on audio that runs on: no gap and no level dip (a fade to silence each pass clicked: the owner, rapid
+ * punches catching a sound's edge); the ring keeps those samples while the effect plays (own_lo, own_n) */
+#define TP_SEAM 128u
+static uint32_t tp_seam(uint32_t len);
 _Static_assert(TP_POOL - TP_MRING <= 4u * 65536u, "a ring's slots fit tp_wi (16 bits) for every ring count");
 
 /* the stem punch-in page (FX held, STEM FX = PUNCH / HQ in a stem layout): the effects that play on the stems, three
@@ -119,11 +137,15 @@ static void tp_start(int32_t fx)
                                                          * second sample: the first pass read the one not yet written,
                                                          * a ring old, half of every sample) */
     if (fx == PX_REV) {
-        uint32_t back = len / tp.s + 1u;                /* (the storage samples it reads, the interpolation's too) */
+        uint32_t back = len / tp.s + 1u, after = tp_seam(len) / tp.s + 2u;   /* (the storage samples it reads, the
+                                                         * interpolation's too; the seam's, after the turn) */
         tp.start = tp.ws - 1u;                          /* (backwards from the last whole sample) */
-        tp.own_lo = tp.start - back, tp.own_n = back + 1u;   /* already captured: the writer leaves it from now (it
-                                                         * came round over the span's oldest part: the pops) */
+        tp.own_lo = tp.start - back, tp.own_n = back + 1u + after;   /* already captured: the writer leaves it from now
+                                                         * (it came round over the span's oldest part: the pops); the
+                                                         * seam's samples after the turn as they come */
     }
+    tp.eq = (uint8_t)(!tp_lin && (fx == PX_REV || fx == PX_HALF || (px_loop(fx) && tp.k != 0u)));   /* (a fresh loop,
+                                                         * STOP, REWIND start on what comes in: the same audio) */
     tp.rp = (int64_t)(tp.ws - 1u) << 16;
     tp.spd = 65536u;
     tp.dspd = 65536u / len + 1u;
@@ -138,6 +160,29 @@ static void tp_at(uint32_t i, uint32_t idx, int32_t fr)   /* sample i reads betw
     tp_ib[i] = (uint16_t)(a + 1u >= tp.cap ? 0u : a + 1u);
     tp_fr[i] = fr;
 }
+static void tp_at2(uint32_t i, uint32_t idx, int32_t fr) /* (the seam's second position) */
+{
+    uint32_t a = idx % tp.cap;
+    tp_ic[i] = (uint16_t)a;
+    tp_id[i] = (uint16_t)(a + 1u >= tp.cap ? 0u : a + 1u);
+    tp_fr2[i] = fr;
+}
+/* a loop's read position x output samples into its span (x < 0: before it), forwards or (REVERSE) backwards from
+ * tp.start: the storage counter and the fraction (PUNCH: a slot two output samples; between, half way) */
+static uint32_t tp_pos(int32_t x, int rev, int32_t *fr)
+{
+    int32_t y = rev ? -x : x;
+    if (tp.s == 1u) {
+        *fr = 0;
+        return tp.start + (uint32_t)y;
+    }
+    *fr = (y & 1) ? 16384 : 0;
+    return tp.start + (uint32_t)((y - (y & 1)) / 2);
+}
+static uint32_t tp_seam(uint32_t len)   /* a loop's seam: TP_SEAM, a quarter of a short loop */
+{
+    return len / 4u < TP_SEAM ? len / 4u : TP_SEAM;
+}
 
 /* the block's timeline (core 0, before the units); want: the punch-in asked for (punch.req) */
 static void tp_block(uint32_t n, int32_t want)
@@ -149,6 +194,9 @@ static void tp_block(uint32_t n, int32_t want)
         pstep = 512 / (1 + (f < 0 ? 0 : f > 15 ? 15 : f) * 17);
         if (pstep < 1)
             pstep = 1;
+        f = tp_xfl == TPX_64 ? 512 : tp_xfl == TPX_256 ? 128 : 256;   /* (XFADE: the shortest stitch) */
+        if (pstep > f)
+            pstep = f;
     }
     if (!tp_fx(want))
         want = -1;
@@ -172,6 +220,7 @@ static void tp_block(uint32_t n, int32_t want)
                 if (!--tp.pre)
                     tp.start = tp.ws + 3u - 2u * tp.s, tp.k = 0;   /* (PUNCH: two slots behind: either
                                                          * parity, the slots read are written; see tp_start) */
+                tp.own_n = 0;                           /* (captured from the division on) */
             } else if (fx == PX_GATE) {
                 uint32_t p = tp.gp;
                 wg = p < step / 2u ? 32767 : 0;
@@ -196,27 +245,39 @@ static void tp_block(uint32_t n, int32_t want)
                 }
                 md = 1;
             } else {                                    /* loops, STUTTER, REVERSE, HALF: kk samples into the span */
-                uint32_t k = tp.k, len = tp.len, kk = fx == PX_HALF ? k / 2u : k;
-                if (tp.s == 1u)                         /* (HQ: a slot an output sample) */
-                    tp_at(i, fx == PX_REV ? tp.start - kk : tp.start + kk, 0);
-                else if (fx != PX_REV)                  /* (PUNCH: a slot two output samples; between, half way) */
-                    tp_at(i, tp.start + kk / 2u, (kk & 1u) ? 16384 : 0);
-                else if (kk & 1u)
-                    tp_at(i, tp.start - (kk + 1u) / 2u, 16384);
-                else
-                    tp_at(i, tp.start - kk / 2u, 0);
-                wg = kk < 64u ? (int32_t)kk * 512 : len - kk < 64u ? (int32_t)(len - kk) * 512 : 32767;   /* the seams */
-                tp.k = k + 1u >= (fx == PX_HALF ? 2u * len : len) ? 0u : k + 1u;
-                if (!tp.own_n && fx != PX_REV && tp.ws - tp.start >= len / tp.s + 1u)
-                    tp.own_lo = tp.start, tp.own_n = len / tp.s + 2u;   /* captured: the writer leaves it */
+                uint32_t k = tp.k, len = tp.len, kk = fx == PX_HALF ? k / 2u : k, sn = tp_seam(len);
+                int rev = fx == PX_REV;
+                int32_t fr;
+                uint32_t idx = tp_pos((int32_t)kk, rev, &fr);
+                tp_at(i, idx, fr);
                 md = 1;
+                if (kk + sn >= len) {                   /* the seam: into the audio a loop's length on */
+                    uint32_t ph = (uint32_t)(((uint64_t)(kk + sn - len) << 30) / sn);   /* 0 .. a quarter turn */
+                    idx = tp_pos((int32_t)kk - (int32_t)len, rev, &fr);
+                    tp_at2(i, idx, fr);
+                    wg = sine_i(ph + 0x40000000u);      /* (equal power: cos, sin) */
+                    tp_gb[i] = sine_i(ph);
+                    md = 3;
+                }
+                tp.k = k + 1u >= (fx == PX_HALF ? 2u * len : len) ? 0u : k + 1u;
+                if (!tp.own_n && !rev && tp.ws - tp.start >= len / tp.s + 1u)
+                    tp.own_lo = tp.start - sn / tp.s - 2u, tp.own_n = (len + sn) / tp.s + 4u;   /* captured: the
+                                                         * writer leaves it, and the seam's samples before it */
             }
         }
         if ((uint32_t)tp.g < target)
             tp.g = tp.g + pstep > 32767 ? 32767 : tp.g + pstep;
         else if ((uint32_t)tp.g > target)
             tp.g = tp.g < pstep ? 0 : tp.g - pstep;
-        tp_md[i] = md, tp_wg[i] = wg, tp_xg[i] = tp.g;
+        tp_md[i] = md, tp_wg[i] = wg;
+        if (tp.eq && md != 2u) {                        /* (equal power: sin, cos of a quarter turn) */
+            uint32_t ph = (uint32_t)tp.g << 15;
+            tp_xg[i] = tp.g ? sine_i(ph) : 0;
+            tp_xd[i] = sine_i(ph + 0x40000000u);
+        } else {
+            tp_xg[i] = tp.g;
+            tp_xd[i] = 32767 - tp.g;
+        }
         tp_live |= (uint8_t)(md && tp.g);
         if (last)
             tp.ws++;
@@ -248,7 +309,13 @@ static inline int32_t tp_x(uint32_t r, uint32_t i, int32_t x)
         w = (a + (((c - a) * tp_fr[i]) >> 15)) << 3;
     }
     w = (int32_t)(((int64_t)w * tp_wg[i]) >> 15);
-    return x + (int32_t)(((int64_t)(w - x) * tp_xg[i]) >> 15);
+    if (tp_md[i] == 3u) {                               /* (the seam: the other position, its share) */
+        int32_t a = b[tp_ic[i]], c = b[tp_id[i]], v = (a + (((c - a) * tp_fr2[i]) >> 15)) << 3;
+        w += (int32_t)(((int64_t)v * tp_gb[i]) >> 15);
+    }
+    if (tp_xg[i] >= 32767)
+        return w;
+    return (int32_t)(((int64_t)x * tp_xd[i] + (int64_t)w * tp_xg[i]) >> 15);
 }
 static void tp_zero(uint32_t r, uint32_t n)             /* a silent stem's block: its ring records the silence */
 {

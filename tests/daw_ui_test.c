@@ -225,10 +225,11 @@ int main(int argc, char **argv)
     check(MS_FIRST[MS_PLAY] == MI_VEL && MS_FIRST[MS_MIDI] == MI_TRS && MS_FIRST[MS_DAW] == MI_DMAP && MI_LOCAL - MI_TRS == 3 &&
           MI_DRESET - MI_DMAP == 3 && MI_BDN - MI_VEL == 2 && MI_LIMIT == MI_BDN + 1 && MS_FIRST[MS_MIDI] - MS_FIRST[MS_PLAY] == 4 &&
           MI_KLAY == MI_ZOOM + 1 && MI_ACCEL == MI_KLAY + 1 && MS_FIRST[MS_LIGHTS] == MI_ACCEL + 1 &&
-          MS_FIRST[MS_USB] == MI_LAYOUT && MI_FRESO + 1 == MI_LAYOUT && MS_FIRST[MS_SEQ] == MI_ADV && MI_LAYOUT + 1 == MI_SFX &&
-          MI_SFX + 1 == MI_SRATE && MI_SRATE + 1 == MI_SFILT && MI_SFILT + 1 == MI_ADV &&
+          MS_FIRST[MS_USB] == MI_LAYOUT && MI_FRESO + 1 == MI_LAYOUT && MS_FIRST[MS_SEQ] == MI_ADV && MI_LAYOUT + 1 == MI_SRATE &&
+          MI_SRATE + 1 == MI_SFILT && MS_FIRST[MS_PUNCH] == MI_SFX && MI_SFILT + 1 == MI_SFX && MI_SFX + 1 == MI_PFADE &&
+          MI_PFADE + 1 == MI_XFADE && MI_XFADE + 1 == MI_CURVE && MI_CURVE + 1 == MI_ADV &&
           MS_FIRST[MS_PLAY] == MI_DPREV + 1,
-          "SCREEN: KNOB LAYOUT, KNOB ACCEL; AUDIO ends with FILTER RESO; USB: LAYOUT, STEM FX, RATE, FILTER; SEQ; PLAY: KEY VELOCITY, BEND UP, BEND DOWN, LIMITER; MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4");
+          "SCREEN: KNOB LAYOUT, KNOB ACCEL; AUDIO ends with FILTER RESO; USB: LAYOUT, RATE, FILTER; PUNCH: STEM FX, FADE, XFADE, CURVE; SEQ; PLAY: KEY VELOCITY, BEND UP, BEND DOWN, LIMITER; MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4");
     {   /* USB LAYOUT: STEREO, DRUMS+RET, SYNTHS+RET, ALL DRY; the knob stops at the ends, OCT+ round */
         uint16_t col;
         usb_layout = UL_STEREO;
@@ -285,6 +286,29 @@ int main(int argc, char **argv)
         stem_light = 0, usb_layout = UL_STEREO;
         (void)mi_value(MI_SRATE, &col);
         check(col == C_DIM, "STEM RATE: dim with STEREO");
+    }
+    {   /* PUNCH: FADE 0..15 (OCT+ back to 0), XFADE 1.5 / 2.9 / 5.8 MS, CURVE EQUAL / LINEAR */
+        uint16_t col;
+        song.g[G_FXFADE] = 0, tp_xfl = TPX_128, tp_lin = 0;
+        check(!strcmp(mi_value(MI_XFADE, &col), "2.9 MS") && !strcmp(mi_value(MI_CURVE, &col), "EQUAL") &&
+              !strcmp(mi_value(MI_PFADE, &col), "0"), "PUNCH: the defaults FADE 0, XFADE 2.9 MS, CURVE EQUAL");
+        mi_set(MI_PFADE, 1); mi_set(MI_PFADE, 1);
+        check(song.g[G_FXFADE] == 2 && !strcmp(mi_value(MI_PFADE, &col), "2"), "FADE: right 2 (the FX page's own)");
+        mi_set(MI_PFADE, 0);
+        check(song.g[G_FXFADE] == 0, "FADE: OCT+ back to 0");
+        mi_set(MI_XFADE, 1);
+        check(tp_xfl == TPX_256 && !strcmp(mi_value(MI_XFADE, &col), "5.8 MS"), "XFADE: right 5.8 MS");
+        mi_set(MI_XFADE, 1);
+        check(tp_xfl == TPX_256, "XFADE: stops at the end");
+        mi_set(MI_XFADE, -1); mi_set(MI_XFADE, -1);
+        check(tp_xfl == TPX_64 && !strcmp(mi_value(MI_XFADE, &col), "1.5 MS"), "XFADE: left 1.5 MS");
+        mi_set(MI_CURVE, 1);
+        check(tp_lin == 1 && !strcmp(mi_value(MI_CURVE, &col), "LINEAR"), "CURVE: right LINEAR");
+        usb_layout = UL_SYNTHS, stem_fx = SFX_HQ;
+        ui.menu_sel = MI_XFADE; ui.force = 1; mi_set(MI_XFADE, 1); shot("daw-menu-punch");
+        song.g[G_FXFADE] = 0, tp_xfl = TPX_128, tp_lin = 0, usb_layout = UL_STEREO, stem_fx = SFX_SLICER;
+        check(!strcmp(MS_NAME[MS_PUNCH], "PUNCH") && !strcmp(MI_NAME[MI_XFADE], "XFADE") && !strcmp(MI_NAME[MI_CURVE], "CURVE") &&
+              !strcmp(MI_NAME[MI_PFADE], "FADE"), "the PUNCH section and its rows' names");
     }
     for (i = 0; i < MS_COUNT; i++)
         if (MS_FIRST[i + 1] - MS_FIRST[i] > 4u || MS_FIRST[i + 1] <= MS_FIRST[i])

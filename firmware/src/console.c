@@ -226,6 +226,8 @@ static void con_status(void)
     con_kv("stem_light", stem_light);                    /* STEM FILTER: 0 FULL (12 taps), 1 LIGHT (8 taps) */
     con_kv("replug", replug_pending());                  /* main.c: 1 while a new layout or rate is being plugged */
     con_kv("stem_fx", stem_fx);                          /* 0 SLICER, 1 PUNCH, 2 PUNCH HQ (smk_tpunch.h) */
+    con_kv("tp_xfade", tp_xfl);                          /* PUNCH > XFADE: 0 2.9 ms, 1 1.5 ms, 2 5.8 ms */
+    con_kv("tp_linear", tp_lin);                         /* PUNCH > CURVE: 0 EQUAL, 1 LINEAR */
     con_kv("tp_on", tp_on);                              /* the stems' punch-ins set up (a stem layout and PUNCH / HQ) */
     con_kv("tp_rings", tp.n);
     con_kv("tp_ring_ms", tp.n ? (int32_t)(tp.cap * tp.s * 1000u / 44100u) : 0);   /* a ring's past */

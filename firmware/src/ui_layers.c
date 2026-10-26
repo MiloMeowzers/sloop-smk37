@@ -664,14 +664,41 @@ static char hdr_r[12] = "";                              /* (2.7.2) a value show
 UI_SMALL static void layer_title(const char *name, const char *sub, uint16_t col, uint32_t *cache)
 {
     uint32_t locked = ly_lock != LY_PLAY;
+#if BOARD_SMK37
+    uint32_t sig = studio_hash(studio_hash(col, name), sub) + (ui.msg_t ? studio_hash(3u, ui.msg) : 0u) + locked * 7919u +
+                   studio_hash(104729u, hdr_r);
+#else
     uint32_t sig = studio_hash(studio_hash(col, name), sub) + (ui.msg_t ? studio_hash(3u, ui.msg) : 0u) + locked * 7919u +
                    (locked ? 0u : studio_hash(104729u, hdr_r));
+#endif
     if (!ui.force && sig == *cache)
         return;
     *cache = sig;
     cv_begin(240, 40, C_BLACK);
     cv_text(4, 2, &FONT_L, name, col);
     cv_text(4 + text_w(&FONT_L, name) + 10, 18, &FONT_S, ui.msg_t ? ui.msg : sub, ui.msg_t ? C_WHITE : TE_G3);
+#if BOARD_SMK37
+    /* SMK-37: the readout (FX: the fade) large in the layer's colour, its label small beside it, and LOCK a badge at the
+     * top centre, so a locked layer still shows the readout (the owner: the fade was too easy to miss under LOCK) */
+    if (hdr_r[0]) {
+        const char *v = hdr_r, *p;
+        char lab[12];
+        int32_t w;
+        for (p = hdr_r; *p; p++)
+            if (*p == ' ')
+                v = p + 1;                                /* (the value: after the last space) */
+        str_cpy(lab, hdr_r, v > hdr_r ? (uint32_t)(v - hdr_r) : 1u);   /* (the label: before it, the space dropped) */
+        w = (int32_t)text_w(&FONT_L, v);
+        cv_text(236 - w, 4, &FONT_L, v, col);
+        if (lab[0])
+            cv_text(236 - w - 6 - (int32_t)text_w(&FONT_S, lab), 4, &FONT_S, lab, TE_G3);
+    }
+    if (locked) {                                         /* locked open: any button lets it go */
+        int32_t w = (int32_t)text_w(&FONT_S, "LOCK") + 8;
+        cv_rect(120 - w / 2, 1, w, 16, C_WHITE);
+        cv_text(124 - w / 2, 1, &FONT_S, "LOCK", C_BLACK);
+    }
+#else
     if (locked) {                                         /* locked open (HOME): any button lets it go */
         int32_t w = (int32_t)text_w(&FONT_S, "LOCK") + 8;
         cv_rect(236 - w, 4, w, 15, C_WHITE);
@@ -679,6 +706,7 @@ UI_SMALL static void layer_title(const char *name, const char *sub, uint16_t col
     } else if (hdr_r[0]) {                                /* (2.7.2) a right-aligned readout (FX: the fade), like a knob's */
         cv_text(236 - text_w(&FONT_S, hdr_r), 4, &FONT_S, hdr_r, TE_G3);
     }
+#endif
     cv_rect(0, 38, 240, 1, TE_G1);
     cv_blit(0, 0);
 }
