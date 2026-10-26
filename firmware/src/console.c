@@ -222,6 +222,9 @@ static void con_status(void)
     con_kv("usb_layout", usb_layout_mode);               /* 0 STEREO, 1 DRUMS+RET, 2 SYNTHS+RET, 3 ALL DRY (usb.c) */
     con_kv("uac6_alt", uac.alt);                         /* the stems' stream (usb.c): 1 the host records */
     con_kv("stem_k", stem_k);                            /* of the 6 channels, those core 1 resamples (fx.c stem_balance) */
+    con_kv("stem_rate", stem_rate_mode);                 /* this plug's STEM RATE: 0 48 kHz, 1 44.1 (usb.c) */
+    con_kv("stem_light", stem_light);                    /* STEM FILTER: 0 FULL (12 taps), 1 LIGHT (8 taps) */
+    con_kv("replug", replug_pending());                  /* main.c: 1 while a new layout or rate is being plugged */
     con_kv("stem_fx", stem_fx);                          /* 0 SLICER, 1 PUNCH, 2 PUNCH HQ (smk_tpunch.h) */
     con_kv("tp_on", tp_on);                              /* the stems' punch-ins set up (a stem layout and PUNCH / HQ) */
     con_kv("tp_rings", tp.n);

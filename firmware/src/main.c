@@ -142,6 +142,54 @@ UI_SMALL static void hexs(char *b, uint32_t v)
     b[8] = 0;
 }
 
+#if UAC6 && !SMK_UAC_PROBE
+/* SMK-37: USB LAYOUT and STEM RATE live. Once the menu's choice differs from what this plug presents and has held
+ * for REPLUG_SETTLE_MS (the knob may pass through other layouts on the way), the keyboard leaves the bus (usb_unplug),
+ * stays off for REPLUG_OFF_MS (the host notices a cable pulled), then plugs back with the new layout and rate
+ * (usb_plug): the computer finds that device (each its own serial). The sound and the sequencer run on throughout;
+ * fx.c makes the new layout's channels from the next block (stem_layout) and shares out STEM FX's memory again */
+#define REPLUG_SETTLE_MS 1200u
+#define REPLUG_OFF_MS 1000u
+static uint8_t replug_st;                                   /* 0 idle, 1 settling, 2 off the bus */
+static int replug_pending(void)                             /* (the menu: RE-PLUG while it is due) */
+{
+    return replug_st != 0u;
+}
+static void usb_replug_task(uint32_t now)
+{
+    static uint8_t lay, rate;
+    static uint32_t t;
+    uint8_t l = (uint8_t)(ul_offered(usb_layout) ? usb_layout : UL_STEREO);
+    uint8_t r = (uint8_t)(l != UL_STEREO && stem_rate);    /* (STEREO: STEM RATE does not apply) */
+    if (usb.detached)
+        return;                                             /* (an update or UBOOT under way) */
+    if (replug_st == 2u) {
+        if (now - t < REPLUG_OFF_MS)
+            return;
+        usb_layout_mode = l;                                /* (the latest choice) */
+        stem_rate_mode = r;
+        stem_layout = l;
+        usb_plug();
+        replug_st = 0;
+        return;
+    }
+    if (l == usb_layout_mode && r == stem_rate_mode) {
+        replug_st = 0;                                      /* (back where it is: nothing to do) */
+        return;
+    }
+    if (replug_st == 0u || l != lay || r != rate) {
+        lay = l, rate = r, t = now, replug_st = 1;          /* (the choice moved: wait for it to settle) */
+        return;
+    }
+    if (now - t < REPLUG_SETTLE_MS)
+        return;
+    usb_unplug();
+    t = now, replug_st = 2;
+}
+#elif BOARD_SMK37
+static int replug_pending(void) { return 0; }   /* (the probe: no re-plug) */
+#endif
+
 #if BOARD_SMK37
 /* the SMK-37 Pro's 4 faders, tracks 1..4 (4 = drums), by FADER BANK (ui_input.c smk_fbank): A level, B the
  * track's filter (P_TFLT: low-pass left, open in the middle, high-pass right), C reverb send, D delay send.
@@ -337,6 +385,7 @@ UI_SMALL static void fm1_main(void)
 #if UAC6
     usb_layout_mode = (uint8_t)(ul_offered(usb_layout) ? usb_layout : UL_STEREO);   /* SMK-37: menu USB > USB LAYOUT,
                                                          * the same way (ui_menu.c: the layouts this build makes) */
+    stem_rate_mode = (uint8_t)(!SMK_UAC_PROBE && usb_layout_mode != UL_STEREO && stem_rate);   /* STEM RATE */
     stem_layout = usb_layout_mode;                      /* (fx.c: the channels it makes) */
 #endif
 #endif
@@ -363,6 +412,9 @@ UI_SMALL static void fm1_main(void)
         uint32_t m = fm1_ms;
         fm1_wdt_feed();
         usb_retry(fm1_ms);
+#if UAC6 && !SMK_UAC_PROBE
+        usb_replug_task(fm1_ms);                        /* SMK-37: USB LAYOUT, STEM RATE live */
+#endif
         if ((uint32_t)(m - healthy_since) >= 30000u && bootguard.pending) {
             bootguard_clear(&bootguard);     /* 30 s of this boot, even if TIMER4 survived reset */
         }

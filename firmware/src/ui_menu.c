@@ -28,8 +28,10 @@ enum { MI_COLOR, MI_ZOOM,
 #endif
        MI_FRESO,
 #if BOARD_SMK37
-       MI_LAYOUT,                                  /* SMK-37: USB > USB LAYOUT (usb.c usb_layout, at the next start) */
+       MI_LAYOUT,                                  /* SMK-37: USB > USB LAYOUT (usb.c usb_layout; main.c re-plugs USB) */
        MI_SFX,                                     /* SMK-37: USB > STEM FX (smk_tpunch.h stem_fx, live) */
+       MI_SRATE,                                   /* SMK-37: USB > STEM RATE (usb.c stem_rate; main.c re-plugs USB) */
+       MI_SFILT,                                   /* SMK-37: USB > STEM FILTER (usb.c stem_light, live) */
 #endif
        MI_ADV, MI_DPREV,
 #if BOARD_SMK37
@@ -56,7 +58,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #endif
                                               "FILTER RESO",
 #if BOARD_SMK37
-                                              "USB LAYOUT", "STEM FX",
+                                              "USB LAYOUT", "STEM FX", "STEM RATE", "STEM FILTER",
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
 #if BOARD_SMK37
@@ -111,6 +113,18 @@ UI_SMALL static uint32_t mi_row(uint32_t i) { return i - MS_FIRST[mi_sec(i)]; } 
 /* USB LAYOUT (usb.c UL_*): the names as the menu shows them, the layouts this build makes and the knob's step
  * through them */
 static const char *const UL_MENU_NAME[UL_N] = {"STEREO", "DRUMS+RET", "SYNTHS+RET", "ALL DRY"};
+static int replug_pending(void);                   /* (main.c: a new layout or rate is about to be plugged) */
+/* the guide under STEM RATE and STEM FILTER (two short lines beside the value): what each choice costs */
+UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
+{
+    static const char *const G[4][2] = {{"RESAMPLED ON", "THE KEYBOARD"}, {"LIGHTEST:", "PC CONVERTS"},
+                                        {"CLEANEST", "TOP END"}, {"1/3 LESS CPU", "BUSY PATTERNS"}};
+    if (i == MI_SRATE)
+        return G[stem_rate & 1u][line & 1u];
+    if (i == MI_SFILT)
+        return stem_rate ? (line ? "AT 44.1 KHZ" : "NOT USED") : G[2u + (stem_light & 1u)][line & 1u];
+    return 0;
+}
 static int ul_offered(uint32_t l) { return l < UL_N; }
 UI_SMALL static uint32_t ul_step(uint32_t l, int32_t s)
 {
@@ -215,6 +229,12 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         *c = usb_layout_now() ? C_HI : C_DIM;          /* (STEREO: no stems, no effect) */
         return N[stem_fx % SFX_N];
     }
+    case MI_SRATE:                                    /* the stems' rate (STEREO: USB RATE's, this one dim) */
+        *c = usb_layout != UL_STEREO ? C_HI : C_DIM;
+        return stem_rate ? "44.1 KHZ" : "48 KHZ";
+    case MI_SFILT:                                    /* the resampler's filter (44.1: none, dim) */
+        *c = usb_layout != UL_STEREO && !stem_rate ? C_HI : C_DIM;
+        return stem_light ? "LIGHT" : "FULL";
     case MI_BUP:
     case MI_BDN: {                                    /* semitones of the pitch wheel up / down, the internal sounds */
         static char b[2][16];
@@ -255,7 +275,8 @@ UI_SMALL static void draw_menu(void)
 #if BOARD_SMK37
     sig += vel_mode * 179424673u + trs_out * 373587883u + smo.dead * 573259391u + bend_up * 817504243u +
            bend_dn * 941083987u + lim_classic * 1500450271u + knob_layout * 2147483647u + usb_layout * 433494437u +
-           stem_fx * 160481183u;
+           stem_fx * 160481183u + stem_rate * 275604541u + stem_light * 393342743u +
+           (uint32_t)usb_layout_now() * 452930459u + (uint32_t)replug_pending() * 553105243u;
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
 #endif
@@ -370,8 +391,13 @@ UI_SMALL static void draw_menu(void)
                 if (i == MI_RATE && usb_rate != usb_rate_now())
                     cv_text(xv + 8, y + 30, &FONT_S, "RESTART", C_AMB);   /* (usb.c: at the next start) */
 #if BOARD_SMK37
-                if (i == MI_LAYOUT && usb_layout != usb_layout_now())
-                    cv_text(xv + 8, y + 30, &FONT_S, "RESTART", C_AMB);
+                if ((i == MI_LAYOUT || i == MI_SRATE) && replug_pending())
+                    cv_text(xv + 8, y + 30, &FONT_S, "RE-PLUG", C_AMB);   /* (main.c: a moment after the knob) */
+                else if (i == MI_SRATE || i == MI_SFILT) {
+                    uint16_t gc = vc == C_HI ? C_GRAY : C_DIM;
+                    cv_text(xv + 8, y + 18, &FONT_S, mi_guide(i, 0), gc);
+                    cv_text(xv + 8, y + 34, &FONT_S, mi_guide(i, 1), gc);
+                }
 #endif
 #if FELUCCA_CDC
                 if (i == MI_SERIAL && usb_serial != usb_cdc_now())
@@ -500,8 +526,15 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
                                   : (stem_fx + 1u) % SFX_N);
         break;
     case MI_LAYOUT:                                    /* the layouts this build makes (ul_offered), the knob steps
-                                                        * (stops at the ends), OCT+ round; at the next start */
+                                                        * (stops at the ends), OCT+ round; main.c re-plugs USB once
+                                                        * it settles */
         usb_layout = (uint8_t)ul_step(usb_layout, s);
+        break;
+    case MI_SRATE:                                     /* right 44.1, left 48; OCT+ toggles; re-plugged as LAYOUT */
+        stem_rate = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !stem_rate);
+        break;
+    case MI_SFILT:                                     /* right LIGHT, left FULL; OCT+ toggles; at once */
+        stem_light = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !stem_light);
         break;
     case MI_LIMIT:                                     /* right CLASSIC, left SOFT; OCT+ toggles */
         lim_classic = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !lim_classic);

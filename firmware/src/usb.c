@@ -40,11 +40,13 @@
 #ifndef SMK_UAC_PROBE
 #define SMK_UAC_PROBE 0
 #endif
-/* SMK-37: the stems (smk37-port.yaml follow_up.stems). Menu USB > USB LAYOUT, at the next start (as USB RATE): STEREO
- * (the master, as before), or 6 mono channels, 24 bit, 48 kHz only: DRUMS+RET (the drum groups + the shared FX
- * return), SYNTHS+RET (the 3 synth tracks, the kit as one stem, the return), ALL DRY (the synths, KICK, SNARE,
- * HATS+PERC). fx.c makes the channels, uac6_tap resamples them to 48 kHz into their own ring, uac6_ring_packet sends
- * 47..49 frames a packet (up to 882 bytes) as the stereo stream does. Each layout its own device (bcdDevice, serial) */
+/* SMK-37: the stems (smk37-port.yaml follow_up.stems). Menu USB > USB LAYOUT: STEREO (the master, as before), or 6
+ * mono channels, 24 bit: DRUMS+RET (the drum groups + the shared FX return), SYNTHS+RET (the 3 synth tracks, the kit
+ * as one stem, the return), ALL DRY (the synths, KICK, SNARE, HATS+PERC). fx.c makes the channels; at STEM RATE 48 KHZ
+ * uac6_tap resamples them to 48 kHz (STEM FILTER: FULL 12 taps, LIGHT 8) into their own ring, at 44.1 KHZ they go in
+ * as the engines make them; uac6_ring_packet sends 47..49 frames a packet (up to 882 bytes; 44.1: 43..46) as the
+ * stereo stream does. Each layout and rate its own device (bcdDevice, serial). A new layout or rate: main.c takes the
+ * keyboard off the bus and back (usb_unplug, usb_plug; ~1 s, the sound runs on) */
 #if BOARD_SMK37 && FELUCCA_UAC_48K && !defined(FELUCCA_LOADER)
 #define UAC6 1
 #else
@@ -59,6 +61,10 @@ static uint8_t usb_layout;                      /* the menu's USB LAYOUT (projec
 static uint8_t usb_layout_mode;                 /* this start's (main.c, before usb_start) */
 #define uac6_on (SMK_UAC_PROBE || usb_layout_mode != UL_STEREO)
 static int usb_layout_now(void) { return usb_layout_mode; }   /* (the menu: what this start presents) */
+static uint8_t stem_rate;                       /* the menu's STEM RATE: 0 48 kHz, 1 44.1 (project.c smkset) */
+static uint8_t stem_rate_mode;                  /* this plug's (main.c; 0 with STEREO and in the probe) */
+static uint8_t stem_light;                      /* the menu's STEM FILTER: 0 FULL (12 taps), 1 LIGHT (8 taps); live */
+static uint8_t usb_replugging;                  /* main.c: off the bus for a re-plug (usb_retry waits for it) */
 #else
 #define uac6_on 0
 #endif
@@ -396,13 +402,16 @@ static int sn_string(const uint8_t **d, uint16_t *l)
         s[n++] = HEX[f[i] >> 4], s[n++] = HEX[f[i] & 15u];
     s[n++] = '-';
     {
-        static const char TAG[UL_N + 3][3] = {"ST", "DR", "SY", "AD", "P6", "S4", "S8"};   /* (the probe, then STEREO
-                                                         * with USB RATE 44.1 / 48: descriptors of their own, so
-                                                         * devices of their own; AUTO keeps ST) */
+        static const char TAG[UL_N + 6][3] = {"ST", "DR", "SY", "AD", "P6", "S4", "S8", "D4", "Y4", "A4"};   /* (the
+                                                         * probe, then STEREO with USB RATE 44.1 / 48, then the stems
+                                                         * at STEM RATE 44.1: descriptors of their own, so devices of
+                                                         * their own; AUTO keeps ST) */
         uint32_t ti = SMK_UAC_PROBE ? UL_N : usb_layout_mode % UL_N;
         const char *t;
         if (ti == UL_STEREO && (usb_rate_mode == 1u || usb_rate_mode == 2u))
             ti = UL_N + usb_rate_mode;
+        else if (ti != UL_STEREO && ti < UL_N && stem_rate_mode)
+            ti = UL_N + 3u + ti - 1u;
         t = TAG[ti];
         s[n++] = t[0];
         s[n++] = t[1];
@@ -419,9 +428,9 @@ static int sn_string(const uint8_t **d, uint16_t *l)
 
 #if UAC6
 /* the stems' descriptors, made from the ones above (CDC or not): the input terminal 6 channels with no spatial
- * positions, named by strings 4..9 (iChannelNames); the format 6 x 24 bit (3-byte subframes) at 48000 only; EP4's
- * size 882; bcdDevice x.4x DRUMS+RET, x.5x SYNTHS+RET, x.6x ALL DRY, x.7x the probe: a version each (hosts cache
- * descriptors per version) */
+ * positions, named by strings 4..9 (iChannelNames); the format 6 x 24 bit (3-byte subframes) at 48000 (STEM RATE 44.1:
+ * 44100) only; EP4's size 882; bcdDevice x.4x DRUMS+RET, x.5x SYNTHS+RET, x.6x ALL DRY, x.7x the probe, x.8x .. x.Ax
+ * the three at 44.1: a version each (hosts cache descriptors per version) */
 #define U6_CH 6u
 #define U6_MAXF 49u
 #define U6_MAXP (U6_MAXF * U6_CH * 3u)
@@ -432,7 +441,8 @@ static void uac6_desc(const uint8_t **d, uint16_t *l, int cfg)
     uint32_t n = *l, off, k = 0;
     if (!cfg) {
         memcpy(dev_u6, src, 18);
-        dev_u6[12] = (uint8_t)((dev_u6[12] & 0x0Fu) | (SMK_UAC_PROBE ? 0x70u : 0x30u + 0x10u * usb_layout_mode));
+        dev_u6[12] = (uint8_t)((dev_u6[12] & 0x0Fu) |
+                               (SMK_UAC_PROBE ? 0x70u : (stem_rate_mode ? 0x70u : 0x30u) + 0x10u * usb_layout_mode));
         *d = dev_u6;
         return;
     }
@@ -443,6 +453,8 @@ static void uac6_desc(const uint8_t **d, uint16_t *l, int cfg)
             static const uint8_t F6[11] = {11, 0x24, 2, 1, U6_CH, 3, 24, 1, 48000u & 0xFF, (48000u >> 8) & 0xFF,
                                            48000u >> 16};
             memcpy(q, F6, 11);
+            if (stem_rate_mode)
+                q[8] = UAC_RATE & 0xFFu, q[9] = (UAC_RATE >> 8) & 0xFFu, q[10] = UAC_RATE >> 16;
             k += 11u;
             continue;
         }
@@ -622,7 +634,8 @@ static void uac_rate_set(uint32_t hz)
 #endif
 #if UAC6
     if (uac6_on)
-        r48 = 1;                                        /* the stems: 48 kHz only (a host may never send SET_CUR) */
+        r48 = !stem_rate_mode;                          /* the stems: the one rate described (a host may never send
+                                                         * SET_CUR) */
 #endif
     if (r48 == uac.r48)
         return;
@@ -1310,33 +1323,44 @@ static __attribute__((noinline)) void uac_tap48(const int32_t *out, uint32_t n)
 
 #if UAC6
 /* the stems, one block: the 6 channels of fx.c (mix units, 44.1 kHz) resampled to 48 kHz with the stereo stream's
- * filter (uac_fir.h), then x the level m0 .. m1 over the block (Q12: the MASTER knob's, or 4096 with USB AUDIO = FULL)
- * with the stereo output's full scale at -6 dBFS (x 128 / 4096 in 24 bit: 6 dB of headroom, no limiter; 12 dB until the
- * owner found the stems low), clamped at
- * 24-bit full scale (the hard ceiling), into the ring. One 32-bit multiply a tap: the taps in RAM, each phase forwards
- * (r6_taps), rounded to Q12 with each phase's sum kept at exactly 4096 (unity: DC exact), the input halved and clamped
- * at 2^18 (2^19 mix units, +24 dB: |sum| < 5270 x 2^18 < 2^31); the level once an output sample. The resolution: half a
- * mix unit (half the stereo output's step). (On the unit, the Q15 taps read from flash in two directions with two
- * multiplies a tap cost ~38 us a channel a block, a third of a core for the 6.) The channels are independent: fx.c
- * gives some to core 1 and the rest to core 0 in the same block (stem_balance): uac6_room (core 0) decides whether the
- * block goes in at all, uac6_tap_ch fills channels c_lo .. c_hi - 1 of its frames (either core, from the same state;
- * nothing else is written), uac6_commit (core 0, once both are done) moves the state and the ring on */
+ * filter (uac_fir.h; STEM FILTER = LIGHT: smk_uac_fir8.h, 8 taps, a third less work, -2.8 dB at 16 kHz), then x the
+ * level m0 .. m1 over the block (Q12; fx.c: 4096, a fixed level) with the stereo output's full scale at -18 dBFS (x 32
+ * / 4096 in 24 bit: 18 dB of headroom for the DAW's sum, no limiter; 6 dB clipped there, 12 sounded low until the
+ * level stopped following MASTER), clamped at 24-bit full scale (the hard ceiling), into the ring. One 32-bit multiply
+ * a tap: the taps in RAM, each phase forwards (r6_taps, r6_taps8), rounded to Q12 with each phase's sum kept at
+ * exactly 4096 (unity: DC exact), the input halved and clamped at 2^18 (2^19 mix units, +24 dB: |sum| < 5270 x 2^18
+ * < 2^31); the level once an output sample. The resolution: half a mix unit (half the stereo output's step). (On the
+ * unit, the Q15 taps read from flash in two directions with two multiplies a tap cost ~38 us a channel a block, a
+ * third of a core for the 6.) STEM RATE 44.1: no filter, each frame as it is made (the same level). The channels are
+ * independent: fx.c gives some to core 1 and the rest to core 0 in the same block (stem_balance): uac6_room (core 0)
+ * decides whether the block goes in at all, uac6_tap_ch fills channels c_lo .. c_hi - 1 of its frames (either core,
+ * from the same state; nothing else is written), uac6_commit (core 0, once both are done) moves the state and the
+ * ring on */
+#include "smk_uac_fir8.h"
 static int16_t r6_taps[UAC_FIR_L][UAC_FIR_N];          /* phase p's taps, oldest sample first, Q12 */
-static void uac6_taps_init(void)                       /* (core 0, before the first stream: uac_render_start) */
+static int16_t r6_taps8[UAC_FIR_L][UAC_FIR8_N];        /* (STEM FILTER = LIGHT) */
+/* a table's phases 0 .. L/2 - 1 (Q15) into all L phases forwards in RAM (Q12) */
+static void uac6_taps_make(int16_t *dst, const int16_t *src, uint32_t n)
 {
     uint32_t p, j, big;
     for (p = 0; p < UAC_FIR_L; p++) {
+        int16_t *d = dst + p * n;
         int32_t sum = 0;
         big = 0;
-        for (j = 0; j < UAC_FIR_N; j++) {
-            int32_t t = p < UAC_FIR_L / 2u ? UAC_FIR[p][j] : UAC_FIR[UAC_FIR_L - 1u - p][UAC_FIR_N - 1u - j];
-            r6_taps[p][j] = (int16_t)((t + 4) >> 3);
-            sum += r6_taps[p][j];
-            if ((r6_taps[p][j] < 0 ? -r6_taps[p][j] : r6_taps[p][j]) > (r6_taps[p][big] < 0 ? -r6_taps[p][big] : r6_taps[p][big]))
+        for (j = 0; j < n; j++) {
+            int32_t t = p < UAC_FIR_L / 2u ? src[p * n + j] : src[(UAC_FIR_L - 1u - p) * n + n - 1u - j];
+            d[j] = (int16_t)((t + 4) >> 3);
+            sum += d[j];
+            if ((d[j] < 0 ? -d[j] : d[j]) > (d[big] < 0 ? -d[big] : d[big]))
                 big = j;
         }
-        r6_taps[p][big] = (int16_t)(r6_taps[p][big] + 4096 - sum);   /* (unity: the rounding's remainder on the largest) */
+        d[big] = (int16_t)(d[big] + 4096 - sum);        /* (unity: the rounding's remainder on the largest) */
     }
+}
+static void uac6_taps_init(void)                       /* (core 0, before the first stream: uac_render_start) */
+{
+    uac6_taps_make(&r6_taps[0][0], &UAC_FIR[0][0], UAC_FIR_N);
+    uac6_taps_make(&r6_taps8[0][0], &UAC_FIR8[0][0], UAC_FIR8_N);
     r6_taps_ok = 1;
 }
 static int uac6_room(uint32_t n)
@@ -1349,8 +1373,10 @@ static int uac6_room(uint32_t n)
     }
     return 1;
 }
-static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1,
-                                                  uint32_t c_lo, uint32_t c_hi)
+/* (one filter, its tap count a constant once inlined) */
+static inline __attribute__((always_inline)) void uac6_fir(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1,
+                                                           uint32_t c_lo, uint32_t c_hi, const int16_t *taps,
+                                                           const uint32_t nt)
 {
     uint32_t w = ua_w, i, j, c, k = 0, h = r6.w, ph = r6.ph;
     for (i = 0; i < n; i++) {
@@ -1361,14 +1387,14 @@ static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint
             r6.h[c][s] = r6.h[c][s + RS_H] = x > 262143 ? 262143 : x < -262144 ? -262144 : x;
         }
         h++;
-        s = (h - UAC_FIR_N) & (RS_H - 1u);              /* the window: oldest .. this frame */
+        s = (h - nt) & (RS_H - 1u);                     /* the window: oldest .. this frame */
         do {
             uint8_t *f = u6_ring + ((w + k++) & (UA_N - 1u)) * U6_FB + 3u * c_lo;
-            const int16_t *t = r6_taps[ph];
+            const int16_t *t = taps + ph * nt;
             for (c = c_lo; c < c_hi; c++, f += 3) {
                 const int32_t *x = &r6.h[c][s];
                 int32_t a = 2048, v;
-                for (j = 0; j < UAC_FIR_N; j++)
+                for (j = 0; j < nt; j++)
                     a += t[j] * x[j];
                 v = ((a >> 12) * m) >> 6;               /* (half mix units x m / 4096 x 128 x 2 / 4: 18 dB of headroom) */
                 v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
@@ -1379,9 +1405,38 @@ static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint
         ph -= UAC_FIR_L;
     }
 }
+static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1,
+                                                  uint32_t c_lo, uint32_t c_hi)
+{
+    uint32_t w = ua_w, i, c;
+    if (uac.ring48) {
+        if (stem_light)
+            uac6_fir(ch, n, m0, m1, c_lo, c_hi, &r6_taps8[0][0], UAC_FIR8_N);
+        else
+            uac6_fir(ch, n, m0, m1, c_lo, c_hi, &r6_taps[0][0], UAC_FIR_N);
+        return;
+    }
+    for (i = 0; i < n; i++) {                           /* STEM RATE 44.1: a frame a sample, at the filter's level */
+        int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
+        uint8_t *f = u6_ring + ((w + i) & (UA_N - 1u)) * U6_FB + 3u * c_lo;
+        for (c = c_lo; c < c_hi; c++, f += 3) {
+            int32_t x = ch[c][i] >> 1, v;
+            x = x > 262143 ? 262143 : x < -262144 ? -262144 : x;
+            v = (x * m) >> 6;
+            v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
+            f[0] = (uint8_t)v, f[1] = (uint8_t)(v >> 8), f[2] = (uint8_t)(v >> 16);
+        }
+    }
+}
 static void uac6_commit(uint32_t n)                    /* the block's frames written: the state and the ring move on */
 {
     uint32_t i, k = 0, ph = r6.ph;
+    if (!uac.ring48) {                                  /* (44.1: a frame a sample) */
+        r6.w += n;
+        RING_PUBLISH();
+        ua_w += n;
+        return;
+    }
     for (i = 0; i < n; i++) {
         do {
             k++;
@@ -1497,19 +1552,27 @@ static uint32_t uac_packet(uint32_t *d)
 #if UAC6
 static uint8_t ep4tx6[U6_MAXP] __attribute__((aligned(4)));
 static uint8_t u6_last[U6_FB];
-/* the stems' next packet, as uac_packet at 48 kHz: 48 frames (+-1 to hold the ring's fill), from the ring or, until
- * it is primed, silence; an empty ring repeats the last frame. Returns the frame count */
+/* the stems' next packet, as uac_packet: 48 frames (44.1: 44 / 45), +-1 to hold the ring's fill, from the ring or,
+ * until it is primed, silence; an empty ring repeats the last frame. Returns the frame count */
 static uint32_t uac6_ring_packet(uint8_t *d)
 {
-    uint32_t n = 48u, r, fill, k, i;
-    if (!uac.go || !uac.ring48) {                       /* not primed yet */
+    uint32_t n = 48u, r, fill, k, i, lo = UA_LO48, hi = UA_HI48;
+    if (!uac.r48) {
+        n = 44u, lo = UA_LO, hi = UA_HI;
+        uac.acc += UAC_RATE % 1000u;
+        if (uac.acc >= 1000u) {
+            uac.acc -= 1000u;
+            n++;
+        }
+    }
+    if (!uac.go || uac.ring48 != uac.r48) {             /* not primed (at this rate) yet */
         memset(d, 0, n * U6_FB);
         return n;
     }
-    if (uac.fill_min > UA_HI48) {
+    if (uac.fill_min > hi) {
         n++;
         uac.adj_up++;
-    } else if (uac.fill_min < UA_LO48) {
+    } else if (uac.fill_min < lo) {
         n--;
         uac.adj_down++;
     }
@@ -1731,6 +1794,10 @@ static void usb_retry(uint32_t now_ms)
     static uint32_t t;
     if (usb.up || usb.detached || now_ms - t < 1000u)
         return;
+#if UAC6
+    if (usb_replugging)
+        return;                                         /* (main.c plugs it back) */
+#endif
     t = now_ms;
     usb.retries++;
     usb_start();
@@ -1742,3 +1809,22 @@ static void usb_detach(void)
     usb.up = 0;
     fm1_usb_off();
 }
+#if UAC6
+/* SMK-37: a re-plug (main.c, the main loop): off the bus, as a cable pulled (the host forgets the device; the sound,
+ * the sequencer and MIDI on DIN run on), then usb_plug as at power-on, with this plug's layout and rate */
+static void usb_unplug(void)
+{
+    fm1_irq_off();
+    usb_replugging = 1;
+    usb.up = 0;                                         /* (usb_poll and uac_service stop at their first test) */
+    usb.config = 0;
+    uac_stream(0);
+    fm1_irq_on();
+    fm1_usb_off();
+}
+static void usb_plug(void)
+{
+    usb_start();
+    usb_replugging = 0;
+}
+#endif

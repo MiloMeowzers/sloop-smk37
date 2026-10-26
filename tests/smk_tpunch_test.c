@@ -88,6 +88,7 @@ int main(void)
     uint32_t mode, layout, n, bad;
     int32_t bpm;
     char what[160];
+    (void)stem_fx;                              /* (the menu's: not used here) */
     printf("-- the SMK-37 stem punch rings\n");
     for (mode = SFX_PUNCH; mode <= SFX_HQ; mode++)
         for (layout = 1; layout <= 3u; layout++)

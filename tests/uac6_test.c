@@ -10,7 +10,10 @@
  *   stems        (T_STEMS) renders of 256 frames at 44.1 kHz through uac6_tap (6 channels: sines, DC, silence) against
  *                packets at 1 kHz (uac6_ring_packet), 3 s: 48 frames a ms, no underrun or overrun once primed, DC
  *                x 32 (the stereo output's full scale at -18 dBFS: 18 dB of headroom), the sines' level and frequency
- *                (no frame lost or doubled), the level m scales, the 24-bit ceiling
+ *                (no frame lost or doubled), the level m scales, the 24-bit ceiling; the same with STEM FILTER = LIGHT
+ *                (8 taps) and at STEM RATE 44.1 (no resampling: 44.1 frames a ms, every sample x 32 exactly)
+ *   exact        (T_STEMS) FULL and LIGHT: every output sample as 64-bit sums give it; each phase's taps sum to unity
+ *   44.1         (T_STEMS) descriptors at STEM RATE 44.1: the format 44100, bcdDevice x.8x .. x.Ax, serials -D4 -Y4 -A4
  * The SIE is never touched. */
 #include <stdint.h>
 #include <stdio.h>
@@ -31,6 +34,8 @@
 #error "-DHALF_FRAMES=n (src/core.h; run_tests.sh passes it)"
 #endif
 static void fm1_delay_ms(uint32_t ms) { (void)ms; }
+static void fm1_irq_off(void) {}                  /* (usb_unplug: the host has one thread) */
+static void fm1_irq_on(void) {}
 static void smo_put(uint32_t pkt) { (void)pkt; }   /* (the SMK's TRS MIDI out: not here) */
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"   /* SIE register macros (never touched here) */
 #include "../firmware/src/usb.c"
@@ -122,6 +127,26 @@ static void test_descriptors(void)
             }
             usb_rate_mode = 0, usb_layout_mode = UL_SYNTHS;
             check("string 3, STEREO: -ST (AUTO), -S4 (44.1 KHZ), -S8 (48 KHZ)", ok);
+        }
+        {   /* STEM RATE 44.1: each layout its own version, serial and format */
+            static const char *const W[3] = {"SMK37-C9C2507299B8-D4", "SMK37-C9C2507299B8-Y4", "SMK37-C9C2507299B8-A4"};
+            uint32_t l, ok = 1, fmt = 1;
+            stem_rate_mode = 1;
+            for (l = UL_DRUMS; l <= UL_DRY; l++) {
+                usb_layout_mode = (uint8_t)l;
+                ok &= get_desc(0x0303, &s, &sl) && sl == 2u + 2u * 21u;
+                for (k = 0; ok && k < 21u; k++)
+                    ok = s[2u + 2u * k] == (uint8_t)W[l - 1u][k];
+                get_desc(0x0100, &dv, &dl);
+                ok &= (dv[12] & 0xF0u) == 0x70u + 0x10u * l;
+                get_desc(0x0200, &c, &cl);
+                for (off = 0; off < cl; off += c[off])
+                    if (c[off] == 11u && c[off + 1] == 0x24u && c[off + 2] == 2u && c[off + 3] == 1u)
+                        fmt &= (c[off + 8] | c[off + 9] << 8 | c[off + 10] << 16) == 44100;
+            }
+            stem_rate_mode = 0, usb_layout_mode = UL_SYNTHS;
+            check("STEM RATE 44.1: bcdDevice x.8x .. x.Ax, string 3 -D4 -Y4 -A4", ok);
+            check("STEM RATE 44.1: the type I format 6 x 24 bit at 44100 only", fmt);
         }
 #endif
     }
@@ -248,12 +273,16 @@ static void test_split(void)
     printf("   %u frames compared\n", nb);
     check("the channels shared between the cores, any split: the same bytes as on one core", b == 0 && nb > 340u);
 }
-/* the 32-bit split sums against 64-bit ones: random full-range input and levels, every output sample */
-static void test_exact(void)
+/* the 32-bit split sums against 64-bit ones: random full-range input and levels, every output sample; STEM FILTER
+ * FULL (12 taps) or LIGHT (8) */
+static void test_exact(int light)
 {
     static int32_t c[6][32], hist[6][32];
     const int32_t *cp[6] = {c[0], c[1], c[2], c[3], c[4], c[5]};
+    const uint32_t nt = light ? UAC_FIR8_N : UAC_FIR_N;
+    const int16_t *taps = light ? &r6_taps8[0][0] : &r6_taps[0][0];
     uint32_t rnd = 12345u, b, i, ch, k, ph = 0, h = 0, w0, out = 0, bad = 0;
+    stem_light = (uint8_t)light;
     memset(&uac, 0, sizeof uac);
     ua_w = ua_r = 0;
     usb.up = 1, usb.config = 1, uac.alt = 1, uac.flowing = 1;
@@ -282,8 +311,8 @@ static void test_exact(void)
                 const uint8_t *f = u6_ring + ((w0 + out) & (UA_N - 1u)) * U6_FB;
                 for (ch = 0; ch < 6u; ch++) {
                     int64_t a = 2048, v;
-                    for (k = 0; k < UAC_FIR_N; k++)
-                        a += (int64_t)r6_taps[ph][k] * hist[ch][(h - UAC_FIR_N + k) & 31u];
+                    for (k = 0; k < nt; k++)
+                        a += (int64_t)taps[ph * nt + k] * hist[ch][(h - nt + k) & 31u];
                     v = ((a >> 12) * m) >> 6;
                     v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
                     bad += s24(f + 3u * ch) != (int32_t)v;
@@ -295,21 +324,26 @@ static void test_exact(void)
         }
     }
     printf("   %u frames compared\n", out);
-    check("one 32-bit multiply a tap: every sample as 64-bit sums give it (random full-range input and levels)",
+    check(light ? "LIGHT (8 taps): every sample as 64-bit sums give it (random full-range input and levels)" :
+                  "one 32-bit multiply a tap: every sample as 64-bit sums give it (random full-range input and levels)",
           bad == 0 && out == ua_w - w0 && out > 340u);
-    {   /* the taps in RAM: each phase sums to exactly 4096 (unity), each tap near uac_fir.h's */
+    {   /* the taps in RAM: each phase sums to exactly 4096 (unity), each tap near the table's */
+        const int16_t *src = light ? &UAC_FIR8[0][0] : &UAC_FIR[0][0];
         uint32_t p, j, unity = 1, near = 1;
         for (p = 0; p < UAC_FIR_L; p++) {
             int32_t sum = 0;
-            for (j = 0; j < UAC_FIR_N; j++) {
-                int32_t t = p < UAC_FIR_L / 2u ? UAC_FIR[p][j] : UAC_FIR[UAC_FIR_L - 1u - p][UAC_FIR_N - 1u - j];
-                sum += r6_taps[p][j];
-                near &= abs(r6_taps[p][j] * 8 - t) <= 4 + 8 * 6;   /* (the remainder on the largest: a few steps) */
+            for (j = 0; j < nt; j++) {
+                int32_t t = p < UAC_FIR_L / 2u ? src[p * nt + j] : src[(UAC_FIR_L - 1u - p) * nt + nt - 1u - j];
+                sum += taps[p * nt + j];
+                near &= abs(taps[p * nt + j] * 8 - t) <= 4 + 8 * 6;   /* (the remainder on the largest: a few steps) */
             }
             unity &= sum == 4096;
         }
-        check("the taps in RAM: every phase sums to unity, each tap as uac_fir.h's within the rounding", unity && near);
+        check(light ? "LIGHT's taps in RAM: every phase sums to unity, each tap as smk_uac_fir8.h's" :
+                      "the taps in RAM: every phase sums to unity, each tap as uac_fir.h's within the rounding",
+              unity && near);
     }
+    stem_light = 0;
 }
 static void test_stems(void)
 {
@@ -348,6 +382,39 @@ static void test_stems(void)
         e5 = got[i][5] > e5 ? got[i][5] : e5;
     check("the 24-bit ceiling: 300000 x 32 clamps at 8388607", e5 == 8388607);
 }
+/* STEM FILTER = LIGHT, and STEM RATE 44.1 (no resampling): the same stems, their level and frequency */
+static void test_stems_light_441(void)
+{
+    uint32_t pass;
+    for (pass = 0; pass < 2u; pass++) {
+        uint32_t nf, i, fps = pass ? 44100u : 48000u, from = fps / 5u, zc = 0, und, ovr;
+        int32_t pk0 = 0, e2 = 0, e3 = 0, z1 = 0;
+        stem_light = (uint8_t)!pass, stem_rate_mode = (uint8_t)pass;
+        nf = stems_run(4096, 30000);
+        und = uac.underruns, ovr = uac.overruns;
+        for (i = from; i < nf; i++) {
+            int32_t d2 = got[i][2] - 32000, d3 = got[i][3] + 64000;
+            e2 = abs(d2) > e2 ? abs(d2) : e2, e3 = abs(d3) > e3 ? abs(d3) : e3;
+            z1 = abs(got[i][1]) > z1 ? abs(got[i][1]) : z1;
+            pk0 = abs(got[i][0]) > pk0 ? abs(got[i][0]) : pk0;
+            if (i + fps <= nf && i < from + fps && got[i][0] < 0 && got[i + 1][0] >= 0)
+                zc++;
+        }
+        printf("   %s: frames %u, underruns %u, overruns %u, DC errors %d %d, peak %d, crossings %u\n",
+               pass ? "44.1" : "LIGHT", nf, und, ovr, e2, e3, pk0, zc);
+        if (pass) {
+            check("STEM RATE 44.1: 44.1 frames a ms (3 s: 132300 +-100), no underrun or overrun",
+                  nf > 132200u && nf < 132400u && und == 0 && ovr == 0);
+            check("STEM RATE 44.1: DC x 32 exactly, silence 0, 1 kHz at 8000 -> 256000 (+-0.5 %), 1000 crossings",
+                  e2 == 0 && e3 == 0 && z1 == 0 && abs(pk0 - 256000) <= 1280 && zc >= 999u && zc <= 1001u);
+        } else {
+            check("STEM FILTER LIGHT: 48 frames a ms, no underrun or overrun", nf > 143900u && nf < 144100u && und == 0 && ovr == 0);
+            check("STEM FILTER LIGHT: DC x 32, silence 0, 1 kHz at 8000 -> 256000 (+-2 %), 1000 crossings",
+                  e2 <= 2 && e3 <= 2 && z1 == 0 && abs(pk0 - 256000) <= 5120 && zc >= 999u && zc <= 1001u);
+        }
+    }
+    stem_light = 0, stem_rate_mode = 0;
+}
 #endif
 
 int main(void)
@@ -356,9 +423,11 @@ int main(void)
            T_CDC ? "on" : "off");
     test_descriptors();
 #if T_STEMS
-    test_exact();
+    test_exact(0);
+    test_exact(1);
     test_split();
     test_stems();
+    test_stems_light_441();
 #else
     test_packets();
 #endif

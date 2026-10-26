@@ -151,8 +151,10 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 |---|---|---|---|
 | SCREEN | KNOB LAYOUT | K7 | FM-1 (default): K1 MASTER, K2 SELECT, K3 ALGORITHM, K4 PRESETS, K5–K8 the dials. SMK: K1–K4 the dials, K5 MASTER, K6 SELECT, K7 PRESETS, K8 ALGORITHM. The knobs are endless: the new layout works at once. Switched to SMK, the menu's rows move to K1–K4 (K3 switches back) |
 | SCREEN | KNOB ACCEL | K8 | SLOOP's: ON (default), a fast turn moves further; OFF, one value a detent |
-| USB | USB LAYOUT | K5 | STEREO (default): the USB audio input as on the FM-1. DRUMS+RET, SYNTHS+RET, ALL DRY: [stems](#usb-audio-stems) for a DAW. At the next power-on (RESTART shows until then) |
+| USB | USB LAYOUT | K5 | STEREO (default): the USB audio input as on the FM-1. DRUMS+RET, SYNTHS+RET, ALL DRY: [stems](#usb-audio-stems) for a DAW. A moment after the knob stops the keyboard re-plugs itself on USB (~1 s; RE-PLUG shows meanwhile) |
 | USB | STEM FX | K6 | with a stem layout: SLICER (default; each track's SLICER STUT, the punch-ins on the master only), PUNCH or PUNCH HQ (the rhythmic punch-ins on every stem; [below](#usb-audio-stems)). At once |
+| USB | STEM RATE | K7 | with a stem layout: 48 KHZ (default; resampled on the keyboard) or 44.1 KHZ (the lightest: the engines' own samples, the computer converts). Re-plugs as USB LAYOUT |
+| USB | STEM FILTER | K8 | at 48 KHZ: FULL (default; 12 taps, the cleanest top end) or LIGHT (8 taps, a third less of the stems' resampling, for busy patterns: −1.3 dB at 14 kHz, −2.8 dB at 16 kHz). At once |
 | PLAY | KEY VELOCITY | K5 | see [Velocity](#velocity) |
 | PLAY | BEND UP | K6 | the pitch wheel up, on the internal sounds (the selected synth track): OFF, 1, 2, 3, 4, 5, 7 or 12 semitones, default 7. MIDI IN's pitch bend has its own (GLO > MIDI 2 > BEND) |
 | PLAY | BEND DOWN | K7 | the same, down (default 7; e.g. +2 up, −12 down). The earlier BEND RANGE is read as both |
@@ -179,7 +181,7 @@ adapter.
 
 ## USB audio stems
 
-HOME menu > USB > **USB LAYOUT** (at the next power-on): the USB audio input becomes 6 mono channels, 24 bit, 48 kHz,
+HOME menu > USB > **USB LAYOUT**: the USB audio input becomes 6 mono channels, 24 bit, 48 kHz (or 44.1, STEM RATE),
 each named for the DAW:
 
 | Channel | DRUMS+RET | SYNTHS+RET | ALL DRY |
@@ -212,10 +214,15 @@ each named for the DAW:
   what there is: REVERSE shorter, STOP and REWIND fade where the past ends.
 - A fixed level: the stems follow neither MASTER nor USB AUDIO (set the levels in the DAW). The stereo output's full
   scale sits at −18 dBFS in the stems: 18 dB of headroom for the sum of six of them, and no limiter on them.
-- 48 kHz only (6 channels of 24 bit fill a full-speed USB packet). The FM-1's USB RATE does not apply. The stems are
-  resampled on both cores, shared by the work each has; they are one 0.7 ms block later than the stereo output.
-- Each layout is its own USB device with its own serial number, so a computer keeps its name (and your renames) in any
-  port; the first time a layout is used the computer sets it up once.
+- One rate at a time (6 channels of 24 bit fill a full-speed USB packet): **STEM RATE** 48 KHZ (default) or 44.1 KHZ.
+  The FM-1's USB RATE does not apply. At 48 kHz the stems are resampled on both cores, shared by the work each has
+  (**STEM FILTER** FULL or LIGHT, at once); at 44.1 kHz they go out as the engines make them, with nothing to resample
+  (the lightest on the keyboard; the computer converts if its project runs at 48). They are one 0.7 ms block later
+  than the stereo output.
+- A new USB LAYOUT or STEM RATE applies a moment after the knob stops: the keyboard leaves USB and comes back (~1 s,
+  RE-PLUG on the menu meanwhile) as that layout's device; the sound and the sequencer run on. No power cycle.
+- Each layout and rate is its own USB device with its own serial number (…-DR, -SY, -AD; at 44.1 …-D4, -Y4, -A4), so a
+  computer keeps its name (and your renames) in any port; the first time one is used the computer sets it up once.
 
 ## DAW mode
 

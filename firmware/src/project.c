@@ -807,7 +807,12 @@ typedef struct {
     uint32_t magic;
     uint8_t vel, trs, bup, bdn, lim, klay, ulay, sfx;   /* bup / bdn: smk_wheel.h bend_*_byte; ulay: USB LAYOUT, sfx:
                                                      * STEM FX (0 in the records before them: STEREO, SLICER) */
+    uint8_t srate, sfilt, spare[2];                 /* STEM RATE, STEM FILTER (usb.c). A record of 12 bytes (before
+                                                     * them) reads as 0: 48 KHZ, FULL; an older build reads the first
+                                                     * 12 bytes of this one (st_load: up to its size) */
 } smkset_t;
+#define SMKSET_V1 12u
+_Static_assert(sizeof(smkset_t) == 16u, "smkset: 12 bytes, then the stems' rate and filter");
 static smkset_t smkset_saved;
 static uint8_t smkset_old_ml[3], smkset_old_have;  /* the MIDI part's last three bytes as read (midi_part_read) */
 static void smkset_fill(smkset_t *s)
@@ -822,11 +827,16 @@ static void smkset_fill(smkset_t *s)
     s->klay = (uint8_t)(knob_layout != 0u);
     s->ulay = (uint8_t)(usb_layout % UL_N);
     s->sfx = (uint8_t)(stem_fx % SFX_N);
+    s->srate = (uint8_t)(stem_rate != 0u);
+    s->sfilt = (uint8_t)(stem_light != 0u);
 }
 static void smkset_boot(void)                      /* after the settings (persist_boot, dsu_boot) */
 {
     smkset_t s;
-    if (st_load(OBJ_SMKSET, &s, sizeof s) == (int)sizeof s && s.magic == SMKSET_MAGIC) {
+    int n;
+    memset(&s, 0, sizeof s);
+    n = st_load(OBJ_SMKSET, &s, sizeof s);
+    if ((n == (int)sizeof s || n == (int)SMKSET_V1) && s.magic == SMKSET_MAGIC) {
         vel_mode = (uint8_t)(s.vel < VEL_N ? s.vel : VEL_DYNAMIC);
         trs_out = (uint8_t)(s.trs != 0u);
         bend_up = (uint8_t)bend_up_of_byte(s.bup);
@@ -835,6 +845,8 @@ static void smkset_boot(void)                      /* after the settings (persis
         knob_layout = (uint8_t)(s.klay & 1u);
         usb_layout = (uint8_t)(s.ulay < UL_N ? s.ulay : UL_STEREO);   /* (main.c: before usb_start) */
         stem_fx = (uint8_t)(s.sfx < SFX_N ? s.sfx : SFX_SLICER);
+        stem_rate = (uint8_t)(s.srate & 1u);
+        stem_light = (uint8_t)(s.sfilt & 1u);
         knob_layout_apply();
         smkset_fill(&smkset_saved);
         return;

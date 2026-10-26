@@ -226,9 +226,9 @@ int main(int argc, char **argv)
           MI_DRESET - MI_DMAP == 3 && MI_BDN - MI_VEL == 2 && MI_LIMIT == MI_BDN + 1 && MS_FIRST[MS_MIDI] - MS_FIRST[MS_PLAY] == 4 &&
           MI_KLAY == MI_ZOOM + 1 && MI_ACCEL == MI_KLAY + 1 && MS_FIRST[MS_LIGHTS] == MI_ACCEL + 1 &&
           MS_FIRST[MS_USB] == MI_LAYOUT && MI_FRESO + 1 == MI_LAYOUT && MS_FIRST[MS_SEQ] == MI_ADV && MI_LAYOUT + 1 == MI_SFX &&
-          MI_SFX + 1 == MI_ADV &&
+          MI_SFX + 1 == MI_SRATE && MI_SRATE + 1 == MI_SFILT && MI_SFILT + 1 == MI_ADV &&
           MS_FIRST[MS_PLAY] == MI_DPREV + 1,
-          "SCREEN: KNOB LAYOUT, KNOB ACCEL; AUDIO ends with FILTER RESO; USB: USB LAYOUT; SEQ; PLAY: KEY VELOCITY, BEND UP, BEND DOWN, LIMITER; MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4");
+          "SCREEN: KNOB LAYOUT, KNOB ACCEL; AUDIO ends with FILTER RESO; USB: LAYOUT, STEM FX, RATE, FILTER; SEQ; PLAY: KEY VELOCITY, BEND UP, BEND DOWN, LIMITER; MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4");
     {   /* USB LAYOUT: STEREO, DRUMS+RET, SYNTHS+RET, ALL DRY; the knob stops at the ends, OCT+ round */
         uint16_t col;
         usb_layout = UL_STEREO;
@@ -258,6 +258,33 @@ int main(int argc, char **argv)
         mi_set(MI_SFX, 0);
         check(stem_fx == SFX_SLICER, "STEM FX: OCT+ round to SLICER");
         check(!strcmp(MI_NAME[MI_SFX], "STEM FX"), "STEM FX: the row's name");
+    }
+    {   /* STEM RATE: 48 / 44.1, STEM FILTER: FULL / LIGHT (dim at 44.1 or STEREO); the guides; RE-PLUG while due */
+        uint16_t col;
+        usb_layout = UL_SYNTHS, stem_rate = 0, stem_light = 0, t_replug = 0;
+        check(!strcmp(mi_value(MI_SRATE, &col), "48 KHZ") && col == C_HI && !strcmp(mi_value(MI_SFILT, &col), "FULL") &&
+              col == C_HI, "STEM RATE 48 KHZ, STEM FILTER FULL: the defaults, lit");
+        check(!strcmp(mi_guide(MI_SRATE, 0), "RESAMPLED ON") && !strcmp(mi_guide(MI_SFILT, 0), "CLEANEST"),
+              "STEM RATE, STEM FILTER: the guides");
+        mi_set(MI_SFILT, 1);
+        check(stem_light == 1 && !strcmp(mi_value(MI_SFILT, &col), "LIGHT") && !strcmp(mi_guide(MI_SFILT, 0), "1/3 LESS CPU"),
+              "STEM FILTER: right LIGHT, its guide");
+        mi_set(MI_SFILT, 0);
+        check(stem_light == 0, "STEM FILTER: OCT+ toggles back to FULL");
+        mi_set(MI_SRATE, 1);
+        check(stem_rate == 1 && !strcmp(mi_value(MI_SRATE, &col), "44.1 KHZ") && !strcmp(mi_guide(MI_SRATE, 1), "PC CONVERTS"),
+              "STEM RATE: right 44.1 KHZ, its guide");
+        (void)mi_value(MI_SFILT, &col);
+        check(col == C_DIM && !strcmp(mi_guide(MI_SFILT, 0), "NOT USED"), "STEM FILTER: dim, NOT USED at 44.1");
+        check(!strcmp(MI_NAME[MI_SRATE], "STEM RATE") && !strcmp(MI_NAME[MI_SFILT], "STEM FILTER"), "the rows' names");
+        t_replug = 1;
+        ui.menu_sel = MI_SRATE; ui.force = 1; mi_set(MI_SRATE, 1); shot("daw-menu-usb-replug");
+        t_replug = 0;
+        mi_set(MI_SRATE, -1);
+        ui.menu_sel = MI_SFILT; ui.force = 1; mi_set(MI_SFILT, 1); shot("daw-menu-usb-stems");
+        stem_light = 0, usb_layout = UL_STEREO;
+        (void)mi_value(MI_SRATE, &col);
+        check(col == C_DIM, "STEM RATE: dim with STEREO");
     }
     for (i = 0; i < MS_COUNT; i++)
         if (MS_FIRST[i + 1] - MS_FIRST[i] > 4u || MS_FIRST[i + 1] <= MS_FIRST[i])
