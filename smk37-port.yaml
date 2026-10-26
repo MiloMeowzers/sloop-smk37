@@ -206,6 +206,10 @@ follow_up:                  # decided and planned, NOT in this port; all of it b
     stut: decided - per group if the RAM is there, else the whole kit as one stem while STUT is on
 
 next_spec:                  # the owner's decisions after the c17079c tests (2026-10-26); to build in order, behind BOARD_SMK37
+  done: "levels, punch_fixes (REVERSE; the PUNCH loops' stale reads), cpu, punch_page, fx_lock, freeze_stems - built on
+        `stems` (d32e412, deaaa49, c8e195f) and confirmed on the unit 2026-10-26/27 (device_tests stems_4 .. stems_6).
+        Left of punch_fixes: REWIND on short rings (keep or master-only), the owner's call. STEM LEVEL setting: not needed
+        (the owner: the gain is right at 18 dB). Next: seq_fx with tempo_sync, then choke and per-kit groups"
   levels: "the stems at a fixed level, not following MASTER (as FULL always); 18 dB of headroom (RET, the sum of every
           send, hit the ceiling at 6); maybe a STEM LEVEL setting -18 / -12 / -6 dB. The stereo clipping: measure first
           (smk37-devtools stereo_check.py)"
@@ -304,9 +308,26 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
                  hardest, ~0 dBFS on entry; all stems summed in the DAW clip at a low output. (The stems' level follows
                  the MASTER knob, so it moves with it; the internal mix runs well above the stereo output's full scale
                  at a high MASTER, the stereo limiter hides that)"
+  stems_4: "bb480f6 (console Elite): the stems at a fixed level with 18 dB of headroom; REVERSE keeps its span; the PUNCH
+           loops read only written slots - owner: much improved sound, the gain better; REVERSE pops gone, the PUNCH
+           blur gone"
+  stems_5: "d084ea6 (console Elite), a heavier pattern (edited sounds, VOICE on track 2) at 120 BPM, SYNTHS+RET, PUNCH
+           HQ, 4 readings each: 48 KHZ FULL - core 0 69-78 %, core 1 37-42 %, ~14 voices shed / s, ~16 underruns / s
+           (renders over the half buffer: 6231 us); 48 KHZ LIGHT - 67-72 %, 34-39 %, ~10.5 / s, ~4.7 / s, a channel's
+           resampling 19-25 us (FULL 25-27); 44.1 KHZ - 71-74 %, 30-33 %, ~6.6 / s, no underrun, a channel 5-6 us (all six
+           on core 1). The re-plug: a new device each time (COM6 -> COM3 -> COM6 -> COM8), no restart, the sound on;
+           the DAW's slot restarted by hand. Owner on 44.1 through VB-Matrix (96 kHz): acceptable, not as tight as 48 -
+           thinner, a little blur (the PC's conversion: the keyboard's 44.1 frames are exact). 48 stays the default,
+           LIGHT for busy patterns, 44.1 the last resort. At 44.1 the stream added a frame ~22 times a second to hold its
+           fill (uac6_adj): the clocks ~500 ppm apart, to look into"
+  stems_6: "d084ea6: the stem punch-in page (3 rows by colour, the pads too) works well; FX + FADER BANK locks the FX layer
+           (FADER BANK lit) and lets it go; SLOOP's FX held + PATCH tapped too; FREEZE on the stems as expected (owner)"
   not_yet: the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
+  - "REWIND on the stems (short rings: it fades where the past ends) - keep it on the stem page, or master-only"
+  - "STEM RATE 44.1: uac6_adj climbs ~22 a second (the keyboard's audio clock against USB's, ~500 ppm?) - measure the
+     codec's rate against SOF; harmless while the ring holds, but larger than a crystal's error"
   - "Snoop37 look (SNOOP37=1, opt-in; genkigenki's smk37-snoop-look branch: boot splash + jingle, BOOT LOGO setting):
      BOOT LOGO in SCREEN (KNOB ACCEL to SEQ) or in SEQ"
   - "PAD LIGHT (genkigenki's snoop37 branch: LIGHTS K8, pads 100/75/50/25 %): bring it into every SMK build?"
