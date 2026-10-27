@@ -812,7 +812,8 @@ typedef struct {
                                                      * 48 KHZ, FULL, 2.9 MS, EQUAL; an older build reads the first 12
                                                      * bytes of this one (st_load: up to its size) */
     uint8_t sqcarry, sqlb, sqgrid, spare;           /* the stem page's FLIP RETURN, LOOP BACK length, RAMP grid
-                                                     * (smk_seqfx.h; 0 in a 16-byte record: SLIP, 1 bar, 1/4) */
+                                                     * (smk_seqfx.h; a 12- or 16-byte record: their defaults, SLIP,
+                                                     * 1 bar, 1/4) */
 } smkset_t;
 #define SMKSET_V1 12u
 #define SMKSET_V2 16u
@@ -858,9 +859,11 @@ static void smkset_boot(void)                      /* after the settings (persis
         stem_light = (uint8_t)(s.sfilt & 1u);
         tp_xfl = (uint8_t)(s.xfl < TPX_N ? s.xfl : TPX_128);
         tp_lin = (uint8_t)(s.lin & 1u);
-        sq_carry = (uint8_t)(s.sqcarry & 1u);
-        sq_lb = (uint8_t)(s.sqlb < SQ_LB_N ? s.sqlb : 0u);
-        sq_grid = (uint8_t)(s.sqgrid < SQ_GRID_N ? s.sqgrid : 0u);
+        if (n == (int)sizeof s) {                  /* (an older record has none: the defaults stay) */
+            sq_carry = (uint8_t)(s.sqcarry & 1u);
+            sq_lb = (uint8_t)(s.sqlb < SQ_LB_N ? s.sqlb : 1u);
+            sq_grid = (uint8_t)(s.sqgrid < SQ_GRID_N ? s.sqgrid : 0u);
+        }
         knob_layout_apply();
         smkset_fill(&smkset_saved);
         return;

@@ -768,7 +768,7 @@ UI_SMALL static void layer_screen_draw(void)
         if (tp_page_on()) {                             /* SMK-37 STEM FX: the effects on the stems, by kind */
             static const char *const TSHORT[TP_PAGE_N] = {"loop 4", "loop 8", "loop16", "loop32", "stutt", "rev",
                                                           "stop", "half", "loop8t", "gate", "rewind", "freeze"};
-            static const char *const LBS[SQ_LB_N] = {"1bar", "3bt", "2bt", "1bt"};
+            static const char *const LBS[SQ_LB_N] = {"2bar", "1bar", "1/2b", "1/4", "1/8", "1/16"};
             static const char *const GRS[SQ_GRID_N] = {"4", "8", "16", "4.", "8.", "16."};
             if (!thr_req) {
                 str_cpy(sub, stem_fx == SFX_HQ ? "stems  punch hq  " : "stems  punch  ", sizeof sub);

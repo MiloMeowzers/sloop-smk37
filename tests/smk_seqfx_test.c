@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Host test of the SMK-37 sequencer effects (src/smk_seqfx.h, the stem punch-in page's row 4):
  *   FLIP       backwards from the step playing; SLIP back to the grid's step, CARRY on from where it was left
- *   LOOP BACK  the steps that just played looped (1 beat on 1/16: 4 steps), forwards; back to the grid's step
+ *   LOOP BACK  the steps that just played looped (1/4 on 1/16: 4 steps), forwards; back to the grid's step; every
+ *              length 2 bars .. 1/16 on 1/16 (32 .. 1 steps), on 1/8 (16 .. 1: under a step, the step) and on 8T
  *   RAMP       on a 1/16 grid at 120 BPM: steps only on the grid, 240 (double) after a bar of it and no more; DOWN to
  *              the floor in a bar, 1 BPM (20 with CLOCK OUT); let go, the tempo back at once
  *   the DAW's clock  a RAMP held with the clock in: let go, the sequencer is back at the DAW's place (to the block)
- *   MIDI       FX CH notes 80..83: the velocity's setting is used (LOOP BACK 2 beats from velocity 3)
+ *   MIDI       FX CH notes 80..83: the velocity's setting is used (LOOP BACK 1/2 bar from velocity 3)
  * Stubs stand in for core.h and seq.c. */
 #include <stdint.h>
 #include <stdio.h>
@@ -90,7 +91,7 @@ static void test_loopback(void)
     track_t *t = &trk[0];
     uint32_t a, ok = 1;
     setup();
-    sq_lb = 3;                                    /* 1 beat: 4 steps of 1/16 */
+    sq_lb = 3;                                    /* 1/4: 4 steps of 1/16 */
     for (a = 0; a <= 9u; a++)
         play_step(t, a);
     sq_set(SQ_LOOPBK, 1, sq_lb);
@@ -98,21 +99,38 @@ static void test_loopback(void)
         play_step(t, a);
         ok &= t->seq_idx == 6u + (a - 10u) % 4u;
     }
-    check("LOOP BACK 1 beat after step 9: 6 7 8 9 6 7 8 9 6 7", ok);
+    check("LOOP BACK 1/4 after step 9: 6 7 8 9 6 7 8 9 6 7", ok);
     sq_set(SQ_LOOPBK, 0, 0);
     play_step(t, 20);
     check("let go (SLIP): back where the grid is (step 20 = 4)", t->seq_idx == 4u);
     setup();
     for (a = 0; a <= 9u; a++)
         play_step(t, a);
-    sq_midi(SQ_NOTE0 + SQ_LOOPBK, 1, 3u);         /* velocity 3: the third length, 2 beats = 8 steps */
+    sq_midi(SQ_NOTE0 + SQ_LOOPBK, 1, 3u);         /* velocity 3: the third length, 1/2 bar = 8 steps */
     for (a = 10, ok = 1; a <= 25u; a++) {
         play_step(t, a);
         ok &= t->seq_idx == 2u + (a - 10u) % 8u;
     }
-    check("FX CH note 81 velocity 3: LOOP BACK 2 beats (8 steps: 2 .. 9)", ok);
+    check("FX CH note 81 velocity 3: LOOP BACK 1/2 bar (8 steps: 2 .. 9)", ok);
     sq_midi(SQ_NOTE0 + SQ_LOOPBK, 0, 0);
     check("its note off lets it go", !sq_mode && !sq_held);
+    {   /* every length, on three grids: the loop's steps */
+        static const uint32_t DIVS[3] = {2, 1, 4};      /* 1/16, 1/8, 8T */
+        static const uint16_t WANT[3][SQ_LB_N] = {{32, 16, 8, 4, 2, 1}, {16, 8, 4, 2, 1, 1}, {24, 12, 6, 3, 1, 1}};
+        uint32_t d, l;
+        ok = 1;
+        for (d = 0; d < 3u; d++)
+            for (l = 0; l < SQ_LB_N; l++) {
+                setup();
+                t->div = DIVS[d], t->len = 64;
+                play_step(t, 40);
+                sq_set(SQ_LOOPBK, 1, l);
+                ok &= sq_t[0].lb == WANT[d][l];
+                sq_set(SQ_LOOPBK, 0, 0);
+            }
+        check("LOOP BACK 2 bars .. 1/16: 32 .. 1 steps on 1/16, 16 .. 1 on 1/8, 24 .. 1 on 8T (under a step: one)", ok);
+        check("LOOP BACK's default: 1 bar", SQ_LB_Q[1] == 16u && !strcmp(SQ_LB_NAME[1], "1 bar"));
+    }
 }
 
 /* blocks of 32 samples through sq_adv as events_block runs it; the clock moves by what it returns */

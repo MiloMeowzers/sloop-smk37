@@ -230,8 +230,10 @@ each named for the DAW:
 - **Row 4 of the page, the sequencer effects** (yellow; what plays changes, so the stems, the mix and MIDI out
   follow), each while held:
   - **FLIP**: every track plays backwards from the step it is on.
-  - **LOOP BACK**: every track loops the steps that just played, ending at the playhead: 1 bar, 3, 2 or 1 beat
-    (PRESETS on the page), forwards.
+  - **LOOP BACK**: every track loops the steps that just played, ending at the playhead, forwards. PRESETS on the page
+    sets the length, halving: 2 bars, 1 bar (default), 1/2 bar, 1/4, 1/8, 1/16 (the short end: break slices, 1/8 a
+    shuffle, 1/16 a single hit). Longer than a track's pattern, that track just plays its pattern; shorter than its
+    step, it holds the step it is on.
   - **RAMP UP / DOWN**: the tempo steps on a grid (ALGORITHM: 1/4, 1/8, 1/16, straight or dotted), each step
     1/(steps a bar) of the tempo: in a bar it doubles (the most) or reaches the floor (1 BPM; 20 with CLOCK OUT). Let
     go, it snaps back. The header shows the tempo meanwhile.
@@ -240,7 +242,7 @@ each named for the DAW:
   - With the DAW's clock in (SYNC), the DAW stays the master: a RAMP leaves its clock only while held and, let go,
     jumps back to the DAW's place; FLIP and LOOP BACK never leave it.
   - Notes recorded while an effect plays land on the step heard. On FX CH they go out as notes 80 (FLIP), 81 (LOOP
-    BACK), 82 / 83 (RAMP UP / DOWN), the velocity carrying the setting (FLIP 1 SLIP, 2 CARRY; LOOP BACK 1..4 the
+    BACK), 82 / 83 (RAMP UP / DOWN), the velocity carrying the setting (FLIP 1 SLIP, 2 CARRY; LOOP BACK 1..6 the
     length; RAMP 1..6 the grid), so a DAW's recording replays exactly.
 - A fixed level: the stems follow neither MASTER nor USB AUDIO (set the levels in the DAW). The stereo output's full
   scale sits at −18 dBFS in the stems: 18 dB of headroom for the sum of six of them, and no limiter on them.
