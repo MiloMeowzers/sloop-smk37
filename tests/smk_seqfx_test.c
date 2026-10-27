@@ -131,6 +131,29 @@ static void test_loopback(void)
         check("LOOP BACK 2 bars .. 1/16: 32 .. 1 steps on 1/16, 16 .. 1 on 1/8, 24 .. 1 on 8T (under a step: one)", ok);
         check("LOOP BACK's default: 1 bar", SQ_LB_Q[1] == 16u && !strcmp(SQ_LB_NAME[1], "1 bar"));
     }
+    {   /* PRESETS turned while held (sq_lb_live): 1/4 after step 9 (6 .. 9), then 1/8 (8 9), 1/16 (9), 1/4 again */
+        static const uint8_t WANT[10] = {6, 7, 8, 9, 9, 9, 8, 9, 6, 7};
+        setup();
+        sq_lb = 3;
+        for (a = 0; a <= 9u; a++)
+            play_step(t, a);
+        sq_set(SQ_LOOPBK, 1, sq_lb);
+        for (a = 10, ok = 1; a <= 19u; a++) {
+            if (a == 12u || a == 14u || a == 16u) {
+                sq_lb = a == 12u ? 4u : a == 14u ? 5u : 3u;
+                sq_lb_live();
+            }
+            play_step(t, a);
+            ok &= t->seq_idx == WANT[a - 10u];
+        }
+        check("LOOP BACK's length turned while held: 6 7, 1/8 8 9, 1/16 9 9, 1/4 again 8 9 6 7 (the end and the beat kept)",
+              ok);
+        sq_set(SQ_LOOPBK, 0, 0);
+        sq_lb = 4;
+        sq_lb_live();
+        check("turned when LOOP BACK is not held: nothing plays differently", !sq_mode && !sq_t[0].on);
+        sq_lb = 1;
+    }
 }
 
 /* blocks of 32 samples through sq_adv as events_block runs it; the clock moves by what it returns */
@@ -158,18 +181,34 @@ static uint32_t run_blocks(uint32_t nb, uint64_t *master)
 
 static void test_ramp(void)
 {
-    uint32_t ch;
-    uint64_t pos0;
+    uint32_t ch, n, ok = 1, worst = 0;
     setup();
     sq_set(SQ_UP, 1, 2u);                         /* 1/16 */
-    pos0 = (uint64_t)clk_beat * BEAT_U + clk_pos;
-    ch = 0;
-    while ((uint64_t)clk_beat * BEAT_U + clk_pos - pos0 < 4ull * BEAT_U)
-        ch += run_blocks(1, 0);
-    printf("   RAMP UP: %u tempo steps in the first bar, at %u BPM\n", ch, (sq_r.q8 + 128u) >> 8);
-    check("RAMP UP 1/16 at 120: steps on the grid only, 240 (double) after a bar", ch < 1000u && sq_tempo_shown() == 240u);
-    run_blocks(3000, 0);
-    check("RAMP UP: no further than double", sq_tempo_shown() == 240u);
+    ch = run_blocks(1500, 0);                     /* (a second) */
+    printf("   RAMP UP: %u tempo steps in the first second, at %u BPM\n", ch, (sq_r.q8 + 128u) >> 8);
+    check("RAMP UP 1/16 at 120: steps on the grid only", ch < 1000u && sq_tempo_shown() > 120u && sq_tempo_shown() < 240u);
+    for (n = 750; n <= 6000u; n += 750) {         /* UP and DOWN the same distance from 120 at each time (DOWN's mirror) */
+        uint32_t up, dn, d;
+        setup();
+        sq_set(SQ_UP, 1, 2u);
+        run_blocks(n, 0);
+        up = sq_r.q8;
+        setup();
+        sq_set(SQ_DOWN, 1, 2u);
+        run_blocks(n, 0);
+        dn = sq_r.q8;
+        d = up - (120u << 8) > (120u << 8) - dn ? up - (120u << 8) - ((120u << 8) - dn) : (120u << 8) - dn - (up - (120u << 8));
+        worst = d > worst ? d : worst;
+        ok &= d < (12u << 8);                     /* (within 12 BPM: the grid's steps land at different moments) */
+        if (n == 1500u || n == 6000u)
+            printf("   after %.1f s: UP %u BPM, DOWN %u BPM\n", n / 1500.0, (up + 128u) >> 8, (dn + 128u) >> 8);
+    }
+    printf("   UP vs DOWN's mirror: at most %.1f BPM apart\n", worst / 256.0);
+    check("RAMP UP rises as RAMP DOWN falls (its mirror around the tempo at the press, 0.5 .. 4 s)", ok);
+    setup();
+    sq_set(SQ_UP, 1, 2u);
+    run_blocks(30000, 0);
+    check("RAMP UP: eases into double, no further", sq_tempo_shown() == 240u);
     sq_set(SQ_UP, 0, 0);
     check("let go: the tempo back at once", !sq_tempo_shown() && sq_adv(32u, 32u * 120u) == 32u * 120u);
     setup();

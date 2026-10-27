@@ -228,8 +228,8 @@ int main(int argc, char **argv)
           MS_FIRST[MS_USB] == MI_LAYOUT && MI_FRESO + 1 == MI_LAYOUT && MS_FIRST[MS_SEQ] == MI_ADV && MI_LAYOUT + 1 == MI_SRATE &&
           MI_SRATE + 1 == MI_SFILT && MS_FIRST[MS_PUNCH] == MI_SFX && MI_SFILT + 1 == MI_SFX && MI_SFX + 1 == MI_PFADE &&
           MI_PFADE + 1 == MI_XFADE && MI_XFADE + 1 == MI_CURVE && MI_CURVE + 1 == MI_ADV &&
-          MS_FIRST[MS_PLAY] == MI_DPREV + 1,
-          "SCREEN: KNOB LAYOUT, KNOB ACCEL; AUDIO ends with FILTER RESO; USB: LAYOUT, RATE, FILTER; PUNCH: STEM FX, FADE, XFADE, CURVE; SEQ; PLAY: KEY VELOCITY, BEND UP, BEND DOWN, LIMITER; MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4");
+          MI_DPREV + 1 == MI_FRET && MS_FIRST[MS_PLAY] == MI_FRET + 1,
+          "SCREEN: KNOB LAYOUT, KNOB ACCEL; AUDIO ends with FILTER RESO; USB: LAYOUT, RATE, FILTER; PUNCH: STEM FX, FADE, XFADE, CURVE; SEQ ends with FLIP RETURN; PLAY: KEY VELOCITY, BEND UP, BEND DOWN, LIMITER; MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4");
     {   /* USB LAYOUT: STEREO, DRUMS+RET, SYNTHS+RET, ALL DRY; the knob stops at the ends, OCT+ round */
         uint16_t col;
         usb_layout = UL_STEREO;
@@ -309,6 +309,15 @@ int main(int argc, char **argv)
         song.g[G_FXFADE] = 0, tp_xfl = TPX_128, tp_lin = 0, usb_layout = UL_STEREO, stem_fx = SFX_SLICER;
         check(!strcmp(MS_NAME[MS_PUNCH], "PUNCH") && !strcmp(MI_NAME[MI_XFADE], "XFADE") && !strcmp(MI_NAME[MI_CURVE], "CURVE") &&
               !strcmp(MI_NAME[MI_PFADE], "FADE"), "the PUNCH section and its rows' names");
+    }
+    {   /* SEQ > FLIP RETURN: SLIP / CARRY (the stem page's < > until 2026-10-27: the arrows are the visualisers') */
+        uint16_t col;
+        sq_carry = 0;
+        check(!strcmp(mi_value(MI_FRET, &col), "SLIP") && !strcmp(MI_NAME[MI_FRET], "FLIP RETURN"), "FLIP RETURN: SLIP");
+        mi_set(MI_FRET, 1);
+        check(sq_carry == 1 && !strcmp(mi_value(MI_FRET, &col), "CARRY"), "FLIP RETURN: right CARRY");
+        mi_set(MI_FRET, 0);
+        check(sq_carry == 0, "FLIP RETURN: OCT+ toggles");
     }
     for (i = 0; i < MS_COUNT; i++)
         if (MS_FIRST[i + 1] - MS_FIRST[i] > 4u || MS_FIRST[i + 1] <= MS_FIRST[i])

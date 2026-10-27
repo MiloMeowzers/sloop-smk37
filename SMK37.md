@@ -158,6 +158,7 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 | PUNCH | FADE | K6 | the punch-ins' fade in and out, 0 (default, the shortest) .. 15: the same setting as SELECT on the FX page (shown large at its top right). OCT+ back to 0 |
 | PUNCH | XFADE | K7 | with STEM FX: the shortest stitch on the stems (a punch in or out), 1.5 / 2.9 (default) / 5.8 MS; FADE makes it longer. At once |
 | PUNCH | CURVE | K8 | with STEM FX: EQUAL (default; the level holds through a stitch between unrelated audio) or LINEAR (the old ramp, ~3 dB down half way). A fresh loop's punch-in (the same audio both sides) stays linear. At once |
+| SEQ | FLIP RETURN | K7 | the stem page's FLIP and LOOP BACK, let go: SLIP (default; the tracks come back where they would have been) or CARRY (they go on from where the effect left them). At once |
 | PLAY | KEY VELOCITY | K5 | see [Velocity](#velocity) |
 | PLAY | BEND UP | K6 | the pitch wheel up, on the internal sounds (the selected synth track): OFF, 1, 2, 3, 4, 5, 7 or 12 semitones, default 7. MIDI IN's pitch bend has its own (GLO > MIDI 2 > BEND) |
 | PLAY | BEND DOWN | K7 | the same, down (default 7; e.g. +2 up, −12 down). The earlier BEND RANGE is read as both |
@@ -232,12 +233,14 @@ each named for the DAW:
   - **FLIP**: every track plays backwards from the step it is on.
   - **LOOP BACK**: every track loops the steps that just played, ending at the playhead, forwards. PRESETS on the page
     sets the length, halving: 2 bars, 1 bar (default), 1/2 bar, 1/4, 1/8, 1/16 (the short end: break slices, 1/8 a
-    shuffle, 1/16 a single hit). Longer than a track's pattern, that track just plays its pattern; shorter than its
-    step, it holds the step it is on.
+    shuffle, 1/16 a single hit). Turned while LOOP BACK is held, the loop takes the new length at once, keeping its
+    end and the beat: halving rolls into the last hit, doubling reaches back. Longer than a track's pattern, that track
+    just plays its pattern; shorter than its step, it holds the step it is on.
   - **RAMP UP / DOWN**: the tempo steps on a grid (ALGORITHM: 1/4, 1/8, 1/16, straight or dotted), each step
-    1/(steps a bar) of the tempo: in a bar it doubles (the most) or reaches the floor (1 BPM; 20 with CLOCK OUT). Let
+    1/(steps a bar) of the tempo down to the floor (1 BPM; 20 with CLOCK OUT); UP is its mirror, rising as DOWN falls
+    and easing into double (the most): at 120 BPM after 1 s about 170 up, 75 down. Let
     go, it snaps back. The header shows the tempo meanwhile.
-  - **FLIP RETURN** (< and > on the page, shown in the header): SLIP, the tracks come back where they would have been;
+  - **FLIP RETURN** (HOME > SEQ, shown in the header; < and > stay the visualisers'): SLIP, the tracks come back where they would have been;
     CARRY, they go on from where the effect left them (until the transport stops).
   - With the DAW's clock in (SYNC), the DAW stays the master: a RAMP leaves its clock only while held and, let go,
     jumps back to the DAW's place; FLIP and LOOP BACK never leave it.

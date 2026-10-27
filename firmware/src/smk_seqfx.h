@@ -5,11 +5,13 @@
  *   LOOP BACK  each track loops the steps that just played: the loop ends at the playhead and starts LOOP BACK's length
  *              before it, played forwards; the lengths halve, 2 bars .. 1/16 (PRESETS; the owner: the short end as break
  *              slices, 1/8 a shuffle, 1/16 a single hit). Longer than a track's pattern it plays the pattern on; shorter
- *              than its step, the step it is on
- *   RAMP UP / DOWN  the tempo steps on a grid (1/4, 1/8, 1/16, straight or dotted: ALGORITHM), each step 1/(steps a bar)
- *              of the tempo at the press: in a bar it doubles (the most) or reaches the floor (1 BPM; 20 with CLOCK OUT,
- *              a DAW's least); let go, it snaps back at once
- * FLIP RETURN (< >): SLIP, the tracks come back where they would have been; CARRY, they go on from where the effect
+ *              than its step, the step it is on. PRESETS turned while it is held: the new length at once (sq_lb_live)
+ *   RAMP UP / DOWN  the tempo steps on a grid (1/4, 1/8, 1/16, straight or dotted: ALGORITHM). DOWN: each step 1/(steps a
+ *              bar) of the tempo at the press, to the floor (1 BPM; 20 with CLOCK OUT, a DAW's least). UP its mirror in
+ *              time: the steps come sooner as it rises, so each adds that times (double - tempo) / tempo, and it rises
+ *              as DOWN falls, easing into double (the most; at first it was the same steps up, double in a bar: the
+ *              owner found it much faster than DOWN). Let go, it snaps back at once
+ * FLIP RETURN (HOME > SEQ): SLIP, the tracks come back where they would have been; CARRY, they go on from where the effect
  * left them (an offset per track until the transport stops). With the DAW's clock in (SYNC), the DAW stays the master:
  * a RAMP takes the sequencer off its clock only while held (the DAW's pulses still counted) and, let go, puts it back
  * at the DAW's place; FLIP and LOOP BACK never leave the clock. The step a track plays and the step a note records into
@@ -19,7 +21,7 @@
  * is exact whatever the knobs are set to then. */
 enum { SQ_FLIP, SQ_LOOPBK, SQ_UP, SQ_DOWN, SQ_N };
 #define SQ_NOTE0 80u
-static uint8_t sq_carry;                 /* FLIP RETURN: 0 SLIP, 1 CARRY (< > on the page; project.c smkset) */
+static uint8_t sq_carry;                 /* FLIP RETURN: 0 SLIP, 1 CARRY (HOME > SEQ; project.c smkset) */
 static uint8_t sq_lb = 1;                /* LOOP BACK's length: SQ_LB_Q index (PRESETS on the page; 1 bar) */
 static uint8_t sq_grid;                  /* RAMP's grid: SQ_GRID_Q index (ALGORITHM on the page) */
 #define SQ_LB_N 6u
@@ -92,6 +94,19 @@ static void sq_step_on(uint32_t mode, uint32_t carry, uint32_t lb_q)   /* FLIP (
     sq_mode_carry = (uint8_t)carry;
 }
 
+/* LOOP BACK's length changed (PRESETS on the page) while it plays: each track's loop keeps its end and the grid's count,
+ * so a halving plays the last half of the steps it was looping (a roll into the last hit), a doubling reaches back */
+static void sq_lb_live(void)
+{
+    uint32_t i;
+    if (sq_mode != 2u)
+        return;
+    for (i = 0; i < NTRK; i++) {
+        uint32_t lb = SQ_LB_Q[sq_lb % SQ_LB_N] * (BEAT_U / 4u) / div_units(trk_div(&trk[i]));
+        sq_t[i].lb = (uint16_t)(lb < 1u ? 1u : lb > 4096u ? 4096u : lb);
+    }
+}
+
 static void sq_step_off(void)             /* FLIP / LOOP BACK let go: SLIP or CARRY */
 {
     uint32_t i;
@@ -156,9 +171,10 @@ static uint32_t sq_adv(uint32_t n, uint32_t adv)
     sq_r.last = a;
     step = (uint32_t)((uint64_t)sq_r.q0 * sq_r.g / (4u * BEAT_U));   /* 1 / (steps a bar) of the tempo at the press */
     for (sq_r.gp += a; sq_r.gp >= sq_r.g; sq_r.gp -= sq_r.g) {
-        if (sq_r.dir > 0)
-            sq_r.q8 = sq_r.q8 + step > 2u * sq_r.q0 ? 2u * sq_r.q0 : sq_r.q8 + step;
-        else
+        if (sq_r.dir > 0) {                  /* (as it rises the steps come sooner: each adds less, DOWN's mirror) */
+            uint32_t up = (uint32_t)((uint64_t)step * (2u * sq_r.q0 - sq_r.q8) / sq_r.q8);
+            sq_r.q8 = sq_r.q8 + up > 2u * sq_r.q0 ? 2u * sq_r.q0 : sq_r.q8 + up;
+        } else
             sq_r.q8 = sq_r.q8 < sq_r.lo + step ? sq_r.lo : sq_r.q8 - step;
     }
     return a;

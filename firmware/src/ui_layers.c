@@ -481,10 +481,12 @@ UI_SMALL static void layer_knobs(uint32_t layer)
     track_t *t = TSEL;
 #if BOARD_SMK37
     if (layer == LY_FX && tp_page_on()) {                /* the stem punch-in page: PRESETS LOOP BACK's length, ALGORITHM
-                                                          * RAMP's grid (row 4; the knob stops at the ends) */
+                                                          * RAMP's grid (row 4; the knob stops at the ends). LOOP BACK
+                                                          * held: its loop takes the new length at once */
         if ((s = panel_enc(EN_PRESET)) != 0) {
             ui.layer_used = 1;
             sq_lb = (uint8_t)clamp((int32_t)sq_lb + (s > 0 ? 1 : -1), 0, SQ_LB_N - 1);
+            sq_lb_live();
         }
         if ((s = panel_enc(EN_ALGO)) != 0) {
             ui.layer_used = 1;

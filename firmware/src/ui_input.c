@@ -1308,10 +1308,6 @@ UI_SMALL static void ui_input(void)
     if (pressed & (1u << SMK_BTN_LEFT | 1u << SMK_BTN_RIGHT)) {   /* < >: SEQ held: the step pages; the visualiser:
                                                                 * its style; else the pages, as SELECT (never the tempo) */
         int32_t d = (pressed >> SMK_BTN_RIGHT) & 1u ? 1 : -1;
-        if (ui.layer == LY_FX && tp_page_on()) {          /* the stem punch-in page: FLIP RETURN, < SLIP, > CARRY */
-            sq_carry = (uint8_t)(d > 0);
-            ui.force = 1;
-        } else
         if (pick_shown())
             pick_turn(d);
         else if (fb_shown())                              /* the FADER BANK screen: the banks */

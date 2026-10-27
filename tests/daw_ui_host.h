@@ -17,6 +17,7 @@ static uint8_t stem_fx;
 static uint8_t stem_rate, stem_light;           /* (usb.c: menu USB > STEM RATE, STEM FILTER) */
 enum { TPX_128, TPX_64, TPX_256, TPX_N };   /* (smk_tpunch.h: menu PUNCH > XFADE, CURVE) */
 static uint8_t tp_xfl, tp_lin;
+static uint8_t sq_carry;                        /* (smk_seqfx.h: menu SEQ > FLIP RETURN) */
 static uint8_t t_replug;
 static int replug_pending(void) { return t_replug; }   /* (main.c) */
 #include "smk_daw.h"

@@ -38,6 +38,7 @@ enum { MI_COLOR, MI_ZOOM,
 #endif
        MI_ADV, MI_DPREV,
 #if BOARD_SMK37
+       MI_FRET,                                    /* SMK-37: SEQ > FLIP RETURN (smk_seqfx.h sq_carry, live) */
        MI_VEL, MI_BUP, MI_BDN, MI_LIMIT,           /* SMK-37: PLAY > KEY VELOCITY (smk_vel.h), BEND UP, BEND DOWN (smk_wheel.h),
                                                     * LIMITER (fx.c lim_classic) */
        MI_TRS, MI_MODE, MI_DCH, MI_LOCAL,          /* SMK-37: MIDI > TRS MIDI OUT (smk_midi_out.h), MODE, CHANNEL, LOCAL
@@ -66,7 +67,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
 #if BOARD_SMK37
-                                              "KEY VELOCITY", "BEND UP", "BEND DOWN", "LIMITER", "TRS MIDI OUT",
+                                              "FLIP RETURN", "KEY VELOCITY", "BEND UP", "BEND DOWN", "LIMITER", "TRS MIDI OUT",
                                               "MODE", "CHANNEL", "LOCAL", "CC MAP", "KNOBS", "EDIT MAP", "RESET MAP",
 #endif
                                               "2ND CORE", "HARDWARE CALIBRATION", "MIDI LEARN CLEAR", "ABOUT"};
@@ -248,6 +249,7 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_CURVE:
         *c = usb_layout_now() && stem_fx ? C_HI : C_DIM;
         return tp_lin ? "LINEAR" : "EQUAL";
+    case MI_FRET: return sq_carry ? "CARRY" : "SLIP";   /* FLIP / LOOP BACK let go: the grid's place, or on from theirs */
     case MI_SRATE:                                    /* the stems' rate (STEREO: USB RATE's, this one dim) */
         *c = usb_layout != UL_STEREO ? C_HI : C_DIM;
         return stem_rate ? "44.1 KHZ" : "48 KHZ";
@@ -295,7 +297,7 @@ UI_SMALL static void draw_menu(void)
     sig += vel_mode * 179424673u + trs_out * 373587883u + smo.dead * 573259391u + bend_up * 817504243u +
            bend_dn * 941083987u + lim_classic * 1500450271u + knob_layout * 2147483647u + usb_layout * 433494437u +
            stem_fx * 160481183u + stem_rate * 275604541u + stem_light * 393342743u + tp_xfl * 694847539u +
-           tp_lin * 795918341u + (uint32_t)song.g[G_FXFADE] * 899809363u +
+           tp_lin * 795918341u + (uint32_t)song.g[G_FXFADE] * 899809363u + sq_carry * 961748927u +
            (uint32_t)usb_layout_now() * 452930459u + (uint32_t)replug_pending() * 553105243u;
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
@@ -562,6 +564,9 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     }
     case MI_CURVE:                                     /* right LINEAR, left EQUAL; OCT+ toggles */
         tp_lin = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !tp_lin);
+        break;
+    case MI_FRET:                                      /* right CARRY, left SLIP; OCT+ toggles */
+        sq_carry = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !sq_carry);
         break;
     case MI_SRATE:                                     /* right 44.1, left 48; OCT+ toggles; re-plugged as LAYOUT */
         stem_rate = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !stem_rate);
