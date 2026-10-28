@@ -207,9 +207,10 @@ follow_up:                  # decided and planned, NOT in this port; all of it b
 
 next_spec:                  # the owner's decisions after the c17079c tests (2026-10-26); to build in order, behind BOARD_SMK37
   done: "levels, punch_fixes (REVERSE; the PUNCH loops' stale reads), cpu, punch_page, fx_lock, freeze_stems - built on
-        `stems` (d32e412, deaaa49, c8e195f) and confirmed on the unit 2026-10-26/27 (device_tests stems_4 .. stems_6).
+        `stems` (d32e412, deaaa49, c8e195f) and confirmed on the unit 2026-10-26/27 (device_tests stems_4 .. stems_6);
+        seams, punch_menu, seq_fx with tempo_sync - built on `stems` and confirmed on the unit 2026-10-28 (stems_7).
         Left of punch_fixes: REWIND on short rings (keep or master-only), the owner's call. STEM LEVEL setting: not needed
-        (the owner: the gain is right at 18 dB). Next: seq_fx with tempo_sync, then choke and per-kit groups"
+        (the owner: the gain is right at 18 dB). Next: choke and per-kit groups"
   levels: "the stems at a fixed level, not following MASTER (as FULL always); 18 dB of headroom (RET, the sum of every
           send, hit the ceiling at 6); maybe a STEM LEVEL setting -18 / -12 / -6 dB. The stereo clipping: measure first
           (smk37-devtools stereo_check.py)"
@@ -238,7 +239,17 @@ next_spec:                  # the owner's decisions after the c17079c tests (202
           dotted, each step 1/(steps a bar) of the starting tempo - a bar's worth to the floor or to double; the floor
           1 BPM, 20 BPM with CLOCK OUT (a DAW's range: Live's least is 20); release snaps back at once). FLIP RETURN
           SLIP / CARRY (a user option: both creative) for FLIP and LOOP BACK. Live controls on the page: < > FLIP
-          RETURN, PRESETS / ALGORITHM the LOOP BACK length and the RAMP grid. FX CH notes 80..83 for MIDI recording"
+          RETURN, PRESETS / ALGORITHM the LOOP BACK length and the RAMP grid. FX CH notes 80..83 for MIDI recording.
+          Changed after the owner's tests (2026-10-27/28): LOOP BACK's lengths halve, 2 bars / 1 bar (default) / 1/2 bar
+          / 1/4 / 1/8 / 1/16 (break slices: 1/8 a shuffle, 1/16 a single hit), and PRESETS changes the length while it is
+          held (the loop keeps its end and the beat); FLIP RETURN moved to HOME > SEQ (< > page the visualisers, not
+          free on the page); RAMP UP is DOWN's mirror in time (each step adds step * (double - tempo) / tempo: the
+          owner found the same steps up much faster than down)"
+  seams: "the clicks on rapid punches (the owner): each loop's wrap faded to silence; now it blends over 2.9 ms (equal
+         power) into the audio just before the loop (REVERSE: after its turn)"
+  punch_menu: "HOME > PUNCH, its own section: STEM FX (from USB), FADE (= SELECT on the FX page), XFADE 1.5 / 2.9 / 5.8 ms
+              (a punch in or out's shortest stitch on the stems), CURVE EQUAL / LINEAR (equal power only between
+              unrelated audio). The FX page's header: the fade large in colour, LOCK a badge at the top centre"
   tempo_sync: "decided - Live (or any DAW) stays the master: with IN = CLOCK a RAMP, FLIP or LOOP BACK pad takes SLOOP's
               sequencer off the clock only while held (its own clock, the ramp from the current tempo), counting the
               DAW's clock meanwhile; on release it is back on the clock at the DAW's place (SLIP; CARRY means nothing
@@ -322,6 +333,10 @@ device_tests:               # what was tested on a unit (for the PR text: say ex
            fill (uac6_adj): the clocks ~500 ppm apart, to look into"
   stems_6: "d084ea6: the stem punch-in page (3 rows by colour, the pads too) works well; FX + FADER BANK locks the FX layer
            (FADER BANK lit) and lets it go; SLOOP's FX held + PATCH tapped too; FREEZE on the stems as expected (owner)"
+  stems_7: "604c5a3, then 2aa526d (console Elite), owner 2026-10-28: all working well. The loop seams and the XFADE / FADE
+           options give a lot more flexibility; the FX header readable; FLIP, LOOP BACK (clean, a nice creative
+           addition) and RAMP work, the DAW's clock rejoined; 604c5a3's RAMP UP much faster than DOWN, fixed in 2aa526d
+           (UP DOWN's mirror); 2aa526d's LOOP BACK length changed live with PRESETS and FLIP RETURN in HOME > SEQ work"
   not_yet: the DAW mode
 
 open_questions:             # to settle next (the owner's call), in this order
