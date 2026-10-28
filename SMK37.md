@@ -12,6 +12,10 @@ the [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) kit; this build c
 
 ## What this build adds
 
+**[Install from the browser](https://milomeowzers.github.io/sloop-smk37/)** (pick your model; back up first, see
+[Install](#install)) · [Web editor](https://milomeowzers.github.io/sloop-smk37/elite/webapp/editor/) ·
+[Releases](https://github.com/MiloMeowzers/sloop-smk37/releases)
+
 All of SLOOP 2.8.1 (four tracks, the sequencer, the 27 punch-in effects, the web editor), on a keyboard with 37 keys,
 16 pads, faders and wheels, plus:
 
