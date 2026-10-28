@@ -1,10 +1,12 @@
-# The SMK-37 port's build and test run (fm1-to-smk37 AGENTS.md steps 1, 5 and 7), on a private CI branch only: never
+# The SMK-37 port's build and test run (fm1-to-smk37 AGENTS.md steps 1, 5 and 7), on the CI branch only: never
 # part of the upstream pull request. One run builds, on the same day (the builds embed __DATE__):
 #   1. the baseline: upstream SLOOP 2.8.1 (BASE) for the FM-1, its hashes and its test results
 #   2. this branch for the SMK-37 Pro, Elite and MKE (one package each)
 #   3. this branch for the FM-1, last (the tests read the FM-1 binaries): byte-identical to the baseline, or the run fails
 #   4. the host and web tests: no failure that the baseline does not have, or the run fails
-# The packages, their SHA-256 and the logs are the run's artifact. Nothing is installed anywhere.
+# The packages, their SHA-256 and the logs are the run's artifact. Nothing is installed anywhere. On a public repository
+# the run also publishes the installer sites (Pro, Elite, MKE) and the editor on GitHub Pages, behind a model picker
+# (.github/pages/index.html), once every check above has passed.
 name: SMK-37 build
 
 on:
@@ -146,3 +148,32 @@ jobs:
           name: sloop-smk37-${{ github.sha }}
           path: out/
           retention-days: 30
+
+      - name: The Pages site (the model picker, an installer site per model; public repository only)
+        if: ${{ !github.event.repository.private }}
+        run: |
+          mkdir -p pages
+          for m in pro elite mke; do cp -r "out/installer-$m" "pages/$m"; done
+          v="2.8.1-smk37-$(git rev-parse --short HEAD)"
+          sed "s|<footer>BUILD</footer>|<footer>Build $v</footer>|" .github/pages/index.html > pages/index.html
+          touch pages/.nojekyll
+
+      - name: Upload the Pages site
+        if: ${{ !github.event.repository.private }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages/
+
+  pages:                             # (deployed only after the build, the FM-1 identity and the tests have passed)
+    if: ${{ !github.event.repository.private }}
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

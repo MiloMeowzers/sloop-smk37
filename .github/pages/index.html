@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SLOOP for the SMK-37</title>
+<style>
+  :root { --bg: #0b0b0c; --fg: #ececec; --dim: #9a9aa0; --line: #2a2a2e; --card: #151517; --acc: #ff9a2e; --warn: #ffd54a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.7rem; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin: 0 0 24px; }
+  .warn { border: 1px solid var(--warn); border-radius: 8px; padding: 12px 14px; margin: 0 0 28px; }
+  .warn b { color: var(--warn); }
+  h2 { font-size: 1.05rem; margin: 28px 0 10px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  a.card { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px;
+           color: var(--fg); text-decoration: none; }
+  a.card:hover, a.card:focus { border-color: var(--acc); outline: none; }
+  a.card b { display: block; font-size: 1.1rem; color: var(--acc); }
+  a.card span { color: var(--dim); font-size: .92rem; }
+  p a, li a { color: var(--acc); }
+  ul { padding-left: 20px; }
+  footer { margin-top: 36px; color: var(--dim); font-size: .85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SLOOP for the M-Vave SMK-37</h1>
+  <p class="sub">SLOOP 2.8.1 with USB audio stems, stem punch-ins and sequencer effects. Chrome or Edge, over USB.</p>
+
+  <div class="warn"><b>Back up first.</b> Before the first install, make a full 1 MiB flash backup of your keyboard:
+    its calibration, Bluetooth pairing and key_mac are its own and no package contains them.
+    <a href="https://github.com/MiloMeowzers/sloop-smk37/blob/ci/SMK37.md#install">How to back up</a>.
+    Unofficial firmware, not affiliated with or endorsed by M-Vave. No warranty.</div>
+
+  <h2>Install: pick your model</h2>
+  <div class="grid">
+    <a class="card" href="elite/webapp/installer/"><b>SMK-37 Elite</b><span>identity SMK-37 Elite</span></a>
+    <a class="card" href="pro/webapp/installer/"><b>SMK-37 Pro</b><span>also the Starrykey 37 Play</span></a>
+    <a class="card" href="mke/webapp/installer/"><b>MKE-P37</b><span>identity MKE-P37</span></a>
+  </div>
+  <p>The installer checks that the package matches your keyboard before it writes anything. Your projects, presets,
+    samples and settings are kept. To go back to the stock firmware, use M-Vave's own updater (M-UPGRADE).</p>
+
+  <h2>The web editor</h2>
+  <div class="grid">
+    <a class="card" href="elite/webapp/editor/"><b>Open the editor</b><span>sounds, samples, drum kits, projects</span></a>
+  </div>
+
+  <h2>More</h2>
+  <ul>
+    <li><a href="https://github.com/MiloMeowzers/sloop-smk37/blob/ci/SMK37.md">The SMK-37 manual</a>: every control, the stems, the stem punch-in page</li>
+    <li><a href="https://github.com/MiloMeowzers/sloop-smk37/releases">Releases</a>: the packages and their SHA-256, for the Python installer</li>
+    <li><a href="https://github.com/MiloMeowzers/sloop-smk37">The source</a> (GPL-3.0), built on
+      <a href="https://github.com/isod89/sloop-fm1">SLOOP</a> by isod89, <a href="https://github.com/hugelton/Felucca">Felucca</a>
+      by Leo Kuroshita and the SMK-37 layer by <a href="https://github.com/genkigenki/sloop-fm1">genkigenki</a></li>
+  </ul>
+  <footer>BUILD</footer>
+</main>
+</body>
+</html>

@@ -8,7 +8,14 @@ pads, faders and wheels, and adds USB audio stems for a DAW.
 > Unofficial firmware, not affiliated with or endorsed by M-Vave, Hügelton Instruments or SLOOP's author. No
 > warranty: install at your own risk. **Back up the keyboard's flash first** (see [Install](#install)).
 
-**[The SMK-37 manual](/SMK37.md)** · [What this build adds](/SMK37.md#what-this-build-adds) ·
+<p align="center">
+<a href="https://milomeowzers.github.io/sloop-smk37/"><b>Install from the browser</b></a> ·
+<a href="https://milomeowzers.github.io/sloop-smk37/elite/webapp/editor/">Web editor</a> ·
+<a href="https://github.com/MiloMeowzers/sloop-smk37/releases">Releases</a> ·
+<a href="/SMK37.md"><b>The SMK-37 manual</b></a> ·
+<a href="/SMK37.md#what-this-build-adds">What this build adds</a>
+</p>
+
 [SLOOP's own guide](/GUIDE.md) · [Building](/BUILDING.md)
 
 ## What it adds
@@ -32,8 +39,10 @@ All of it is in [SMK37.md](/SMK37.md), with a quick reference for the stem page.
 
 1. **Back up the whole 1 MiB flash** first: the calibration, the Bluetooth pairing and key_mac are your unit's own and
    no package contains them ([how](/SMK37.md#install)).
-2. Install the package for your model with the web installer (Chrome or Edge), or with
-   `python3 tools/fm1_install.py sloop-smk37-elite.fwsc`. Check its SHA-256 first.
+2. Install the package for your model with the [web installer](https://milomeowzers.github.io/sloop-smk37/)
+   (Chrome or Edge, over USB: pick your model), or download it from
+   [Releases](https://github.com/MiloMeowzers/sloop-smk37/releases) and run
+   `python3 tools/fm1_install.py sloop-smk37-elite.fwsc` (check its SHA-256 first).
 3. **Going back:** M-Vave's own updater (M-UPGRADE) installs the stock firmware as usual. The port never writes the
    keyboard's protected flash.
 
@@ -71,7 +80,8 @@ Each push to `ci` builds, in one run: upstream SLOOP 2.8.1 for the FM-1 (the bas
 Elite, MKE, and an Elite build with a USB serial console); the FM-1 again from this source, which **must be
 byte-identical** to the baseline or the run fails; the installer sites and the offline editor; and the host and web
 tests, which fail the run on any failure the baseline does not have. The run's artifact holds the packages,
-`packages.sha256`, `fm1-identical.txt` and the logs.
+`packages.sha256`, `fm1-identical.txt` and the logs. Only once every check has passed does the run publish the
+installer sites and the editor on [GitHub Pages](https://milomeowzers.github.io/sloop-smk37/).
 
 Tested on an SMK-37 Elite. The Pro, MKE-P37 and Starrykey builds differ only in the name the keyboard reports, but
 have not been tried on those units: reports are welcome.
