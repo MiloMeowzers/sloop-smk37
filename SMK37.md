@@ -10,6 +10,25 @@ the [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) kit; this build c
 > Unofficial firmware for the SMK-37, not affiliated with or endorsed by M-Vave. No warranty: install at your own
 > risk and read [Safety](#safety) first.
 
+## What this build adds
+
+All of SLOOP 2.8.1 (four tracks, the sequencer, the 27 punch-in effects, the web editor), on a keyboard with 37 keys,
+16 pads, faders and wheels, plus:
+
+| | What | Where |
+|---|---|---|
+| **The keyboard** | 37 velocity keys (the lowest five play drums on the drum track), 16 RGB pads (drum kit or steps), 4 faders, 8 knobs (FM-1 or SMK layout), pitch and mod wheels with a settable bend range, TRS MIDI out | [Knobs](#knobs-faders-wheels), [Buttons](#buttons), [Keys and pads](#keys-and-pads), [Velocity](#velocity) |
+| **Samples and kits** | four 40 KiB user slots, a kit over two of them (about 7 s) | [User samples](#user-samples-and-drum-kits) |
+| **The pad sound picker** | turn PRESETS: the sounds or kits on the pads, a pad loads and previews | [The pad sound picker](#the-pad-sound-picker) |
+| **USB audio stems** | six mono channels, 24 bit, to the DAW: drums in four groups, the synths, the reverb / delay return; 48 or 44.1 kHz; a layout change re-plugs USB by itself | [USB audio stems](#usb-audio-stems) |
+| **Punch-ins on the stems** | STEM FX: the rhythmic punch-ins (loops, stutter, reverse, stop, half, rewind, gate) on every stem, seamless loop joins, settable stitches (HOME > PUNCH: FADE, XFADE, CURVE) | [STEM FX](#usb-audio-stems) |
+| **The stem punch-in page** | FX held (or locked with FX + FADER BANK): the pads as four colour rows, rows 1-3 the stem punch-ins, FREEZE | [the page](#the-stem-punch-in-page) |
+| **Sequencer effects** | row 4 of the page: FLIP (backwards), LOOP BACK (2 bars .. 1/16, changeable while held), RAMP UP / DOWN (tempo ramps; the DAW stays the clock master); recorded and replayed as MIDI | [Sequencer effects](#sequencer-effects-row-4) |
+| **DAW mode** | < + >: the whole keyboard as a MIDI controller, with an editable CC map | [DAW mode](#daw-mode) |
+| **Punch-in MIDI out** | each punch-in sends its key's note on FX CH, so a DAW records and replays a performance | [HOME menu](#home-menu-the-smk-37-settings) (FX CH) |
+
+The HOME menu (PATCH held) has the SMK-37's own settings: [HOME menu](#home-menu-the-smk-37-settings).
+
 ## Models
 
 | Model | Build | Package identity |
@@ -206,7 +225,7 @@ each named for the DAW:
   stem on KICK's channel (STUT records the whole track). Per-kit groups and choke are to come.
 - Pan, trim and mix them in the DAW. The master stage (TEXTURE, DUST, the DJ filter, the limiter) and the metronome are
   on no stem.
-- **STEM FX** (HOME menu > USB, at once): **SLICER** (default): each track's SLICER as always, the punch-ins on the
+- **STEM FX** (HOME menu > PUNCH, at once): **SLICER** (default): each track's SLICER as always, the punch-ins on the
   master only (headphones, not the stems). **PUNCH** / **PUNCH HQ**: the rhythmic punch-ins (LOOP 4 / 8 / 16 / 32 /
   8T, STUTTER, REVERSE, STOP, HALF, REWIND, GATE) on every stem, each on its own signal before its pan and sends, the
   same grid for all (the stems, the stereo mix and the headphones hear the same; the reverb hears the punched sound).
@@ -216,7 +235,28 @@ each named for the DAW:
   top end above ~10 kHz goes while a punch-in plays, as the SLICER's STUT); PUNCH HQ keeps the full band and half the
   time. A punch-in longer than that past (a slow tempo: REVERSE plays a beat, HALF and STOP 1/8 note and more) plays
   what there is: REVERSE shorter, STOP and REWIND fade where the past ends.
-- **The stem punch-in page** (FX held, STEM FX = PUNCH / HQ): the screen and the pads show only what plays on the
+
+### The stem punch-in page
+
+At a glance (STEM FX = PUNCH or PUNCH HQ, the FX layer held or locked):
+
+| Control | Does |
+|---|---|
+| FX held | the page: the pads and the screen show the stem effects |
+| FX + FADER BANK | locks the page open (FADER BANK lit); FADER BANK again lets it go |
+| Pads, row 1 (orange) | LOOP 4, 8, 16, 32, held |
+| Pads, row 2 (cyan) | STUTTER, REVERSE, STOP, HALF, held |
+| Pads, row 3 | LOOP 8T (orange), GATE (green), REWIND (cyan), FREEZE (violet), held |
+| Pads, row 4 (yellow) | FLIP, LOOP BACK, RAMP UP, RAMP DOWN, held ([below](#sequencer-effects-row-4)) |
+| SELECT | the punch-ins' FADE, 0 .. 15, shown large at the top |
+| PRESETS (K4; K7 SMK layout) | LOOP BACK's length, live while it is held |
+| ALGORITHM (K3; K8 SMK layout) | RAMP's grid |
+| HOME > PUNCH | STEM FX, FADE, XFADE (1.5 / 2.9 / 5.8 ms), CURVE (EQUAL / LINEAR) |
+| HOME > SEQ > FLIP RETURN | SLIP or CARRY after FLIP and LOOP BACK |
+
+In detail:
+
+- **The page** (FX held, STEM FX = PUNCH / HQ): the screen and the pads show only what plays on the
   stems, three rows by kind: LOOP 4 / 8 / 16 / 32 (orange), STUTTER, REVERSE, STOP, HALF (cyan), LOOP 8T (orange),
   GATE (green), REWIND (cyan), FREEZE (violet); the one playing white. The header says stems and PUNCH or PUNCH HQ. A
   pad holds its effect while held, and sends the effect's key note on FX CH as the key does. The keys keep all 27
@@ -228,25 +268,32 @@ each named for the DAW:
   PUNCH > XFADE, with PUNCH > CURVE.
 - **FX + FADER BANK** locks the FX layer open (FADER BANK lit): no holding FX. FADER BANK again, or any other button but
   PLAY, REC and OCT, lets it go. (SLOOP's own lock, FX held + PATCH tapped, works too.)
-- **Row 4 of the page, the sequencer effects** (yellow; what plays changes, so the stems, the mix and MIDI out
-  follow), each while held:
-  - **FLIP**: every track plays backwards from the step it is on.
-  - **LOOP BACK**: every track loops the steps that just played, ending at the playhead, forwards. PRESETS on the page
-    sets the length, halving: 2 bars, 1 bar (default), 1/2 bar, 1/4, 1/8, 1/16 (the short end: break slices, 1/8 a
-    shuffle, 1/16 a single hit). Turned while LOOP BACK is held, the loop takes the new length at once, keeping its
-    end and the beat: halving rolls into the last hit, doubling reaches back. Longer than a track's pattern, that track
-    just plays its pattern; shorter than its step, it holds the step it is on.
-  - **RAMP UP / DOWN**: the tempo steps on a grid (ALGORITHM: 1/4, 1/8, 1/16, straight or dotted), each step
-    1/(steps a bar) of the tempo down to the floor (1 BPM; 20 with CLOCK OUT); UP is its mirror, rising as DOWN falls
-    and easing into double (the most): at 120 BPM after 1 s about 170 up, 75 down. Let
-    go, it snaps back. The header shows the tempo meanwhile.
-  - **FLIP RETURN** (HOME > SEQ, shown in the header; < and > stay the visualisers'): SLIP, the tracks come back where they would have been;
-    CARRY, they go on from where the effect left them (until the transport stops).
-  - With the DAW's clock in (SYNC), the DAW stays the master: a RAMP leaves its clock only while held and, let go,
-    jumps back to the DAW's place; FLIP and LOOP BACK never leave it.
-  - Notes recorded while an effect plays land on the step heard. On FX CH they go out as notes 80 (FLIP), 81 (LOOP
-    BACK), 82 / 83 (RAMP UP / DOWN), the velocity carrying the setting (FLIP 1 SLIP, 2 CARRY; LOOP BACK 1..6 the
-    length; RAMP 1..6 the grid), so a DAW's recording replays exactly.
+
+### Sequencer effects (row 4)
+
+Row 4 of the page (yellow) changes what the sequencer plays rather than the audio, so the stems, the stereo mix and
+MIDI out all follow; they work with any STEM FX and any USB LAYOUT. Each while held:
+
+- **FLIP**: every track plays backwards from the step it is on.
+- **LOOP BACK**: every track loops the steps that just played, ending at the playhead, forwards. PRESETS on the page
+  sets the length, halving: 2 bars, 1 bar (default), 1/2 bar, 1/4, 1/8, 1/16 (the short end: break slices, 1/8 a
+  shuffle, 1/16 a single hit). Turned while LOOP BACK is held, the loop takes the new length at once, keeping its
+  end and the beat: halving rolls into the last hit, doubling reaches back. Longer than a track's pattern, that track
+  just plays its pattern; shorter than its step, it holds the step it is on.
+- **RAMP UP / DOWN**: the tempo steps on a grid (ALGORITHM: 1/4, 1/8, 1/16, straight or dotted), each step
+  1/(steps a bar) of the tempo down to the floor (1 BPM; 20 with CLOCK OUT); UP is its mirror, rising as DOWN falls
+  and easing into double (the most): at 120 BPM after 1 s about 170 up, 75 down. Let go, it snaps back. The header
+  shows the tempo meanwhile.
+- **FLIP RETURN** (HOME > SEQ, shown in the header): SLIP, the tracks come back where they would have been; CARRY,
+  they go on from where the effect left them (until the transport stops).
+- With the DAW's clock in (SYNC), the DAW stays the master: a RAMP leaves its clock only while held and, let go,
+  jumps back to the DAW's place; FLIP and LOOP BACK never leave it.
+- Notes recorded while an effect plays land on the step heard. On FX CH they go out as notes 80 (FLIP), 81 (LOOP
+  BACK), 82 / 83 (RAMP UP / DOWN), the velocity carrying the setting (FLIP 1 SLIP, 2 CARRY; LOOP BACK 1..6 the
+  length; RAMP 1..6 the grid), so a DAW's recording replays exactly.
+
+### Levels, rates and the USB device
+
 - A fixed level: the stems follow neither MASTER nor USB AUDIO (set the levels in the DAW). The stereo output's full
   scale sits at −18 dBFS in the stems: 18 dB of headroom for the sum of six of them, and no limiter on them.
 - One rate at a time (6 channels of 24 bit fill a full-speed USB packet): **STEM RATE** 48 KHZ (default) or 44.1 KHZ.
