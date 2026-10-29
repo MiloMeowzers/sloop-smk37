@@ -1807,8 +1807,9 @@ static uint32_t uac6_probe_packet(uint8_t *d)
 #endif
 
 #if SMK_UAC_IN_PROBE
-/* TIMER5: a packet received on EP4 OUT (one a ms; polled at 2 kHz, so each is taken before the next): its frames
- * into the ring, then the FIFO released (as ep3_rx). OverRun: a packet came while one waited (lost) */
+/* TIMER5: a packet received on EP4 OUT (one a ms; polled at 2 kHz, so each is taken before the next; nested in the
+ * render too, main.c): its frames into the ring, then the FIFO released (as ep3_rx). OverRun: a packet came while one
+ * waited (lost) */
 static void uin_rx(void)
 {
     uint32_t csr, n, i, w;

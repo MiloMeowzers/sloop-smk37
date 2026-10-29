@@ -101,6 +101,12 @@ void fm1_timer5_irq(void)
         sub = 0;
     if (felucca_dbg.in_audio) {
         felucca_dbg.nested++;
+#if SMK_UAC_IN_PROBE
+        if (usb_due)
+            uin_rx();                           /* the playback probe: a packet a ms cannot wait for the render either
+                                                 * (on the unit, polled only between renders, ~18 % were overrun);
+                                                 * EP4's RX side and the ring's writer only, as uac_service */
+#endif
 #if UAC6
         if (uac_due)
             uac_service();
