@@ -35,6 +35,10 @@ enum { MI_COLOR, MI_ZOOM,
        MI_PFADE,                                   /* SMK-37: PUNCH > FADE (GLO G_FXFADE: as SELECT on the FX page) */
        MI_XFADE,                                   /* SMK-37: PUNCH > XFADE (smk_tpunch.h tp_xfl, live) */
        MI_CURVE,                                   /* SMK-37: PUNCH > CURVE (smk_tpunch.h tp_lin, live) */
+#if SMK_UAC_IN_PROBE
+       MI_VTRK, MI_VLVL, MI_VDRY, MI_VSIB,         /* the playback probe: VOCODER > TRACK, LEVEL, DRY, SIBILANCE
+                                                    * (smk_vocoder.h, live, not kept) */
+#endif
 #endif
        MI_ADV, MI_DPREV,
 #if BOARD_SMK37
@@ -64,6 +68,9 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #if BOARD_SMK37
                                               "USB LAYOUT", "STEM RATE", "STEM FILTER", "STEM FX", "FADE", "XFADE",
                                               "CURVE",
+#if SMK_UAC_IN_PROBE
+                                              "TRACK", "LEVEL", "DRY", "SIBILANCE",
+#endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
 #if BOARD_SMK37
@@ -73,12 +80,23 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "2ND CORE", "HARDWARE CALIBRATION", "MIDI LEARN CLEAR", "ABOUT"};
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
+#if SMK_UAC_IN_PROBE
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_VOC, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "VOCODER", "SEQ", "PLAY",
+                                              "MIDI", "DAW", "SYSTEM"};
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VTRK, MI_ADV, MI_VEL,
+                                               MI_TRS, MI_DMAP, MI_SYS0, MI_COUNT};
+#define MI_VOC0 MI_VTRK
+#else
 enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SEQ", "PLAY", "MIDI", "DAW",
                                               "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_ADV, MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
-_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_ADV - MI_SFX <= 4 &&
+#define MI_VOC0 MI_ADV
+#endif
+_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_VOC0 - MI_SFX <= 4 &&
+               MI_ADV - MI_VOC0 <= 4 &&
                MI_VEL - MI_ADV <= 4 &&
                MI_TRS - MI_VEL <= 4 &&
                MI_DMAP - MI_TRS <= 4 && MI_SYS0 - MI_DMAP <= 4 && MI_COUNT - MI_SYS0 <= 4,
@@ -249,6 +267,28 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_CURVE:
         *c = usb_layout_now() && stem_fx ? C_HI : C_DIM;
         return tp_lin ? "LINEAR" : "EQUAL";
+#if SMK_UAC_IN_PROBE
+    case MI_VTRK: {                                   /* the synth track vocoded (dim: no audio from the computer) */
+        static char b[8] = "TRACK 1";
+        *c = uin.alt ? C_HI : C_DIM;
+        if (!voc_track)
+            return "OFF";
+        b[6] = (char)('0' + voc_track);
+        return b;
+    }
+    case MI_VLVL: {                                   /* make-up gain, 3 dB steps */
+        static char b[10];
+        b[0] = '+';
+        fmt_int(b + 1, 3 * (voc_level % VOC_LEVEL_N));
+        str_cpy(b + str_len(b), " DB", 4);
+        return b;
+    }
+    case MI_VDRY: {
+        static const char *const N[VOC_DRY_N] = {"OFF", "-12 DB", "-6 DB"};
+        return N[voc_dry % VOC_DRY_N];
+    }
+    case MI_VSIB: return voc_sib ? "ON" : "OFF";
+#endif
     case MI_FRET: return sq_carry ? "CARRY" : "SLIP";   /* FLIP / LOOP BACK let go: the grid's place, or on from theirs */
     case MI_SRATE:                                    /* the stems' rate (STEREO: USB RATE's, this one dim) */
         *c = usb_layout != UL_STEREO ? C_HI : C_DIM;
@@ -299,6 +339,9 @@ UI_SMALL static void draw_menu(void)
            stem_fx * 160481183u + stem_rate * 275604541u + stem_light * 393342743u + tp_xfl * 694847539u +
            tp_lin * 795918341u + (uint32_t)song.g[G_FXFADE] * 899809363u + sq_carry * 961748927u +
            (uint32_t)usb_layout_now() * 452930459u + (uint32_t)replug_pending() * 553105243u;
+#if SMK_UAC_IN_PROBE
+    sig += voc_track * 1000033u + voc_level * 1000037u + voc_dry * 1000039u + voc_sib * 1000081u + uin.alt * 1000099u;
+#endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
 #endif
@@ -565,6 +608,23 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_CURVE:                                     /* right LINEAR, left EQUAL; OCT+ toggles */
         tp_lin = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !tp_lin);
         break;
+#if SMK_UAC_IN_PROBE
+    case MI_VTRK:                                      /* OFF, TRACK 1 .. 3 (stops at the ends); OCT+ round */
+        voc_track = (uint8_t)(s > 0 ? (voc_track < 3u ? voc_track + 1u : 3u) : s < 0 ? (voc_track ? voc_track - 1u : 0u)
+                                    : (voc_track + 1u) % 4u);
+        break;
+    case MI_VLVL:                                      /* 0 .. +30 dB (stops at the ends); OCT+ back to +12 */
+        voc_level = (uint8_t)(s > 0 ? (voc_level + 1u < VOC_LEVEL_N ? voc_level + 1u : voc_level)
+                                    : s < 0 ? (voc_level ? voc_level - 1u : 0u) : 4u);
+        break;
+    case MI_VDRY:                                      /* OFF, -12, -6 (stops at the ends); OCT+ round */
+        voc_dry = (uint8_t)(s > 0 ? (voc_dry + 1u < VOC_DRY_N ? voc_dry + 1u : voc_dry) : s < 0 ? (voc_dry ? voc_dry - 1u : 0u)
+                                  : (voc_dry + 1u) % VOC_DRY_N);
+        break;
+    case MI_VSIB:                                      /* right ON, left OFF; OCT+ toggles */
+        voc_sib = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_sib);
+        break;
+#endif
     case MI_FRET:                                      /* right CARRY, left SLIP; OCT+ toggles */
         sq_carry = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !sq_carry);
         break;

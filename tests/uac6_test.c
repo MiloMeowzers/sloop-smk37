@@ -38,6 +38,9 @@
 #define T_UIN 0
 #endif
 #define SMK_UAC_IN_PROBE T_UIN
+#if T_UIN
+static uint8_t voc_track;                         /* (fx.c smk_vocoder.h: the monitor plays while it is 0) */
+#endif
 #ifndef FS
 #define FS 44100                                  /* (core.h) */
 #endif

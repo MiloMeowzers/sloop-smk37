@@ -1853,22 +1853,23 @@ static void uin_rx(void)
     sie_wr(S_RXCSR2, csr >> 8);
 }
 
-/* the audio ISR (audio.c audio_block, Q15, before the 24-bit shift): the frames received, resampled from 48 kHz to the
- * engines' rate (linear interpolation, a Q16 step), at -6 dB onto the output. A proportional servo holds the ring's
- * fill near UIN_MON_T: the step moves by 2 / 65536 a frame of error, at most +-1 % (the two clocks: ~0.04 %) */
+/* the frames received, resampled from 48 kHz to the engines' rate (linear interpolation, a Q16 step): onto out at -6 dB
+ * (stereo, Q15, the monitor) and / or into mono (Q15, the vocoder's voice; silence while there is none). A proportional
+ * servo holds the ring's fill near UIN_MON_T: the step moves by 2 / 65536 a frame of error, at most +-1 % (on the unit
+ * the codec's clock is ~0.3 % fast) */
 #define UIN_STEP0 ((uint32_t)(((uint64_t)48000u << 16) / FS))
-static void uin_mix(int32_t *out, uint32_t n)
+static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
 {
-    uint32_t i, w = uin_w, fill;
+    uint32_t i = 0, w = uin_w, fill;
     int32_t e;
     if (!uin.alt) {
         uin.mon_go = 0;
-        return;
+        goto quiet;
     }
     fill = w - uin.mon_r;
     if (!uin.mon_go) {
         if (fill < UIN_MON_T)
-            return;
+            goto quiet;
         uin.mon_r = w - UIN_MON_T;
         uin.mon_frac = 0;
         uin.mon_go = 1;
@@ -1893,20 +1894,37 @@ static void uin_mix(int32_t *out, uint32_t n)
         if (w - uin.mon_r < 2u) {                       /* run dry: stop until the target is back */
             uin.mon_under++;
             uin.mon_go = 0;
-            return;
+            goto quiet;
         }
         a = uin_ring[uin.mon_r & (UIN_N - 1u)];
         b = uin_ring[(uin.mon_r + 1u) & (UIN_N - 1u)];
         {
             int32_t al = (int16_t)(a & 0xFFFFu), bl = (int16_t)(b & 0xFFFFu);
             int32_t ar = (int16_t)(a >> 16), br = (int16_t)(b >> 16);
-            out[2u * i] += (al + (((bl - al) * fr) >> 15)) >> 1;
-            out[2u * i + 1u] += (ar + (((br - ar) * fr) >> 15)) >> 1;
+            int32_t vl = al + (((bl - al) * fr) >> 15), vr = ar + (((br - ar) * fr) >> 15);
+            if (out)
+                out[2u * i] += vl >> 1, out[2u * i + 1u] += vr >> 1;
+            if (mono)
+                mono[i] = (int16_t)((vl + vr) >> 1);
         }
         uin.mon_frac += uin.mon_step;
         uin.mon_r += uin.mon_frac >> 16;
         uin.mon_frac &= 0xFFFFu;
     }
+    return;
+quiet:
+    if (mono)
+        for (; i < n; i++)
+            mono[i] = 0;
+}
+static void uin_mix(int32_t *out, uint32_t n)           /* audio.c: the monitor, while the vocoder is off */
+{
+    if (!voc_track)
+        uin_take(out, 0, n);
+}
+static void uin_block(int16_t *dst, uint32_t n)         /* fx.c mix_block: the vocoder's voice for this block */
+{
+    uin_take(0, dst, n);
 }
 #endif
 

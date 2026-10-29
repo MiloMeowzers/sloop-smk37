@@ -265,6 +265,12 @@ static void con_status(void)
     con_kv("uin_mon_hi", (int32_t)uin.mon_hi);
     con_kv("uin_mon_under", (int32_t)uin.mon_under);
     con_kv("uin_mon_resync", (int32_t)uin.mon_resync);
+    con_kv("voc_track", voc_track);                      /* VOCODER: 0 off, 1..3 the track vocoded (smk_vocoder.h) */
+    con_kv("voc_uv_pct", voc.blocks ? (int32_t)(voc.uv_blocks * 100u / voc.blocks) : 0);   /* blocks unvoiced since */
+    con_kv("voc_peak_in", voc.peak_in);                  /* the voice's |peak|, Q15, since the last status */
+    con_kv("voc_peak_out", voc.peak_out);                /* the vocoded block's, the track's scale */
+    voc.blocks = voc.uv_blocks = 0;
+    voc.peak_in = voc.peak_out = 0;
     con_kv("uin_peak_l", uin.peak_l);                    /* |sample| since the last status */
     con_kv("uin_peak_r", uin.peak_r);
     uin.peak_l = uin.peak_r = 0;
