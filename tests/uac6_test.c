@@ -14,6 +14,14 @@
  *                (8 taps) and at STEM RATE 44.1 (no resampling: 44.1 frames a ms, every sample x 32 exactly)
  *   exact        (T_STEMS) FULL and LIGHT: every output sample as 64-bit sums give it; each phase's taps sum to unity
  *   44.1         (T_STEMS) descriptors at STEM RATE 44.1: the format 44100, bcdDevice x.8x .. x.Ax, serials -D4 -Y4 -A4
+ *   playback     (-DT_UIN=1, the probe with SMK_UAC_IN_PROBE, CDC on) the descriptors: interfaces 0..5 in order, the
+ *                AC collection 2, 3, 1 with terminals 3 (USB streaming) -> 4 (speaker), interface 3's format 2 x 16 bit
+ *                at 48000, EP 0x04 isochronous adaptive 196 bytes, the stems' format still 6 x 24, CDC on 4 and 5,
+ *                bcdDevice 4.7x, serial -PI; the loopback: frames written to the ring as uin_rx does come back on
+ *                channels 3 and 4 of the stems probe's packets, every one, in order, as the top 16 of 24 bits, with
+ *                the other channels as before; the monitor (uin_mix): 48 frames a ms in, renders of 256 at 44.1 kHz
+ *                (the engines' clock 0.04 % fast), 10 s: the servo holds the fill, no underrun or resync, a 1 kHz
+ *                sine comes out at 1 kHz and half its level
  * The SIE is never touched. */
 #include <stdint.h>
 #include <stdio.h>
@@ -26,6 +34,13 @@
 #define T_STEMS 0
 #endif
 #define SMK_UAC_PROBE (!T_STEMS)
+#ifndef T_UIN
+#define T_UIN 0
+#endif
+#define SMK_UAC_IN_PROBE T_UIN
+#ifndef FS
+#define FS 44100                                  /* (core.h) */
+#endif
 #define CTL_LOG2 5                                /* (dsp.c: the mix's blocks of 32) */
 #define FELUCCA_OTA 0
 #define FELUCCA_CDC (T_CDC != 0)
@@ -56,6 +71,7 @@ static void test_descriptors(void)
     uint16_t cl, dl, sl;
     uint32_t off, i;
     int lens_ok = 1, it_ok = 0, fmt_ok = 0, ep_ok = 0, names_ok = 1;
+    uint32_t cur_if = 0;
 #if T_STEMS
     static const char *const NAMES[6] = {"SYN 1", "SYN 2", "SYN 3", "DRUMS", "RET L", "RET R"};
     usb_layout_mode = UL_SYNTHS;                       /* (main.c, from the menu) */
@@ -69,7 +85,7 @@ static void test_descriptors(void)
     get_desc(0x0200, &c, &cl);
     check(T_STEMS ? "device descriptor: 18 bytes, bcdDevice x.5x (SYNTHS+RET's own version)" :
                     "device descriptor: 18 bytes, bcdDevice x.7x (the probe's own version)",
-          dl == 18 && dv[0] == 18 && (dv[12] & 0xF0u) == (T_STEMS ? 0x50u : 0x70u) && dv[13] == 3);
+          dl == 18 && dv[0] == 18 && (dv[12] & 0xF0u) == (T_STEMS ? 0x50u : 0x70u) && dv[13] == (T_UIN ? 4 : 3));
     check("configuration: wTotalLength = the bytes given", le16(c + 2) == cl);
     for (off = 0; off < cl; off += c[off]) {
         const uint8_t *p = c + off;
@@ -77,9 +93,11 @@ static void test_descriptors(void)
             lens_ok = 0;
             break;
         }
-        if (p[0] == 12u && p[1] == 0x24u && p[2] == 2u)
+        if (p[1] == 4u)
+            cur_if = p[2];
+        if (p[0] == 12u && p[1] == 0x24u && p[2] == 2u && p[3] == 1u)
             it_ok = p[7] == 6u && le16(p + 8) == 0 && p[10] == 4u;
-        if (p[1] == 0x24u && p[2] == 2u && p[3] == 1u && p[0] >= 8u)
+        if (p[1] == 0x24u && p[2] == 2u && p[3] == 1u && p[0] >= 8u && cur_if == UAC_AS_IF)
             fmt_ok = p[0] == 11u && p[4] == 6u && p[5] == 3u && p[6] == 24u && p[7] == 1u &&
                      (p[8] | p[9] << 8 | p[10] << 16) == 48000;
         if (p[0] == 9u && p[1] == 5u && p[2] == 0x84u)
@@ -103,7 +121,7 @@ static void test_descriptors(void)
     check("string 10: none", !get_desc(0x0300 | 10u, &s, &sl));
     {   /* the serial number (SMK_SN): string 3, the flash's unique ID folded, the probe's layout tag */
         static const uint8_t UID[16] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 1, 2, 3, 4, 5, 6, 7, 8};
-        const char *want = T_STEMS ? "SMK37-C9C2507299B8-SY" : "SMK37-C9C2507299B8-P6";   /* byte k of the fold: the
+        const char *want = T_STEMS ? "SMK37-C9C2507299B8-SY" : T_UIN ? "SMK37-C9C2507299B8-PI" : "SMK37-C9C2507299B8-P6";   /* byte k of the fold: the
                                                          * XOR of bytes k, k + 6, k + 12 */
         uint32_t k, n = (uint32_t)strlen(want);
         int sn_ok;
@@ -113,7 +131,8 @@ static void test_descriptors(void)
             sn_ok = s[2u + 2u * k] == (uint8_t)want[k] && s[3u + 2u * k] == 0;
         get_desc(0x0100, &dv, &dl);
         check("device descriptor: iSerialNumber 3", dv[16] == 3u);
-        check(T_STEMS ? "string 3: SMK37-<the unique ID folded>-SY" : "string 3: SMK37-<the unique ID folded>-P6", sn_ok);
+        check(T_STEMS ? "string 3: SMK37-<the unique ID folded>-SY" :
+              T_UIN ? "string 3: SMK37-<the unique ID folded>-PI" : "string 3: SMK37-<the unique ID folded>-P6", sn_ok);
 #if T_STEMS
         {   /* STEREO: AUTO ST, USB RATE 44.1 S4, 48 S8 (their own descriptors: their own devices) */
             static const char *const W[3] = {"SMK37-C9C2507299B8-ST", "SMK37-C9C2507299B8-S4", "SMK37-C9C2507299B8-S8"};
@@ -174,6 +193,8 @@ static void test_packets(void)
                 bad++;
             for (ch = 0; ch < 5u; ch++) {
                 uint32_t ph = f % P[ch], t = ph < P[ch] / 2u ? ph : P[ch] - ph;
+                if (T_UIN && (ch == 3u || ch == 4u))
+                    continue;                           /* (the playback probe: the loopback there, test_uin_loopback) */
                 int32_t v = (int32_t)((t << 22) / P[ch]) - (1 << 20), got = s24(fr + 3u * ch);
                 v = (v & ~0xFF) | (int32_t)(ch + 1u);
                 bad += got != v;
@@ -417,6 +438,126 @@ static void test_stems_light_441(void)
 }
 #endif
 
+#if T_UIN
+static void test_uin_desc(void)
+{
+    const uint8_t *c;
+    uint16_t cl;
+    uint32_t off, cur_if = 0, alt = 0, nif = 0, seen = 0, ok_seq = 1;
+    int hdr = 0, it3 = 0, ot4 = 0, fmt = 0, ep = 0, cdc = 0, iad = 0, alts = 0;
+    get_desc(0x0200, &c, &cl);
+    for (off = 0; off < cl; off += c[off]) {
+        const uint8_t *p = c + off;
+        if (p[1] == 2u)
+            nif = p[4];
+        if (p[1] == 0x0Bu && p[2] == 0u)
+            iad = p[3] == 4u;                                   /* audio + MIDI: interfaces 0..3 */
+        if (p[1] == 0x0Bu && p[2] != 0u)
+            cdc = p[2] == 4u && p[3] == 2u;                      /* CDC: 4, 5 */
+        if (p[1] == 4u) {
+            cur_if = p[2], alt = p[3];
+            if (alt == 0u) {
+                ok_seq &= cur_if == seen;                       /* each interface's alt 0, in order */
+                seen++;
+            }
+            if (cur_if == UIN_AS_IF)
+                alts |= 1u << alt;
+        }
+        if (p[1] == 0x24u && p[2] == 1u && p[0] == 11u && cur_if == 0u)
+            hdr = le16(p + 5) == 53u && p[7] == 3u && p[8] == UAC_AS_IF && p[9] == UIN_AS_IF && p[10] == 1u;
+        if (p[0] == 12u && p[1] == 0x24u && p[2] == 2u && p[3] == 3u)
+            it3 = le16(p + 4) == 0x0101u && p[7] == 2u;
+        if (p[0] == 9u && p[1] == 0x24u && p[2] == 3u && p[3] == 4u)
+            ot4 = le16(p + 4) == 0x0301u && p[7] == 3u;
+        if (p[1] == 0x24u && p[2] == 2u && p[3] == 1u && p[0] >= 8u && cur_if == UIN_AS_IF)
+            fmt = p[0] == 11u && p[4] == 2u && p[5] == 2u && p[6] == 16u && p[7] == 1u &&
+                  (p[8] | p[9] << 8 | p[10] << 16) == 48000;
+        if (p[0] == 9u && p[1] == 5u && p[2] == 0x04u)
+            ep = cur_if == UIN_AS_IF && alt == 1u && p[3] == 0x09u && le16(p + 4) == 196u && p[6] == 1u;
+    }
+    check("playback: 6 interfaces, each in order (audio 0-3, CDC 4-5)", nif == 6u && seen == 6u && ok_seq);
+    check("playback: the audio IAD 4 interfaces, CDC's IAD from 4", iad && cdc);
+    check("playback: AC header 53 bytes, collection 2, 3, 1", hdr);
+    check("playback: input terminal 3 USB streaming 2 ch, output terminal 4 speaker from 3", it3 && ot4);
+    check("playback: interface 3 alt 0 and alt 1, format 2 x 16 bit 48000", alts == 3 && fmt);
+    check("playback: EP 0x04 OUT isochronous adaptive, 196 bytes, 1 ms", ep);
+}
+
+static void test_uin_loopback(void)
+{
+    uint32_t pk, i, f = 0, want = 0, n, ok = 1, others = 1, frames = 0;
+    uint8_t d[U6_MAXP];
+    uint32_t f0 = u6_f;
+    uin_stream(1);
+    for (pk = 0; pk < 3000u; pk++) {
+        for (i = 0; i < 48u; i++, f++)                          /* the host: 48 frames a ms */
+            uin_ring[(uin_w + i) & (UIN_N - 1u)] = (f & 0xFFFFu) | ((0xFFFFu - (f & 0xFFFFu)) << 16);
+        uin_w += 48u;
+        n = uac6_probe_packet(d);
+        for (i = 0; i < n; i++) {
+            const uint8_t *q = d + i * U6_FB;
+            int32_t l = s24(q + 9), r = s24(q + 12);
+            if (pk > 4u) {                                      /* (the first 2 ms: silence while the ring fills) */
+                if (!want && l)
+                    want = (uint32_t)(l >> 8) & 0xFFFFu;
+                ok &= ((uint32_t)(l >> 8) & 0xFFFFu) == (want & 0xFFFFu) && (l & 0xFF) == 0 &&
+                      ((uint32_t)(r >> 8) & 0xFFFFu) == (0xFFFFu - (want & 0xFFFFu)) && (r & 0xFF) == 0;
+                want++;
+            }
+            others &= (s24(q) & 0xFF) == 1 && (s24(q + 3) & 0xFF) == 2 && (s24(q + 6) & 0xFF) == 3 &&
+                      s24(q + 15) == (int32_t)(((f0 + frames) & 0xFFFFFu) << 3) - (1 << 22);
+            frames++;
+        }
+    }
+    check("loopback: every frame received, in order, on channels 3 (L) and 4 (R), 16 bit << 8", ok && want > 140000u);
+    check("loopback: channels 0..2 and the counter on 5 as before", others);
+    check("loopback: no underrun or resync (the host's 48 a ms both ways)", !uin.lb_under && !uin.lb_resync);
+    uin_stream(0);
+}
+
+static void test_uin_monitor(void)
+{
+    static int32_t out[2u * 256u];
+    double acc_in = 0.0, ph = 0.0, s2 = 0.0, s2w = 0.0;
+    uint32_t r, i, k, zc = 0, rendered = 0, prev_neg = 0;
+    const double fs_eng = 44117.6;                              /* the engines' clock, a little fast */
+    uin_stream(1);
+    for (r = 0; r < 1723u; r++) {                               /* 10 s of renders */
+        acc_in += 256.0 * 48000.0 / fs_eng;                      /* the frames the host sent meanwhile */
+        while (acc_in >= 1.0) {
+            int16_t v = (int16_t)lrint(16000.0 * sin(ph));
+            ph += 2.0 * M_PI * 1000.0 / 48000.0;
+            uin_ring[uin_w & (UIN_N - 1u)] = (uint16_t)v | (uint32_t)(uint16_t)v << 16;
+            uin_w++;
+            acc_in -= 1.0;
+        }
+        memset(out, 0, sizeof out);
+        for (k = 0; k < 256u; k += 32u)
+            uin_mix(out + 2u * k, 32u);
+        if (r > 172u)                                           /* after 1 s: measured */
+            for (i = 0; i < 256u; i++, rendered++) {
+                double x = out[2u * i];
+                s2 += x * x;
+                s2w += x * x;
+                if (x >= 0 && prev_neg)
+                    zc++;
+                prev_neg = x < 0;
+            }
+    }
+    {
+        double rms = sqrt(s2 / rendered), f = zc * fs_eng / rendered;
+        printf("   monitor: fill %u..%u (target %u), step %u, rms %.0f (want %.0f), %.1f Hz, under %u, resync %u\n", uin.mon_lo, uin.mon_hi,
+               UIN_MON_T, uin.mon_step, rms, 8000.0 / sqrt(2.0), f, uin.mon_under, uin.mon_resync);
+        check("monitor: the servo holds the fill clear of both ends (a render's ~279 frames at once), no underrun or resync",
+              uin.mon_lo >= 64u && uin.mon_hi <= UIN_N - 2u * UIN_MAXF && !uin.mon_under && !uin.mon_resync);
+        check("monitor: 1 kHz in, 1 kHz out (+-0.5 %), at -6 dB (+-0.2 dB)",
+              fabs(f - 1000.0) < 5.0 && fabs(20.0 * log10(rms / (8000.0 / sqrt(2.0)))) < 0.2);
+    }
+    (void)s2w;
+    uin_stream(0);
+}
+#endif
+
 int main(void)
 {
     printf(T_STEMS ? "-- the SMK-37 stems, SYNTHS+RET, CDC %s\n" : "-- the SMK-37 stems probe (SMK_UAC_PROBE), CDC %s\n",
@@ -430,6 +571,11 @@ int main(void)
     test_stems_light_441();
 #else
     test_packets();
+#endif
+#if T_UIN
+    test_uin_desc();
+    test_uin_loopback();
+    test_uin_monitor();
 #endif
     printf(fails ? "UAC6 TEST FAILED (%d)\n" : "uac6: all ok\n", fails);
     return fails != 0;

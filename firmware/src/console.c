@@ -249,6 +249,26 @@ static void con_status(void)
     con_kv("uac6_stalls", (int32_t)uac.stalls);
     con_kv("uac6_rate_sets", (int32_t)uac.rate_sets);
 #endif
+#if SMK_UAC_IN_PROBE
+    con_kv("uin_alt", uin.alt);                          /* the playback stream (usb.c): 1 the host plays */
+    con_kv("uin_starts", (int32_t)uin.starts);
+    con_kv("uin_pkts", (int32_t)uin.pkts);
+    con_kv("uin_frames", (int32_t)uin.frames);
+    con_kv("uin_bad", (int32_t)uin.bad);                 /* packets of a wrong size */
+    con_kv("uin_ovr", (int32_t)uin.ovr);                 /* OverRun: a packet came while one waited (lost) */
+    con_kv("uin_derr", (int32_t)uin.derr);               /* DataError: CRC */
+    con_kv("uin_rate_sets", (int32_t)uin.rate_sets);
+    con_kv("uin_lb_under", (int32_t)uin.lb_under);       /* the loopback found the ring empty (a frame repeated) */
+    con_kv("uin_lb_resync", (int32_t)uin.lb_resync);
+    con_kv("uin_mon_step", (int32_t)uin.mon_step);       /* the monitor's step, Q16 (71330: 48000 / 44100) */
+    con_kv("uin_mon_lo", uin.mon_lo == 0xFFFFFFFFu ? -1 : (int32_t)uin.mon_lo);   /* its fill, frames (target 384) */
+    con_kv("uin_mon_hi", (int32_t)uin.mon_hi);
+    con_kv("uin_mon_under", (int32_t)uin.mon_under);
+    con_kv("uin_mon_resync", (int32_t)uin.mon_resync);
+    con_kv("uin_peak_l", uin.peak_l);                    /* |sample| since the last status */
+    con_kv("uin_peak_r", uin.peak_r);
+    uin.peak_l = uin.peak_r = 0;
+#endif
 #if FELUCCA_FLASH
     con_kv("flash", flash_ok);
 #endif

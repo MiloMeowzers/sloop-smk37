@@ -35,6 +35,9 @@ static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 
 #endif
     uac_tap(usb_full_now ? usb_out : out, n);           /* the USB audio input: the master output, or at full level */
 #endif
+#if SMK_UAC_IN_PROBE
+    uin_mix(out, n);                                    /* (SMK-37 probe: the computer's audio on the headphones) */
+#endif
     for (i = 0; i < n; i++) {
         if (i & 1u)
         {

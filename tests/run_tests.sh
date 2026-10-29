@@ -218,6 +218,8 @@ $CC -DT_CDC=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test" tests/uac6_test.c -lm
 run "SMK-37 stems probe (SMK_UAC_PROBE): 6 x 24 bit at 48 kHz, descriptors and test packets (with CDC)" "$OUT/uac6_test"
 $CC -DT_CDC=0 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_nocdc" tests/uac6_test.c -lm
 run "SMK-37 stems probe (SMK_UAC_PROBE): descriptors and test packets (without CDC)" "$OUT/uac6_test_nocdc"
+$CC -DT_CDC=1 -DT_UIN=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_uin" tests/uac6_test.c -lm
+run "SMK-37 playback probe (SMK_UAC_IN_PROBE): descriptors, the bit-exact loopback, the monitor's servo" "$OUT/uac6_test_uin"
 $CC -DT_CDC=0 -DT_STEMS=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_stems" tests/uac6_test.c -lm
 run "SMK-37 stems, SYNTHS+RET: descriptors, 44.1 -> 48 kHz x 6, the ring and packets, levels" "$OUT/uac6_test_stems"
 $CC -o "$OUT/smk_tpunch_test" tests/smk_tpunch_test.c -lm
