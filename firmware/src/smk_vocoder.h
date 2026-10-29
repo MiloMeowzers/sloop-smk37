@@ -29,6 +29,8 @@ static uint8_t voc_track;                /* TRACK: 0 OFF, 1..3 the synth track v
 static uint8_t voc_level = 4;            /* LEVEL: make-up gain in 3 dB steps, 0 dB .. +30 dB (default +12 dB) */
 static uint8_t voc_dry;                  /* DRY: 0 OFF, 1 -12 dB, 2 -6 dB */
 static uint8_t voc_sib = 1;              /* SIBILANCE: noise for unvoiced sounds */
+#define VOC_XMAX ((1 << 22) - 1)         /* the output's ceiling (not -2^22: its bits read as the ROM's address 0xFFC00000,
+                                                 * which the build's image check refuses) */
 #define VOC_LEVEL_N 11u
 #define VOC_DRY_N 3u
 static const int32_t VOC_LV_Q8[VOC_LEVEL_N] = {256, 362, 512, 724, 1024, 1448, 2048, 2896, 4096, 5793, 8192};
@@ -153,7 +155,7 @@ static void voc_process(int32_t *b, uint32_t n)
             int32_t x = o[k];
             if (voc_dry)
                 x += voc_in[i + (uint32_t)k] >> (voc_dry == 2u ? 1 : 2);   /* DRY: -6 / -12 dB */
-            x = x > (1 << 22) ? 1 << 22 : x < -(1 << 22) ? -(1 << 22) : x;
+            x = x > VOC_XMAX ? VOC_XMAX : x < -VOC_XMAX ? -VOC_XMAX : x;
             if ((x < 0 ? -x : x) > pout)
                 pout = x < 0 ? -x : x;
             b[i + (uint32_t)k] = x;
