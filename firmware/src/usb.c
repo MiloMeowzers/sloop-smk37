@@ -666,7 +666,7 @@ static void uac_ep4_reset(void)                         /* drop a queued packet;
 #if SMK_UAC_IN_PROBE
 static void uin_ep4_reset(void)                         /* EP4 OUT: flush, isochronous; its DMA buffer */
 {
-    FM1_USB_EP4_RADR = (uint32_t)(uintptr_t)ep4rx;
+    fm1_usb_ep4_rxbuf(ep4rx);
     sie_wr(S_INDEX, 4);
     sie_wr(S_RXMAXP, 0xFF);
     sie_wr(S_RXCSR1, 0x90);                             /* ClrDataTog + FlushFIFO (as EP1 / EP3) */

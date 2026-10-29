@@ -105,6 +105,8 @@ FM1_INLINE void fm1_usb_ep4_send(void *p, uint32_t n)
     FM1_USB_EP4_CNT = n;
     __asm__ volatile("csync" ::: "memory");
 }
+/* EP4 OUT (the SMK-37 playback probe, usb.c SMK_UAC_IN_PROBE): its DMA receive address has its own register too */
+FM1_INLINE void fm1_usb_ep4_rxbuf(void *p) { FM1_USB_EP4_RADR = (uint32_t)(uintptr_t)p; }
 FM1_INLINE void fm1_usb_rx_sync(void) { __asm__ volatile("ssync" ::: "memory"); }
 
 FM1_INLINE void fm1_usb_ep_enable(uint32_t eps) { FM1_USB_CON0 &= ~(eps << 19); }
