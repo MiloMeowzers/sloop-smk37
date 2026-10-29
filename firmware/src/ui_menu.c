@@ -31,6 +31,9 @@ enum { MI_COLOR, MI_ZOOM,
        MI_LAYOUT,                                  /* SMK-37: USB > USB LAYOUT (usb.c usb_layout; main.c re-plugs USB) */
        MI_SRATE,                                   /* SMK-37: USB > STEM RATE (usb.c stem_rate; main.c re-plugs USB) */
        MI_SFILT,                                   /* SMK-37: USB > STEM FILTER (usb.c stem_light, live) */
+#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
+       MI_UIN,                                     /* the vocoder build: USB > AUDIO IN (usb.c uin_mode, live) */
+#endif
        MI_SFX,                                     /* SMK-37: PUNCH > STEM FX (smk_tpunch.h stem_fx, live) */
        MI_PFADE,                                   /* SMK-37: PUNCH > FADE (GLO G_FXFADE: as SELECT on the FX page) */
        MI_XFADE,                                   /* SMK-37: PUNCH > XFADE (smk_tpunch.h tp_xfl, live) */
@@ -66,8 +69,11 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #endif
                                               "FILTER RESO",
 #if BOARD_SMK37
-                                              "USB LAYOUT", "STEM RATE", "STEM FILTER", "STEM FX", "FADE", "XFADE",
-                                              "CURVE",
+                                              "USB LAYOUT", "STEM RATE", "STEM FILTER",
+#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
+                                              "AUDIO IN",
+#endif
+                                              "STEM FX", "FADE", "XFADE", "CURVE",
 #if SMK_UAC_IN_PROBE
                                               "TRACK", "LEVEL", "DRY", "SIBILANCE",
 #endif
@@ -289,6 +295,13 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     }
     case MI_VSIB: return voc_sib ? "ON" : "OFF";
 #endif
+#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
+    case MI_UIN: {                                    /* the computer's audio: OFF, ON, TEST (dim: none arriving) */
+        static const char *const N[3] = {"OFF", "ON", "TEST"};
+        *c = uin.alt ? C_HI : C_DIM;
+        return N[uin_mode % 3u];
+    }
+#endif
     case MI_FRET: return sq_carry ? "CARRY" : "SLIP";   /* FLIP / LOOP BACK let go: the grid's place, or on from theirs */
     case MI_SRATE:                                    /* the stems' rate (STEREO: USB RATE's, this one dim) */
         *c = usb_layout != UL_STEREO ? C_HI : C_DIM;
@@ -340,7 +353,8 @@ UI_SMALL static void draw_menu(void)
            tp_lin * 795918341u + (uint32_t)song.g[G_FXFADE] * 899809363u + sq_carry * 961748927u +
            (uint32_t)usb_layout_now() * 452930459u + (uint32_t)replug_pending() * 553105243u;
 #if SMK_UAC_IN_PROBE
-    sig += voc_track * 1000033u + voc_level * 1000037u + voc_dry * 1000039u + voc_sib * 1000081u + uin.alt * 1000099u;
+    sig += voc_track * 1000033u + voc_level * 1000037u + voc_dry * 1000039u + voc_sib * 1000081u + uin.alt * 1000099u +
+           (uint32_t)UIN_TEST * 1000117u;
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
@@ -623,6 +637,12 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         break;
     case MI_VSIB:                                      /* right ON, left OFF; OCT+ toggles */
         voc_sib = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_sib);
+        break;
+#endif
+#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
+    case MI_UIN:                                       /* OFF, ON, TEST (stops at the ends); OCT+ round; at once */
+        uin_mode = (uint8_t)(s > 0 ? (uin_mode < 2u ? uin_mode + 1u : 2u) : s < 0 ? (uin_mode ? uin_mode - 1u : 0u)
+                                   : (uin_mode + 1u) % 3u);
         break;
 #endif
     case MI_FRET:                                      /* right CARRY, left SLIP; OCT+ toggles */

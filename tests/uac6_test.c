@@ -124,7 +124,8 @@ static void test_descriptors(void)
     check("string 10: none", !get_desc(0x0300 | 10u, &s, &sl));
     {   /* the serial number (SMK_SN): string 3, the flash's unique ID folded, the probe's layout tag */
         static const uint8_t UID[16] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 1, 2, 3, 4, 5, 6, 7, 8};
-        const char *want = T_STEMS ? "SMK37-C9C2507299B8-SY" : T_UIN ? "SMK37-C9C2507299B8-PI" : "SMK37-C9C2507299B8-P6";   /* byte k of the fold: the
+        const char *want = T_STEMS ? (T_UIN ? "SMK37-C9C2507299B8-VY" : "SMK37-C9C2507299B8-SY")
+                                   : T_UIN ? "SMK37-C9C2507299B8-PI" : "SMK37-C9C2507299B8-P6";   /* byte k of the fold: the
                                                          * XOR of bytes k, k + 6, k + 12 */
         uint32_t k, n = (uint32_t)strlen(want);
         int sn_ok;
@@ -134,11 +135,16 @@ static void test_descriptors(void)
             sn_ok = s[2u + 2u * k] == (uint8_t)want[k] && s[3u + 2u * k] == 0;
         get_desc(0x0100, &dv, &dl);
         check("device descriptor: iSerialNumber 3", dv[16] == 3u);
-        check(T_STEMS ? "string 3: SMK37-<the unique ID folded>-SY" :
+        check(T_STEMS ? (T_UIN ? "string 3: SMK37-<the unique ID folded>-VY (the playback input's own)" :
+                                 "string 3: SMK37-<the unique ID folded>-SY") :
               T_UIN ? "string 3: SMK37-<the unique ID folded>-PI" : "string 3: SMK37-<the unique ID folded>-P6", sn_ok);
 #if T_STEMS
         {   /* STEREO: AUTO ST, USB RATE 44.1 S4, 48 S8 (their own descriptors: their own devices) */
+#if T_UIN
+            static const char *const W[3] = {"SMK37-C9C2507299B8-VS", "SMK37-C9C2507299B8-V4", "SMK37-C9C2507299B8-V8"};
+#else
             static const char *const W[3] = {"SMK37-C9C2507299B8-ST", "SMK37-C9C2507299B8-S4", "SMK37-C9C2507299B8-S8"};
+#endif
             uint32_t r, ok = 1;
             usb_layout_mode = UL_STEREO;
             for (r = 0; r < 3u; r++) {
@@ -151,7 +157,11 @@ static void test_descriptors(void)
             check("string 3, STEREO: -ST (AUTO), -S4 (44.1 KHZ), -S8 (48 KHZ)", ok);
         }
         {   /* STEM RATE 44.1: each layout its own version, serial and format */
+#if T_UIN
+            static const char *const W[3] = {"SMK37-C9C2507299B8-WD", "SMK37-C9C2507299B8-WY", "SMK37-C9C2507299B8-WA"};
+#else
             static const char *const W[3] = {"SMK37-C9C2507299B8-D4", "SMK37-C9C2507299B8-Y4", "SMK37-C9C2507299B8-A4"};
+#endif
             uint32_t l, ok = 1, fmt = 1;
             stem_rate_mode = 1;
             for (l = UL_DRUMS; l <= UL_DRY; l++) {
@@ -162,9 +172,13 @@ static void test_descriptors(void)
                 get_desc(0x0100, &dv, &dl);
                 ok &= (dv[12] & 0xF0u) == 0x70u + 0x10u * l;
                 get_desc(0x0200, &c, &cl);
-                for (off = 0; off < cl; off += c[off])
-                    if (c[off] == 11u && c[off + 1] == 0x24u && c[off + 2] == 2u && c[off + 3] == 1u)
+                for (off = 0, cur_if = 0; off < cl; off += c[off]) {
+                    if (c[off + 1] == 4u)
+                        cur_if = c[off + 2];
+                    if (c[off] == 11u && c[off + 1] == 0x24u && c[off + 2] == 2u && c[off + 3] == 1u &&
+                        cur_if == UAC_AS_IF)        /* (the stems' format: the playback input keeps 48000) */
                         fmt &= (c[off + 8] | c[off + 9] << 8 | c[off + 10] << 16) == 44100;
+                }
             }
             stem_rate_mode = 0, usb_layout_mode = UL_SYNTHS;
             check("STEM RATE 44.1: bcdDevice x.8x .. x.Ax, string 3 -D4 -Y4 -A4", ok);
@@ -486,6 +500,7 @@ static void test_uin_desc(void)
     check("playback: EP 0x04 OUT isochronous adaptive, 196 bytes, 1 ms", ep);
 }
 
+#if !T_STEMS
 static void test_uin_loopback(void)
 {
     uint32_t pk, i, f = 0, want = 0, n, ok = 1, others = 1, frames = 0;
@@ -518,12 +533,17 @@ static void test_uin_loopback(void)
     uin_stream(0);
 }
 
+#endif
+
 static void test_uin_monitor(void)
 {
     static int32_t out[2u * 256u];
     double acc_in = 0.0, ph = 0.0, s2 = 0.0, s2w = 0.0;
     uint32_t r, i, k, zc = 0, rendered = 0, prev_neg = 0;
     const double fs_eng = 44117.6;                              /* the engines' clock, a little fast */
+#if T_STEMS
+    uin_mode = 1;                                               /* (the vocoder build: AUDIO IN starts OFF) */
+#endif
     uin_stream(1);
     for (r = 0; r < 1723u; r++) {                               /* 10 s of renders */
         acc_in += 256.0 * 48000.0 / fs_eng;                      /* the frames the host sent meanwhile */
@@ -577,7 +597,9 @@ int main(void)
 #endif
 #if T_UIN
     test_uin_desc();
-    test_uin_loopback();
+#if !T_STEMS
+    test_uin_loopback();                              /* (the stems probe's packets: the loopback) */
+#endif
     test_uin_monitor();
 #endif
     printf(fails ? "UAC6 TEST FAILED (%d)\n" : "uac6: all ok\n", fails);

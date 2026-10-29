@@ -41,16 +41,31 @@
 #define SMK_UAC_PROBE 0
 #endif
 /* SMK-37, the vocoder candidate's bring-up (smk37-devtools README, "Candidate"): SMK_UAC_IN_PROBE=1 adds audio FROM the
- * computer: a playback device, 2 ch 16 bit 48 kHz on EP4 OUT (isochronous, adaptive: the host's clock). With the stems
- * probe (SMK_UAC_PROBE=1, its test signals on the host's clock too) the frames received go back out on stems 4 and 5
- * (channels 3, 4) through a short ring: a bit-exact loopback (smk37-devtools uin_check.py); and to the headphones at
- * -6 dB, resampled to the engines' rate with a servo on the ring's fill (uin_mix). The console: `status`, uin_*.
- * A test build only; 0 (the default) builds every package as before */
+ * computer: a playback device, 2 ch 16 bit 48 kHz on EP4 OUT (isochronous, adaptive: the host's clock), to the
+ * headphones at -6 dB, resampled to the engines' rate with a servo on the ring's fill (uin_mix), or the vocoder's voice
+ * (smk_vocoder.h, HOME > VOCODER). The console build only (FELUCCA_CDC=1); the console: `status`, uin_* voc_*.
+ * With the stems probe too (SMK_UAC_PROBE=1, its test signals on the host's clock) the frames received go back out on
+ * stems 4 and 5 (channels 3, 4) through a short ring: a bit-exact loopback (smk37-devtools uin_check.py). Without it
+ * the USB audio input is SLOOP's as in any build (USB LAYOUT: stereo or the stems), each layout a device of its own
+ * (serial ...-V*, -W*). Test builds only; 0 (the default) builds every package as before */
 #ifndef SMK_UAC_IN_PROBE
 #define SMK_UAC_IN_PROBE 0
 #endif
-#if SMK_UAC_IN_PROBE && !(SMK_UAC_PROBE && FELUCCA_CDC)
-#error "SMK_UAC_IN_PROBE: the console build with the stems probe (FELUCCA_CDC=1, SMK_UAC_PROBE=1)"
+#if SMK_UAC_IN_PROBE && !FELUCCA_CDC
+#error "SMK_UAC_IN_PROBE: the console build (FELUCCA_CDC=1)"
+#endif
+#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
+static uint8_t uin_mode;                         /* HOME > USB > AUDIO IN (the owner's): 0 OFF, the audio received is
+                                                  * ignored (nothing on the headphones or the vocoder); 1 ON; 2 TEST,
+                                                  * ON and, with a stems layout, the stems carry the probe's test signals
+                                                  * and the playback loopback (uac6_probe_packet) instead of the music.
+                                                  * Live, not kept: OFF at start. (The playback device stays described:
+                                                  * taking it off the bus would be a re-plug, as USB LAYOUT) */
+#define UIN_ON (uin_mode != 0u)
+#define UIN_TEST (uin_mode == 2u)
+#else
+#define UIN_ON SMK_UAC_IN_PROBE
+#define UIN_TEST SMK_UAC_PROBE
 #endif
 #define UIN_MAXF 49u                     /* the playback packets: 48 frames a ms from the host, one more allowed */
 #define UIN_MAXP (UIN_MAXF * 4u)
@@ -465,7 +480,10 @@ static int sn_string(const uint8_t **d, uint16_t *l)
             ti = UL_N + 3u + ti - 1u;
         t = TAG[ti];
 #if SMK_UAC_IN_PROBE
-        t = "PI";                                       /* (the playback probe: a device of its own) */
+        {   /* the playback input: other descriptors, so devices of their own (with the stems probe: PI) */
+            static const char UTAG[UL_N + 6][3] = {"VS", "VD", "VY", "VA", "PI", "V4", "V8", "WD", "WY", "WA"};
+            t = SMK_UAC_PROBE ? "PI" : UTAG[ti];
+        }
 #endif
         s[n++] = t[0];
         s[n++] = t[1];
@@ -1360,7 +1378,8 @@ static __attribute__((noinline)) void uac_render_start(void)   /* audio ISR, bef
 #if SMK_UAC_PROBE
     uac.feed = 0;                                       /* (the probe: no ring, no music) */
 #else
-    uac.feed = uac.alt && usb.config && uac.flowing;
+    uac.feed = uac.alt && usb.config && uac.flowing && !(uac6_on && UIN_TEST);   /* (TEST SIGNALS: the probe's
+                                                         * packets, no music made for the stems) */
 #endif
     if (!uac.feed) {
         uac.go = 0;                                     /* not read (yet / any more): prime when it is */
@@ -1734,7 +1753,7 @@ static uint32_t uac6_ring_packet(uint8_t *d)
 }
 #endif
 
-#if SMK_UAC_PROBE
+#if SMK_UAC_PROBE || SMK_UAC_IN_PROBE
 /* the probe's next packet: 48 frames, one of 49 and one of 47 every 50 packets (the largest packet, 882 bytes,
  * once a second at least twice; 48 a ms on average). Frame f, 24 bit, little endian, each channel its own:
  *   ch 0..4  triangles of 200, 160, 120, 100, 80 frames (240..600 Hz), +-2^20 (-18 dBFS), the low byte c + 1;
@@ -1862,7 +1881,7 @@ static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
 {
     uint32_t i = 0, w = uin_w, fill;
     int32_t e;
-    if (!uin.alt) {
+    if (!uin.alt || !UIN_ON) {                          /* (AUDIO IN = OFF: received, not played) */
         uin.mon_go = 0;
         goto quiet;
     }
@@ -1957,6 +1976,8 @@ static void uac_service(void)
     if (uac6_on) {
 #if SMK_UAC_PROBE
         n = uac6_probe_packet(ep4tx6);
+#elif SMK_UAC_IN_PROBE
+        n = UIN_TEST ? uac6_probe_packet(ep4tx6) : uac6_ring_packet(ep4tx6);   /* (AUDIO IN = TEST) */
 #else
         n = uac6_ring_packet(ep4tx6);
 #endif

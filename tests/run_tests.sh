@@ -220,6 +220,8 @@ $CC -DT_CDC=0 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_nocdc" tests/uac6_test.c -l
 run "SMK-37 stems probe (SMK_UAC_PROBE): descriptors and test packets (without CDC)" "$OUT/uac6_test_nocdc"
 $CC -DT_CDC=1 -DT_UIN=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_uin" tests/uac6_test.c -lm
 run "SMK-37 playback probe (SMK_UAC_IN_PROBE): descriptors, the bit-exact loopback, the monitor's servo" "$OUT/uac6_test_uin"
+$CC -DT_CDC=1 -DT_STEMS=1 -DT_UIN=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_stems_uin" tests/uac6_test.c -lm
+run "SMK-37 playback input with the real stems (the vocoder build): descriptors, SYNTHS+RET, the monitor" "$OUT/uac6_test_stems_uin"
 $CC -o "$OUT/smk_vocoder_test" tests/smk_vocoder_test.c -lm
 run "SMK-37 vocoder (the playback probe): the VSM201's 20 bands, vocoding, LEVEL, DRY, the voicing detector, SIBILANCE" "$OUT/smk_vocoder_test"
 $CC -DT_CDC=0 -DT_STEMS=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_stems" tests/uac6_test.c -lm
