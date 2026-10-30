@@ -297,6 +297,10 @@ UI_SMALL static int up_load_to(track_t *t, uint32_t k)       /* user preset k in
     int keep_arp;
     if (!up_used(k) || is_drum(t))
         return 1;
+#if SMK_UAC_IN_PROBE
+    if (VOC_TRK_AUDIO(t))                               /* the audio track: no sound to load (smk_vocoder.h) */
+        return 1;
+#endif
     keep_arp = t->p[P_AMODE] && !arp_is_sounds(t);     /* (2.7.1: not the arp the old sound brought) */
     r = up_rec(k);
     up_values(r, v);

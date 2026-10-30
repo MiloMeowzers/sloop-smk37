@@ -274,13 +274,13 @@ static void con_status(void)
     con_kv("uin_mon_resync", (int32_t)uin.mon_resync);
     con_kv("uin_on", UIN_ON);                            /* USB > AUDIO IN: the audio received is played (usb.c) */
     con_kv("uin_test", UIN_TEST);                        /* .. TEST: the stems carry the probe's test signals */
-    con_kv("voc_mode", voc_mode);                        /* VOCODER > MODE: 0 OFF (dry), 1 SAW, 2 ENGINE (smk_vocoder.h) */
-    con_kv("voc_cur", voc_cur);                          /* the audio track's state: 0 engine, 1 dry, 2 SAW, 3 ENGINE */
+    con_kv("voc_mode", voc_mode);                        /* VOCODER > MODE: 0 AUDIO (dry), 1 VOCODER (smk_vocoder.h) */
+    con_kv("voc_cur", voc_cur);                          /* the audio track's state: 0 engine, 1 AUDIO, 2 VOCODER */
     con_kv("voc_blocks", (int32_t)voc.blocks);           /* blocks vocoded since the last status */
-    con_kv("voc_peak_in", voc.peak_in);                  /* the voice's |peak|, Q15, since the last status */
+    con_kv("voc_peak_in", voa.peak_in);                  /* the voice's |peak|, Q15, since the last status */
     con_kv("voc_peak_out", voc.peak_out);                /* the vocoded block's, the track's scale */
     voc.blocks = 0;
-    voc.peak_in = voc.peak_out = 0;
+    voa.peak_in = voc.peak_out = 0;
     con_kv("uin_peak_l", uin.peak_l);                    /* |sample| since the last status */
     con_kv("uin_peak_r", uin.peak_r);
     uin.peak_l = uin.peak_r = 0;

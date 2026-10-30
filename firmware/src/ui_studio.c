@@ -250,7 +250,11 @@ UI_SMALL static void studio_tracks_draw(void)
             te_lower(e, "drums", sizeof e);
         } else {
             trk_short_name(i, b);
+#if SMK_UAC_IN_PROBE
+            te_lower(e, voc_trk_name(t) ? voc_trk_name(t) : ENGINES[t->eng_req % NENGINES]->name, sizeof e);
+#else
             te_lower(e, ENGINES[t->eng_req % NENGINES]->name, sizeof e);
+#endif
         }
         b[13] = 0;
         h = studio_hash(selected + level * 7u + silent * 997u + rec * 1999u + solo * 4999u + len * 37u +

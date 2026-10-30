@@ -14,16 +14,29 @@
 static uint32_t vage;                                   /* voice ages: one clock for every part */
 #if SMK_UAC_IN_PROBE
 #include "smk_vocoder.h"      /* SMK-37: the audio track (track 3) and the vocoder (the vocoder build) */
-/* the SAW carrier: a plain band-limited saw for one of track 3's voices, at its pitch and through its amplitude
- * envelope, at a voice's level (as eng_analog.c) */
+/* the carrier: a plain band-limited saw for one of track 3's voices, at its pitch, through a resonant low-pass
+ * (CARRIER > CUTOFF, RESO; the track's ENV > FLT and LFO > FLT in m->cutoff; state v->s[0..1]) and its amplitude
+ * envelope (the track's ADSR), at a voice's level (as eng_analog.c) */
 static void voc_saw(voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     uint32_t ph = v->ph[0], i;
-    for (i = 0; i < n; i++, ph += m->inc)
-        out[i] += mulq15(mulq15(osc_saw(ph, m->inc), amp_at(m, i)), VOICE_FS) << 1;
+    int32_t ic1 = v->s[0], ic2 = v->s[1];
+    tsvf_t f;
+    tsvf_coef(&f, ((int32_t)voc_cut << 8) + m->cutoff, voc_res);
+    for (i = 0; i < n; i++, ph += m->inc) {
+        int32_t s = clamp(tsvf_lp(&f, osc_saw(ph, m->inc), &ic1, &ic2), -32767, 32767);
+        out[i] += mulq15(mulq15(s, amp_at(m, i)), VOICE_FS) << 1;
+    }
     v->ph[0] = ph;
+    v->s[0] = ic1, v->s[1] = ic2;
 }
-#define VOC_OWNENV (e->ownenv && !vsaw)          /* (SAW: the track's ADSR, whatever the engine) */
+/* track 3 while AUDIO IN is on: the audio track; its engine plays no part (no note_on, no render, no voice cap) */
+#define VOC_TRK_AUDIO(t) ((t) == &trk[VOC_TRK] && VOC_AUDIO_ON)
+static const char *voc_trk_name(const track_t *t)      /* the name the UI shows for its engine (0: not the audio track) */
+{
+    return VOC_TRK_AUDIO(t) ? (voc_mode % VM_N == VM_SAW ? "VOCODER" : "AUDIO") : 0;
+}
+#define VOC_OWNENV (e->ownenv && !vsaw)          /* (the carrier: the track's ADSR, whatever the engine) */
 #define VOC_NOSAW && !vsaw
 #else
 #define VOC_OWNENV e->ownenv
@@ -94,7 +107,12 @@ static void track_lfo_tick(track_t *t)
 /* voices the engine may use (POLY and UNISON): its cap, else all of them */
 static uint32_t trk_nvoice(const track_t *t)
 {
-    uint32_t c = ENGINES[t->engine] == &ENG_PHYS ? phys_poly(t) : ENGINES[t->engine]->poly;   /* (PHYS: by MODEL) */
+    uint32_t c;
+#if SMK_UAC_IN_PROBE
+    if (VOC_TRK_AUDIO(t))
+        return NPOLY;                                   /* the carrier: not the engine's cap */
+#endif
+    c = ENGINES[t->engine] == &ENG_PHYS ? phys_poly(t) : ENGINES[t->engine]->poly;   /* (PHYS: by MODEL) */
     return c && c < NPOLY ? c : NPOLY;
 }
 
@@ -321,6 +339,13 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
         v->env = 0;
         v->env_out = 0;
     }                                                   /* sounding: the attack starts from the current level */
+#if SMK_UAC_IN_PROBE
+    if (VOC_TRK_AUDIO(t)) {                             /* the carrier: its filter afresh (sounding: kept) */
+        if (!sounding)
+            v->s[0] = v->s[1] = 0;
+        return;
+    }
+#endif
     e->note_on(t, v);
     if (sounding && !eng_sampled(e)) {                 /* retrigger / steal: keep phases and filter states */
         v->ph[0] = ph0;                                 /* (resetting them clicks) */
@@ -747,12 +772,26 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     int32_t bendq;
     int16_t pe_new[8];
 #if SMK_UAC_IN_PROBE
-    uint32_t vst = t == &trk[VOC_TRK] ? voc_state() : 0u, vsaw = vst == 1u + VM_SAW;   /* the audio track: its state */
+    uint32_t vst = 0u, vsaw;
+    if (t == &trk[VOC_TRK]) {                           /* the audio track: its state */
+        uint32_t was = voc_cur;
+        vst = voc_state();
+        if (vst != was || vst == 1u + VM_OFF)           /* a change (faded out by now), and AUDIO: no voices (the
+                                                         * engine's and the carrier's apart; none held in the budget) */
+            for (i = 0; i < NVOICE; i++) {
+                voice_t *v = &t->v[i];
+                v->active = v->gate = 0;
+                v->stage = 0;
+                v->kill = 0;
+                v->env = v->env_out = 0;
+            }
+    }
+    vsaw = vst == 1u + VM_SAW;
 #endif
     for (i = 0; i < n; i++)
         out[i] = 0;
 #if SMK_UAC_IN_PROBE
-    if (vst == 1u + VM_OFF) {                           /* AUDIO IN on, MODE OFF: the computer's audio, dry */
+    if (vst == 1u + VM_OFF) {                           /* AUDIO IN on, MODE AUDIO: the computer's audio, dry */
         voc_dry_block(out, n);
         voc_fade(out, n);
         return 1u;                                      /* (the track's chain runs: its LEVEL, PAN, sends) */
@@ -853,8 +892,8 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         t->xf--;
     }
 #if SMK_UAC_IN_PROBE
-    if (vst) {                                          /* SAW / ENGINE: the carrier vocoded (silence without
-                                                         * notes: the chain runs on) */
+    if (vst) {                                          /* VOCODER: the carrier vocoded (silence without notes: the
+                                                         * chain runs on) */
         voc_process(out, n);
         nr = 1u;
     }

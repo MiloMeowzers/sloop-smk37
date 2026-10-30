@@ -41,6 +41,7 @@ enum { MI_COLOR, MI_ZOOM,
 #if SMK_UAC_IN_PROBE
        MI_VMODE, MI_VLVL, MI_VDRY, MI_VHF,         /* the vocoder build: VOCODER > MODE, LEVEL, DRY, HF (smk_vocoder.h:
                                                     * the audio track, track 3; live, not kept) */
+       MI_VCUT, MI_VRES,                           /* CARRIER > CUTOFF, RESO (the saws' low-pass; live, not kept) */
 #endif
 #endif
        MI_ADV, MI_DPREV,
@@ -75,7 +76,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #endif
                                               "STEM FX", "FADE", "XFADE", "CURVE",
 #if SMK_UAC_IN_PROBE
-                                              "MODE", "LEVEL", "DRY", "HF",
+                                              "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -87,11 +88,12 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
 #if SMK_UAC_IN_PROBE
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_VOC, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
-static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "VOCODER", "SEQ", "PLAY",
-                                              "MIDI", "DAW", "SYSTEM"};
-static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VMODE, MI_ADV, MI_VEL,
-                                               MI_TRS, MI_DMAP, MI_SYS0, MI_COUNT};
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_VOC, MS_CARR, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM,
+       MS_COUNT };
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "VOCODER", "CARRIER", "SEQ",
+                                              "PLAY", "MIDI", "DAW", "SYSTEM"};
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VMODE, MI_VCUT, MI_ADV,
+                                               MI_VEL, MI_TRS, MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VMODE
 #else
 enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
@@ -102,7 +104,11 @@ static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, M
 #define MI_VOC0 MI_ADV
 #endif
 _Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_VOC0 - MI_SFX <= 4 &&
+#if SMK_UAC_IN_PROBE
+               MI_VCUT - MI_VOC0 <= 4 && MI_ADV - MI_VCUT <= 4 &&
+#else
                MI_ADV - MI_VOC0 <= 4 &&
+#endif
                MI_VEL - MI_ADV <= 4 &&
                MI_TRS - MI_VEL <= 4 &&
                MI_DMAP - MI_TRS <= 4 && MI_SYS0 - MI_DMAP <= 4 && MI_COUNT - MI_SYS0 <= 4,
@@ -274,11 +280,18 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         *c = usb_layout_now() && stem_fx ? C_HI : C_DIM;
         return tp_lin ? "LINEAR" : "EQUAL";
 #if SMK_UAC_IN_PROBE
-    case MI_VMODE: {                                  /* track 3, the audio track: the input dry, or vocoded over a
-                                                       * SAW or the engine (dim: AUDIO IN off, track 3 its engine) */
-        static const char *const N[VM_N] = {"OFF", "SAW", "ENGINE"};
+    case MI_VMODE: {                                  /* track 3, the audio track: the input dry, or vocoded over the
+                                                       * saws (dim: AUDIO IN off, track 3 its engine) */
+        static const char *const N[VM_N] = {"AUDIO", "VOCODER"};
         *c = VOC_AUDIO_ON ? C_HI : C_DIM;
         return N[voc_mode % VM_N];
+    }
+    case MI_VCUT:                                     /* the carrier's low-pass, 0 .. 127 (dim: not vocoding) */
+    case MI_VRES: {
+        static char b[6];
+        *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
+        fmt_int(b, i == MI_VCUT ? voc_cut : voc_res);
+        return b;
     }
     case MI_VLVL: {                                   /* make-up gain, -12 .. +18 dB in 3 dB steps */
         static char b[10];
@@ -353,7 +366,7 @@ UI_SMALL static void draw_menu(void)
            (uint32_t)usb_layout_now() * 452930459u + (uint32_t)replug_pending() * 553105243u;
 #if SMK_UAC_IN_PROBE
     sig += voc_mode * 1000033u + voc_level * 1000037u + voc_dry * 1000039u + voc_hf * 1000081u + uin.alt * 1000099u +
-           (uint32_t)UIN_TEST * 1000117u;
+           (uint32_t)UIN_TEST * 1000117u + voc_cut * 1000121u + voc_res * 1000133u + (uint32_t)VOC_AUDIO_ON * 1000151u;
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
@@ -622,7 +635,14 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         tp_lin = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !tp_lin);
         break;
 #if SMK_UAC_IN_PROBE
-    case MI_VMODE:                                     /* OFF, SAW, ENGINE (stops at the ends); OCT+ round; faded */
+    case MI_VCUT:                                      /* 0 .. 127, 4 a step; OCT+ back (open, no resonance) */
+    case MI_VRES: {
+        uint8_t *x = i == MI_VCUT ? &voc_cut : &voc_res;
+        int32_t v = s ? (int32_t)*x + 4 * s : (i == MI_VCUT ? 127 : 0);
+        *x = (uint8_t)(v < 0 ? 0 : v > 127 ? 127 : v);
+        break;
+    }
+    case MI_VMODE:                                     /* AUDIO, VOCODER (stops at the ends); OCT+ round; faded */
         voc_mode = (uint8_t)(s > 0 ? (voc_mode + 1u < VM_N ? voc_mode + 1u : voc_mode) : s < 0 ? (voc_mode ? voc_mode - 1u : 0u)
                                    : (voc_mode + 1u) % VM_N);
         break;

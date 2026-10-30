@@ -631,6 +631,10 @@ UI_SMALL static void set_engine_of(track_t *t, uint32_t ei)
     uint32_t i;
     if (is_drum(t))
         return;
+#if SMK_UAC_IN_PROBE
+    if (VOC_TRK_AUDIO(t))                             /* the audio track: its engine stays (smk_vocoder.h) */
+        return;
+#endif
     fm1_irq_off();
     locks_restore(t);                                 /* (a lock in force: its base first, then the new sound) */
     sound_change(t);                                  /* (2.6: the sound as it is, before anything new is written) */
@@ -657,6 +661,12 @@ UI_SMALL static void select_engine(uint32_t e)
 {
     if (is_drum(TSEL))
         return;
+#if SMK_UAC_IN_PROBE
+    if (VOC_TRK_AUDIO(TSEL)) {                       /* the audio track: no engine, no presets (smk_vocoder.h) */
+        ui_say("AUDIO TRACK", ": AUDIO IN ON");
+        return;
+    }
+#endif
     set_engine(e);
     ui_say("ENGINE ", ENGINES[TSEL->eng_req]->name);
     ui.force = 1;
@@ -893,6 +903,10 @@ UI_SMALL static int preset_go_to(track_t *t, uint32_t n)
     uint32_t k, total, e;
     if (is_drum(t))
         return 1;
+#if SMK_UAC_IN_PROBE
+    if (VOC_TRK_AUDIO(t))                             /* the audio track: no Program Change (smk_vocoder.h) */
+        return 1;
+#endif
     if (!bank_ready)
         bank_resolve();
     total = NBANK + up_count();
@@ -952,6 +966,12 @@ UI_SMALL static void preset_go(uint32_t n)                    /* load list index
     uint32_t k, e = preset_at(n, &k), b[FAV_N];
     if (is_drum(TSEL))
         return;                                      /* one GM kit: nothing to browse */
+#if SMK_UAC_IN_PROBE
+    if (VOC_TRK_AUDIO(TSEL)) {                       /* the audio track: no engine, no presets (smk_vocoder.h) */
+        ui_say("AUDIO TRACK", ": AUDIO IN ON");
+        return;
+    }
+#endif
     fav_at = (int8_t)(n < fav_list(b) ? (int32_t)n : -1);
     if (e == NENGINES) {
         up_load(k);

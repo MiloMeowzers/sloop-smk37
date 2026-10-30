@@ -1448,6 +1448,16 @@ static void mix_block(int32_t *out, uint32_t n)
             tp_block(n, punch.req);
     }
 #endif
+#if SMK_UAC_IN_PROBE
+    {   /* the vocoder's analysis (smk_vocoder.h): on this core, into the buffer track 3's synthesis reads next block */
+        static uint8_t ana_on;
+        uint32_t on = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && n <= CTL;
+        if (on && !ana_on)
+            voc_ana_reset();
+        ana_on = (uint8_t)on;
+        voc_ana_flip();                                 /* (before core 1's job: it reads the other one) */
+    }
+#endif
     c1 = cpu1_on() ? units_split() : 0;                 /* core 1's units this block */
 #if BOARD_SMK37
     {   /* SMK-37: the stems' last block shared out too (stem_k channels on core 1, the rest here, stem_balance) */
@@ -1464,6 +1474,10 @@ static void mix_block(int32_t *out, uint32_t n)
             if (!cpu1_run(cpu1_stems_job, c1 | n << 8 | sk << 16))
                 c1 = 0, sk = 0;
         }
+#if SMK_UAC_IN_PROBE
+        if (VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && n <= CTL)
+            voc_analyse(n);                             /* the vocoder's analysis, while core 1 renders track 3 */
+#endif
         mix_units(U_ALL & ~c1, n, &acc[0], part_buf[0]);   /* this core's units, meanwhile */
         tu = cpu1_ticks();
         if (sdo && sk < 6u)

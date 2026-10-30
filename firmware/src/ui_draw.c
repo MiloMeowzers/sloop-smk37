@@ -555,6 +555,12 @@ UI_SMALL static void trk_short_name(uint32_t c, char *b)      /* the track's sou
 {
     const track_t *t = &trk[c];
     const engine_t *e = ENGINES[t->eng_req % NENGINES];
+#if SMK_UAC_IN_PROBE
+    if (voc_trk_name(t)) {                            /* the audio track (smk_vocoder.h) */
+        str_cpy(b, voc_trk_name(t), 13);
+        return;
+    }
+#endif
     if (c == TRK_DRUM)
         str_cpy(b, "DRUM", 13);
     else if (user_of(t) < UP_SLOTS)
@@ -851,6 +857,10 @@ UI_SMALL static void draw_foot(void)
         up_name(user_of(t), pn);                       /* a user preset */
     else if (e->npresets)
         str_cpy(pn, e->presets[TSEL->preset % e->npresets].name, sizeof pn);
+#if SMK_UAC_IN_PROBE
+    if (voc_trk_name(t))                               /* the audio track: AUDIO / VOCODER, no engine nor preset */
+        ename = voc_trk_name(t), pn[0] = 0;
+#endif
     if (ui.home) {
         str_cpy(ti, "HOME", sizeof ti);
     } else {                                           /* page title + number in its family: "ENV DEST 2/2" */

@@ -6,7 +6,7 @@
  *              over its fundamental (110 Hz), > 40 dB over its 51st (5610 Hz), each measured exactly (Goertzel); silence in,
  *              silence out; LEVEL +3 dB a step; DRY adds the voice (as one voice at full scale, x 2 VOICE_FS)
  *   HF         the speech addition: a noise voice puts > 20 dB more above 4 kHz into the output than without it
- *   the track  MODE OFF: the voice itself, at a voice's full scale; a change of state (engine -> dry -> engine) fades out
+ *   the track  MODE AUDIO: the voice itself, at a voice's full scale; a change of state (engine -> dry -> engine) fades out
  *              and in: no step over 200 a sample, settled within 15 blocks
  * 44.1 kHz, blocks of 32 as the mix. */
 #include <stdint.h>
@@ -58,7 +58,7 @@ static double tone(uint32_t n, double f)
     return db(2.0 * sqrt(re * re + im * im) / m);
 }
 
-static void reset(void) { voc_reset(); }
+static void reset(void) { voc_reset(); voc_ana_reset(); }
 
 /* run the vocoder for secs: voice(i) and carrier(i) per sample; the output into a buffer (returned length) */
 static uint32_t run(double secs, double (*voice)(uint32_t), double (*carrier)(uint32_t))
@@ -70,6 +70,9 @@ static uint32_t run(double secs, double (*voice)(uint32_t), double (*carrier)(ui
             voc_in[k] = (int16_t)lrint(voice(i + k));
             b[k] = (int32_t)lrint(carrier(i + k));
         }
+        voc_ana_flip();                            /* (as fx.c mix_block: core 0's analysis, then track 3's synthesis
+                                                    * on the envelopes of the block before) */
+        voc_analyse(VOC_MAXN);
         voc_process(b, VOC_MAXN);
         for (k = 0; k < VOC_MAXN && i + k < n; k++)
             outbuf[i + k] = b[k];
@@ -205,7 +208,7 @@ int main(void)
                 settled = voc_cur == 0u && voc_xg == 32767 && b[VOC_MAXN - 1u] == 30000;
         }
         printf("   the track: the largest step between samples across both changes %d\n", step);
-        check("MODE OFF: the voice itself, as one voice at full scale (VOC_VS), settled within 15 blocks", dry_ok);
+        check("MODE AUDIO: the voice itself, as one voice at full scale (VOC_VS), settled within 15 blocks", dry_ok);
         check("a change of state fades out and in: no step over 200 a sample (no click), back to the engine settled",
               step <= 200 && settled);
         uin_mode = 0;

@@ -223,7 +223,7 @@ run "SMK-37 playback probe (SMK_UAC_IN_PROBE): descriptors, the bit-exact loopba
 $CC -DT_CDC=1 -DT_STEMS=1 -DT_UIN=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_stems_uin" tests/uac6_test.c -lm
 run "SMK-37 playback input with the real stems (the vocoder build): descriptors, SYNTHS+RET, the monitor" "$OUT/uac6_test_stems_uin"
 $CC -o "$OUT/smk_vocoder_test" tests/smk_vocoder_test.c -lm
-run "SMK-37 vocoder (the playback probe): the VSM201's 20 bands, vocoding, LEVEL, DRY, the voicing detector, SIBILANCE" "$OUT/smk_vocoder_test"
+run "SMK-37 vocoder: the VSM201's 20 bands, vocoding (analysis a block ahead, as on two cores), LEVEL, DRY, HF, the track" "$OUT/smk_vocoder_test"
 $CC -DT_CDC=0 -DT_STEMS=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_stems" tests/uac6_test.c -lm
 run "SMK-37 stems, SYNTHS+RET: descriptors, 44.1 -> 48 kHz x 6, the ring and packets, levels" "$OUT/uac6_test_stems"
 $CC -o "$OUT/smk_tpunch_test" tests/smk_tpunch_test.c -lm
