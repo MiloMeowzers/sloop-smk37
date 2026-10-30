@@ -28,6 +28,21 @@
  *   HF         the VSM201's speech addition: the voice's own bands above 4 kHz (4560, 5570, 6780 Hz) added to the
  *              output, for the consonants (the owner chose it over the hiss generator, which was hissy and imprecise)
  *   DRY        the plain voice blended back (the VSM201's bypass)
+ *   VOICE      the VSM201's voice mode detector (manual 3.5, 3.7): channel 19's envelope (5570 Hz) against a channel 0
+ *              of its own, a low-pass below 1 kHz (two one-poles), compared: voiced while channel 0 is over twice
+ *              channel 19 (hysteresis: unvoiced again under 1.4 x), unvoiced otherwise (a high sound alone, or none).
+ *              AUTO: voiced, the saws into the synthesis bank; unvoiced, the internal noise instead (switched over
+ *              ~3 ms: no click). VOICED / UNVOICED: the one always. The noise is level-matched to the saws (manual:
+ *              "by means of a rectifier and modulator": the carrier's rectified level, ~50 Hz, times a noise with the
+ *              rms a saw has over its mean), white or through the pink filter (CARRIER > NOISE)
+ *   BRIDGE     the VSM201's silence bridging (manual 2.9, 3.7: pause filling, its sum control): the voice's level
+ *              (rectified, unfiltered), in dB: 0 above THRESHOLD + 24 dB, rising to full as the voice falls to
+ *              THRESHOLD (the log amplifier and inverter), full below it (the speech / pause detector: a pause); that
+ *              value x BRIDGE added to every band's envelope (into the analysis low-passes): the saws play on through
+ *              the pauses. With it on the detector no longer switches: the saws stay, the noise is added on unvoiced
+ *              speech (manual 3.7)
+ *   Both the detector and the pause value are worked out once a block (1.4 kHz) on core 0 with the analysis, handed
+ *   over with the envelopes.
  * Fixed point: the band-passes Q30 coefficients on 64-bit products, rounded, their signals 4 bits above the input's
  * (a low, narrow band's recursion: truncation read 0.6 dB high at 145 Hz); the envelopes Q19. The track's scale: a
  * voice at full scale 2 x VOICE_FS (dsp.c); the voice (Q15) is put on it as one such voice. */
@@ -47,6 +62,16 @@ enum { VM_OFF, VM_SAW, VM_N };
 static uint8_t voc_mode;                 /* MODE: VM_OFF (AUDIO: the dry audio), VM_SAW (VOCODER) */
 static uint8_t voc_cut = 127;            /* CARRIER > CUTOFF, RESO: the saws' low-pass (0 .. 127, dsp.c tsvf_coef) */
 static uint8_t voc_res;
+enum { VV_AUTO, VV_VOICED, VV_UNVOICED, VV_N };
+static uint8_t voc_vmode;                /* CARRIER > VOICE: the VSM201's VOICE MODE (AUTOMATIC, VOICED / UNVOICED ONLY) */
+static uint8_t voc_pink;                 /* CARRIER > NOISE: WHITE, PINK (the PINK FILTER switch) */
+static uint8_t voc_bridge;               /* SILENCE > BRIDGE: OFF, -18 .. 0 dB (VOC_MIX_Q15); the manual's basic: off */
+static uint8_t voc_thr = 2;              /* SILENCE > THRESHOLD: VOC_THR_DB[]; the speech / pause detector's */
+#define VOC_THR_N 6u
+static const int8_t VOC_THR_DB[VOC_THR_N] = {-54, -48, -42, -36, -30, -24};
+#define VOC_BR_Q15 6300                  /* the bridging at full: the saws out at their own level (LEVEL 0 dB; every band
+                                          * open at once: + 14.3 dB, measured, tests/smk_vocoder_test.c) */
+#define VOC_PINK_Q15 11105               /* the pink filter's rms over white: 2.95 (Kellet's, at 22050 Hz): back to 1 */
 static uint8_t voc_level = 4;            /* LEVEL: -12 .. +18 dB in 3 dB steps (default 0 dB: what the first listening
                                           * set at +16 .. 18 of the old scale) */
 static uint8_t voc_dry;                  /* DRY: OFF, -18, -12, -6, 0 dB */
@@ -72,12 +97,17 @@ static struct {                          /* the analysis (core 0, fx.c mix_block
     int32_t vh[VOC_HN];                  /* the last samples at 44.1 kHz (the decimator) */
     uint32_t hw;
     int32_t peak_in;
+    int32_t lp1, lp2, env0, envs;        /* channel 0 (two one-poles, its envelope), the voice's level (unfiltered) */
+    uint8_t voiced;                      /* the detector's state (hysteresis) */
+    uint32_t blocks, uv_blocks, pause_blocks;   /* (the console) */
 } voa;
 /* what the analysis hands the synthesis: each 22.05 kHz sample's envelopes (Q15) and speech addition; two, a block
  * apart (voc_aw: the one core 0 writes this block, set before core 1's job starts; core 1 reads the other) */
 static struct {
     int32_t env[VOC_MAXN / 2u][VOC_NB];
     int32_t hf[VOC_MAXN / 2u];
+    int32_t pause;                       /* the pause-filling value, Q15 (0 at strong speech, full in a pause) */
+    uint8_t unvoiced, speech;            /* the detector; the speech / pause detector */
 } voc_ab[2];
 static uint8_t voc_aw;
 static struct {                          /* the synthesis (track 3's core): the carrier */
@@ -88,6 +118,9 @@ static struct {                          /* the synthesis (track 3's core): the 
     uint32_t hw, ow;                     /* samples written into ch, into oh */
     uint32_t blocks;                     /* (the console) */
     int32_t peak_out;
+    int32_t cenv, uvg;                   /* the carrier's rectified level (the noise's), the noise's share (Q15) */
+    int32_t pk0, pk1, pk2;               /* the pink filter */
+    uint32_t rnd;
 } voc;
 /* the audio track's state: 0 the engine (AUDIO IN off), 1 + MODE; the one playing (cur) and its fade (Q15) */
 static uint8_t voc_cur;
@@ -122,6 +155,16 @@ static inline int32_t voc_dec(const int32_t *h, uint32_t w)
 static void voc_reset(void)              /* the synthesis afresh (the state changed): no old ringing */
 {
     memset(&voc, 0, sizeof voc);
+    voc.rnd = 0x2545F491u;
+}
+static int32_t voc_log2_q8(uint32_t x)   /* log2 x, Q8 (x > 0); once a block: a loop, no clz */
+{
+    int32_t e = 0;
+    while (x >= 512u)
+        x >>= 1, e++;
+    while (x < 256u)
+        x <<= 1, e--;
+    return (e + 8) * 256 + (int32_t)(x - 256u);
 }
 static void voc_ana_reset(void)          /* the analysis afresh (fx.c: as it starts) */
 {
@@ -145,6 +188,10 @@ static void voc_analyse(uint32_t n)
             voa.vh[voa.hw++ & (VOC_HN - 1u)] = x;
         }
         v = voc_dec(voa.vh, voa.hw) << 4;
+        voa.lp1 += (int32_t)(((int64_t)(v - voa.lp1) * VOC_LF_K) >> 16);   /* channel 0: below 1 kHz */
+        voa.lp2 += (int32_t)(((int64_t)(voa.lp1 - voa.lp2) * VOC_LF_K) >> 16);
+        voa.env0 = voc_env(voa.env0, voa.lp2);
+        voa.envs = voc_env(voa.envs, v);                 /* the voice's level, unfiltered */
         for (k = 0; k < VOC_NB; k++) {
             int32_t ya = voc_sec(v, &voa.ax1[k], &voa.ax2[k], &voa.ay1[k], &voa.ay2[k], k);
             ya = voc_sec(ya, &voa.bx1[k], &voa.bx2[k], &voa.by1[k], &voa.by2[k], k);
@@ -156,11 +203,26 @@ static void voc_analyse(uint32_t n)
         voc_ab[voc_aw].hf[j] = hf;
     }
     voa.peak_in = pin;
+    {   /* the detector: channel 0 against channel 19 (twice to turn voiced, 1.4 x to stay) */
+        int32_t e19 = voa.env[18];
+        voa.voiced = (uint8_t)(voa.env0 > (voa.voiced ? e19 + e19 * 2 / 5 : 2 * e19) && voa.env0 > 0);
+        voc_ab[voc_aw].unvoiced = (uint8_t)!voa.voiced;
+    }
+    {   /* the pause value: the level in dB (Q8; full scale 2^19), full below THRESHOLD, 0 from 24 dB above it */
+        int32_t thr = VOC_THR_DB[voc_thr % VOC_THR_N] * 256, p;
+        int32_t db = voa.envs > 0 ? ((voc_log2_q8((uint32_t)voa.envs) - 19 * 256) * 1541) >> 8 : -120 * 256;
+        p = db <= thr ? 32767 : db >= thr + 24 * 256 ? 0 : (int32_t)(((int64_t)(thr + 24 * 256 - db) * 32767) / (24 * 256));
+        voc_ab[voc_aw].pause = p;
+        voc_ab[voc_aw].speech = (uint8_t)(db > thr);
+    }
+    voa.blocks++;
+    voa.uv_blocks += !voa.voiced;
+    voa.pause_blocks += voc_ab[voc_aw].speech == 0u;
 }
 
 /* one vocoded sample at 22.05 kHz from the carrier c (the track's scale), j the sample's place in the block: the
  * analysis's envelopes of the block before */
-static int32_t voc_tick(int32_t c, uint32_t j)
+static int32_t voc_tick(int32_t c, uint32_t j, int32_t badd)
 {
     const int32_t *env = voc_ab[voc_aw ^ 1u].env[j];
     int64_t sum = 0;
@@ -170,7 +232,8 @@ static int32_t voc_tick(int32_t c, uint32_t j)
     for (k = 0; k < VOC_NB; k++) {
         int32_t ys = voc_sec(c, &voc.sx1[k], &voc.sx2[k], &voc.sy1[k], &voc.sy2[k], k);
         ys = voc_sec(ys, &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
-        sum += (int64_t)ys * env[k];                     /* x the envelope, Q15 (ys: the carrier's scale << 4) */
+        sum += (int64_t)ys * (env[k] + badd);            /* x the envelope (+ the bridging), Q15 (ys: the carrier's
+                                                          * scale << 4) */
     }
     o = (int32_t)(((sum >> 19) * VOC_LV_Q8[voc_level % VOC_LEVEL_N]) >> 8);
     if (voc_hf)
@@ -183,13 +246,37 @@ static void voc_process(int32_t *b, uint32_t n)
 {
     uint32_t i, j;
     int32_t pout = voc.peak_out, dg = VOC_MIX_Q15[voc_dry % VOC_MIX_N];
+    uint32_t vm = voc_vmode % VV_N, br = voc_bridge % VOC_MIX_N != 0u;
+    int32_t badd = br ? (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * VOC_MIX_Q15[voc_bridge % VOC_MIX_N] >> 15) *
+                                  VOC_BR_Q15 >> 15) : 0;
+    int32_t uvt = vm == VV_UNVOICED ? 32767 : vm == VV_VOICED ? 0 :                 /* the noise's share wanted */
+                  voc_ab[voc_aw ^ 1u].unvoiced && (!br || voc_ab[voc_aw ^ 1u].speech) ? 32767 : 0;
     voc.blocks++;
     for (i = 0; i + 1u < n && i + 1u < VOC_MAXN; i += 2u) {
         int32_t o[2], d, k;
         int64_t a = 0;
         for (k = 0; k < 2; k++)
             voc.ch[voc.hw++ & (VOC_HN - 1u)] = b[i + (uint32_t)k];
-        d = voc_tick(voc_dec(voc.ch, voc.hw), i >> 1);
+        {   /* the replacement: the saws, the noise level-matched to them, switched (or, bridging, added) */
+            int32_t c = voc_dec(voc.ch, voc.hw), ac = c < 0 ? -c : c, w, nz;
+            voc.cenv += (int32_t)(((int64_t)(ac - voc.cenv) * VOC_CENV_K) >> 16);
+            voc.uvg = voc.uvg < uvt ? (voc.uvg + 512 > uvt ? uvt : voc.uvg + 512)
+                                    : (voc.uvg - 512 < uvt ? uvt : voc.uvg - 512);   /* ~3 ms */
+            if (voc.uvg) {
+                voc.rnd = voc.rnd * 1664525u + 1013904223u;
+                w = (int32_t)voc.rnd >> 16;                      /* white, Q15 */
+                if (voc_pink) {                                  /* Kellet's economy pink, Q15 */
+                    voc.pk0 = (int32_t)(((int64_t)voc.pk0 * 32690) >> 15) + ((w * 3245) >> 15);   /* (pk0 to ~1.4M) */
+                    voc.pk1 = (int32_t)(((int64_t)voc.pk1 * 31556) >> 15) + ((w * 9716) >> 15);
+                    voc.pk2 = (int32_t)(((int64_t)voc.pk2 * 18678) >> 15) + ((w * 34494) >> 15);
+                    w = (int32_t)(((int64_t)(voc.pk0 + voc.pk1 + voc.pk2 + ((w * 6056) >> 15)) * VOC_PINK_Q15) >> 15);
+                }
+                nz = (int32_t)(((int64_t)w * voc.cenv) >> 14);  /* (uniform: rms 0.577; x 2: a saw's 1.155 its mean) */
+                c = br && vm == VV_AUTO ? c + (int32_t)(((int64_t)nz * voc.uvg) >> 15)
+                                        : c + (int32_t)(((int64_t)(nz - c) * voc.uvg) >> 15);
+            }
+            d = voc_tick(c, i >> 1, badd);
+        }
         voc.oh[voc.ow++ & (VOC_ON - 1u)] = d;
         /* 2:1 up: the even sample the one VOC_HB back, the odd one the half-band between it and the next */
         o[0] = voc.oh[(voc.ow - 1u - VOC_HB) & (VOC_ON - 1u)];

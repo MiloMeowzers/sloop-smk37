@@ -6,6 +6,12 @@
  *              over its fundamental (110 Hz), > 40 dB over its 51st (5610 Hz), each measured exactly (Goertzel); silence in,
  *              silence out; LEVEL +3 dB a step; DRY adds the voice (as one voice at full scale, x 2 VOICE_FS)
  *   HF         the speech addition: a noise voice puts > 20 dB more above 4 kHz into the output than without it
+ *   (the tests above with VOICE = VOICED: the bank alone)
+ *   VOICE      the VSM201's detector: white noise unvoiced (> 80 % of blocks), a vowel-like voice voiced (< 5 %); AUTO on
+ *              a noise voice puts > 10 dB more above 4 kHz out than VOICED (the noise replaces the saw); the noise is
+ *              the carrier's level-matched: no carrier, no output (UNVOICED, white and pink)
+ *   BRIDGE     no voice, a saw: BRIDGE 0 dB plays the saw on (within 6 dB of it), OFF nothing; a loud voice
+ *              (-10 dBFS, THRESHOLD -42) leaves no bridging (the same output +-0.1 dB)
  *   the track  MODE AUDIO: the voice itself, at a voice's full scale; a change of state (engine -> dry -> engine) fades out
  *              and in: no step over 200 a sample, settled within 15 blocks
  * 44.1 kHz, blocks of 32 as the mix. */
@@ -110,6 +116,14 @@ static double sine220(uint32_t i) { return 8000.0 * sin(2.0 * M_PI * 220.0 * i /
 static double v1k(uint32_t i) { return 16000.0 * sin(2.0 * M_PI * 1000.0 * i / FS); }
 static double vzero(uint32_t i) { (void)i; return 0.0; }
 static uint32_t nrnd = 12345u;
+static double vowel(uint32_t i)                   /* harmonics of 150 Hz, -12 dB an octave, to 4 kHz */
+{
+    double s = 0;
+    int h;
+    for (h = 1; 150 * h < 4000; h++)
+        s += sin(2.0 * M_PI * 150.0 * h * i / FS) / ((double)h * h);
+    return 9000.0 * s;
+}
 static double vnoise(uint32_t i)
 {
     (void)i;
@@ -145,7 +159,7 @@ int main(void)
           cross_lo > -4.5 && cross_hi < -1.5);
     check("bands: two octaves away at least 20 dB down (a band stays its own)", skirt < -20.0);
 
-    voc_level = 4, voc_dry = 0, voc_hf = 0;
+    voc_level = 4, voc_dry = 0, voc_hf = 0, voc_vmode = VV_VOICED;
     reset();
     n = run(1.0, v1k, saw110);
     {
@@ -183,6 +197,67 @@ int main(void)
         off = hiss(n);
         printf("   noise voice on a 220 Hz sine: above 4 kHz %.1f dB with HF (-12 dB), %.1f dB without\n", on, off);
         check("HF: the speech addition carries the voice's top above 4 kHz (> 20 dB more than without)", on - off > 20.0);
+    }
+    {   /* the VSM201's voice mode detector and the noise replacement */
+        double a, v;
+        voc_hf = 0;
+        voc_vmode = VV_AUTO;
+        reset();
+        voa.blocks = voa.uv_blocks = 0;
+        run(1.0, vnoise, saw110);
+        a = voa.blocks ? 100.0 * voa.uv_blocks / voa.blocks : 0;
+        reset();
+        voa.blocks = voa.uv_blocks = 0;
+        run(1.0, vowel, saw110);
+        v = voa.blocks ? 100.0 * voa.uv_blocks / voa.blocks : 0;
+        printf("   detector: white noise unvoiced %.0f %% of blocks, a vowel (150 Hz, -12 dB an octave) %.0f %%\n", a, v);
+        check("VOICE: the detector calls white noise unvoiced (> 80 %), a vowel voiced (< 5 % unvoiced)", a > 80.0 && v < 5.0);
+        reset();
+        n = run(1.0, vnoise, saw110);
+        a = hiss(n);
+        voc_vmode = VV_VOICED;
+        reset();
+        n = run(1.0, vnoise, saw110);
+        v = hiss(n);
+        printf("   a noise voice on a 110 Hz saw: above 4 kHz %.1f dB AUTO, %.1f dB VOICED\n", a, v);
+        check("VOICE AUTO: on unvoiced sound the noise replaces the saws (> 10 dB more above 4 kHz than VOICED)",
+              a - v > 10.0);
+        voc_vmode = VV_UNVOICED;
+        reset();
+        n = run(1.0, vnoise, vzero);
+        a = rms_last(n, 0.5);
+        voc_pink = 1;
+        reset();
+        n = run(1.0, vnoise, vzero);
+        v = rms_last(n, 0.5);
+        voc_pink = 0;
+        check("VOICE UNVOICED: the noise is the carrier's level-matched: no carrier, no output (white, pink: < 1)",
+              a < 1.0 && v < 1.0);
+        voc_vmode = VV_VOICED;
+    }
+    {   /* the silence bridging */
+        double on, off, ref = 8000.0 / sqrt(3.0);       /* (the saw's rms) */
+        voc_bridge = 4;                                 /* 0 dB */
+        reset();
+        n = run(1.0, vzero, saw110);
+        on = rms_last(n, 0.5);
+        voc_bridge = 0;
+        reset();
+        n = run(1.0, vzero, saw110);
+        off = rms_last(n, 0.5);
+        printf("   no voice, a 110 Hz saw: BRIDGE 0 dB %.1f dB re the saw, OFF %.1f\n", db(on / ref), off);
+        check("BRIDGE: in a pause the saws play on (0 dB: within 6 dB of the saw), OFF nothing (< 1)",
+              fabs(db(on / ref)) < 6.0 && off < 1.0);
+        voc_bridge = 4;
+        reset();
+        n = run(1.0, v1k, saw110);
+        on = rms_last(n, 0.5);
+        voc_bridge = 0;
+        reset();
+        n = run(1.0, v1k, saw110);
+        off = rms_last(n, 0.5);
+        check("BRIDGE: a loud voice (-10 dBFS, THRESHOLD -42 dB) is not bridged (the same output, +-0.1 dB)",
+              fabs(db(on / off)) < 0.1);
     }
     {   /* the audio track: engine (a DC 30000) -> AUDIO IN on, MODE OFF (the voice: DC 10000) -> off again */
         int32_t b[VOC_MAXN], prev = 30000, step = 0;
