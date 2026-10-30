@@ -38,9 +38,15 @@ static const char *voc_trk_name(const track_t *t)      /* the name the UI shows 
 }
 #define VOC_OWNENV (e->ownenv && !vsaw)          /* (the carrier: the track's ADSR, whatever the engine) */
 #define VOC_NOSAW && !vsaw
+/* the audio track plays POLY without GLIDE, whatever the stored VOICE / GLIDE (an engine preset's: SUPERSAW's
+ * UNISON put one note on all 8 voices of the shared budget, monophonic, gliding, the first stolen; 2026-10-30) */
+#define TRK_VMODE(t) (VOC_TRK_AUDIO(t) ? (uint32_t)V_POLY : (uint32_t)(t)->p[P_VOICE])
+#define TRK_GLIDE(t) (VOC_TRK_AUDIO(t) ? 0 : (t)->p[P_GLIDE])
 #else
 #define VOC_OWNENV e->ownenv
 #define VOC_NOSAW
+#define TRK_VMODE(t) ((uint32_t)(t)->p[P_VOICE])
+#define TRK_GLIDE(t) ((t)->p[P_GLIDE])
 #endif
 #if BOARD_SMK37
 /* the SMK-37 Pro's wheels (main.c smk_wheels), on the selected synth track: the pitch wheel bends
@@ -142,7 +148,7 @@ static uint32_t voice_victim(const track_t *self, int soft, track_t **pp)
     uint32_t p, i, best = NVOICE, cat = 4;
     for (p = 0; p < NPART; p++) {
         track_t *t = &trk[p];
-        uint32_t mode = (uint32_t)t->p[P_VOICE], nu = mode == V_UNISON ? trk_nvoice(t) : 1u;
+        uint32_t mode = TRK_VMODE(t), nu = mode == V_UNISON ? trk_nvoice(t) : 1u;
         uint32_t low = mode == V_POLY ? lowest_held(t) : NVOICE;
         if (soft && t == self)
             continue;
@@ -204,7 +210,7 @@ static void shed_voice(void)
     }
     for (p = 0; p < NPART; p++) {
         const track_t *t = &trk[p];
-        uint32_t mode = (uint32_t)t->p[P_VOICE], low = mode == V_POLY ? lowest_held(t) : 0u;
+        uint32_t mode = TRK_VMODE(t), low = mode == V_POLY ? lowest_held(t) : 0u;
         for (i = 0; i < NVOICE; i++) {
             voice_t *v = &trk[p].v[i];
             if (v->active && v->gate && v->stage != 4u &&
@@ -256,7 +262,7 @@ static voice_t *voice_alloc(track_t *t, uint32_t note)
         if (k < NVOICE)
             voice_kill(&vp->v[k]);
     }
-    if (t->p[P_ALLOC] || t->p[P_GLIDE]) {
+    if (t->p[P_ALLOC] || TRK_GLIDE(t)) {
         for (i = 0; i < np; i++) {
             int32_t d = t->v[i].pitch_cur - (int32_t)note * 16;
             if (t->v[i].active)
@@ -383,7 +389,7 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
  * engine's voice cap, spread by DETUNE over the same width) */
 static void mono_play(track_t *t, uint32_t note, uint32_t vel, int retrig, int glide)
 {
-    uint32_t mode = (uint32_t)t->p[P_VOICE], nv = mode == V_UNISON ? trk_nvoice(t) : 1u, i;
+    uint32_t mode = TRK_VMODE(t), nv = mode == V_UNISON ? trk_nvoice(t) : 1u, i;
     for (i = 0; i < nv; i++) {
         voice_t *v = &t->v[i];
         int32_t k = 2 * (int32_t)i - (int32_t)(nv - 1u);   /* -7 .. 7 */
@@ -446,7 +452,7 @@ static volatile uint8_t vis_hit, vis_kick_hit, vis_note[NTRK];
 
 static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
 {
-    uint32_t any = 0, i, mode = (uint32_t)t->p[P_VOICE];
+    uint32_t any = 0, i, mode = TRK_VMODE(t);
     if (trk_silent(t))
         return;                                         /* MUTE, or another track soloed */
     vis_hit |= (uint8_t)(1u << ((uint32_t)(t - trk) & 3u));
@@ -481,7 +487,7 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
         t->nmono = 0;                                   /* no stale mono stack after a mode change */
         t->mono_note = 0;
         v->fine = 0;
-        voice_start(t, v, note, vel, t->p[P_GLIDE] != 0);
+        voice_start(t, v, note, vel, TRK_GLIDE(t) != 0);
         return;
     }
     {
@@ -494,9 +500,9 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
         if (sounding && want == t->mono_note)
             return;                                     /* LOW / HIGH priority: this key does not win */
         if (mode == V_MONO)                             /* MONO: always retrigger, glide when GLIDE is set */
-            mono_play(t, want, vel, 1, t->p[P_GLIDE] != 0 || t->slide_glide);
+            mono_play(t, want, vel, 1, TRK_GLIDE(t) != 0 || t->slide_glide);
         else                                            /* LEGATO / UNISON: glide only between held notes */
-            mono_play(t, want, vel, !sounding, sounding && (t->p[P_GLIDE] != 0 || t->slide_glide));
+            mono_play(t, want, vel, !sounding, sounding && (TRK_GLIDE(t) != 0 || t->slide_glide));
     }
 }
 
@@ -514,7 +520,7 @@ static void strum_cancel(const track_t *t, uint32_t note, int all)
 }
 static void trk_note_off(track_t *t, uint32_t note)
 {
-    uint32_t i, k = 0, mode = (uint32_t)t->p[P_VOICE];
+    uint32_t i, k = 0, mode = TRK_VMODE(t);
     if (is_drum(t))
         return;                                         /* one-shots */
     strum_cancel(t, note, 0);
@@ -531,7 +537,7 @@ static void trk_note_off(track_t *t, uint32_t note)
         if (t->mono_note == note) {
             uint32_t next = mono_pick(t);
             if (next) {                                 /* fall back to a held note, legato */
-                mono_play(t, next, t->v[0].vel, 0, t->p[P_GLIDE] != 0);
+                mono_play(t, next, t->v[0].vel, 0, TRK_GLIDE(t) != 0);
             } else {
                 for (i = 0; i < nv; i++)
                     if (t->v[i].gate) {
