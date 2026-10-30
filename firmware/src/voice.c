@@ -12,6 +12,23 @@
  * declicks it); one of the part's own is restarted in place. Extra UNISON
  * voices only start when there is room. The drum track has its own voices (drums.c). */
 static uint32_t vage;                                   /* voice ages: one clock for every part */
+#if SMK_UAC_IN_PROBE
+#include "smk_vocoder.h"      /* SMK-37: the audio track (track 3) and the vocoder (the vocoder build) */
+/* the SAW carrier: a plain band-limited saw for one of track 3's voices, at its pitch and through its amplitude
+ * envelope, at a voice's level (as eng_analog.c) */
+static void voc_saw(voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
+{
+    uint32_t ph = v->ph[0], i;
+    for (i = 0; i < n; i++, ph += m->inc)
+        out[i] += mulq15(mulq15(osc_saw(ph, m->inc), amp_at(m, i)), VOICE_FS) << 1;
+    v->ph[0] = ph;
+}
+#define VOC_OWNENV (e->ownenv && !vsaw)          /* (SAW: the track's ADSR, whatever the engine) */
+#define VOC_NOSAW && !vsaw
+#else
+#define VOC_OWNENV e->ownenv
+#define VOC_NOSAW
+#endif
 #if BOARD_SMK37
 /* the SMK-37 Pro's wheels (main.c smk_wheels), on the selected synth track: the pitch wheel bends
  * (1/4096 semitone, HOME menu > MIDI > BEND UP / DOWN semitones, smk_wheel.h), the mod wheel adds a vibrato of its
@@ -729,8 +746,18 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     uint32_t nr = 0, fade = t->xf_on && t->xf;
     int32_t bendq;
     int16_t pe_new[8];
+#if SMK_UAC_IN_PROBE
+    uint32_t vst = t == &trk[VOC_TRK] ? voc_state() : 0u, vsaw = vst == 1u + VM_SAW;   /* the audio track: its state */
+#endif
     for (i = 0; i < n; i++)
         out[i] = 0;
+#if SMK_UAC_IN_PROBE
+    if (vst == 1u + VM_OFF) {                           /* AUDIO IN on, MODE OFF: the computer's audio, dry */
+        voc_dry_block(out, n);
+        voc_fade(out, n);
+        return 1u;                                      /* (the track's chain runs: its LEVEL, PAN, sends) */
+    }
+#endif
     if (fade)                                           /* engine switch: the old engine, its own values */
         for (i = 0; i < 8u; i++) {
             pe_new[i] = t->p[P_E0 + i];
@@ -741,7 +768,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     t->bend_s = (int16_t)(t->bend_s + ((t->bend - t->bend_s) >> 2) + (t->bend > t->bend_s) - (t->bend < t->bend_s));
     bendq = ((int32_t)t->bend_s * clamp(song.g[G_BEND], 1, 12)) >> 1;   /* MIDI pitch bend (2.6): 1/4096 semitone,
                                                                          * gliding (a quarter of the way a block) */
-    if (e->block)                                       /* the engine's per-part work (DRAWBAR: bars, rotor) */
+    if (e->block VOC_NOSAW)                             /* the engine's per-part work (DRAWBAR: bars, rotor) */
         e->block(t);
     for (i = 0; i < NVOICE; i++) {
         voice_t *v = &t->v[i];
@@ -751,7 +778,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             continue;
         {
             env = env_tick(t, v);
-            if (e->ownenv && v->active) {               /* the engine's envelopes (FM6): they end the voice */
+            if (VOC_OWNENV && v->active) {              /* the engine's envelopes (FM6): they end the voice */
                 if (e->done(t, v)) {
                     v->active = v->gate = 0;
                     v->stage = 0;
@@ -765,10 +792,10 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
                     env = 32767;
                 }
             }
-            if (e->amp)                                 /* the engine's own amplitude curve */
+            if (e->amp VOC_NOSAW)                       /* the engine's own amplitude curve */
                 env = e->amp(t, v, env);
-            m.envq15 = e->ownenv ? 0 : env;
-            m.amp1 = e->ownenv ? env : mulq15(env, v->vel * 258);
+            m.envq15 = VOC_OWNENV ? 0 : env;
+            m.amp1 = VOC_OWNENV ? env : mulq15(env, v->vel * 258);
             if (p[P_LD_AMP])
                 m.amp1 = mulq15(m.amp1, 32767 - mulq15(p[P_LPOL] ? lfo : (lfo + 32768) >> 1, p[P_LD_AMP] * 258));
             if (fade)                                   /* linear to 0 over the fade */
@@ -812,6 +839,11 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         if (v->vel > 110)                               /* accent opens the filter with the env */
             m.cutoff += (m.envq15 * 24) >> 7;
         m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7);
+#if SMK_UAC_IN_PROBE
+        if (vsaw)
+            voc_saw(v, out, n, &m);                     /* the SAW carrier */
+        else
+#endif
         e->render(t, v, out, n, &m);
         nr++;
     }
@@ -820,5 +852,14 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             t->p[P_E0 + i] = pe_new[i];
         t->xf--;
     }
+#if SMK_UAC_IN_PROBE
+    if (vst) {                                          /* SAW / ENGINE: the carrier vocoded (silence without
+                                                         * notes: the chain runs on) */
+        voc_process(out, n);
+        nr = 1u;
+    }
+    if (t == &trk[VOC_TRK])
+        voc_fade(out, n);
+#endif
     return nr;
 }

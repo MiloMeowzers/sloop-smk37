@@ -1,18 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Host test of the SMK-37 vocoder (firmware/src/smk_vocoder.h; the playback probe's, SMK_UAC_IN_PROBE):
+/* Host test of the SMK-37 audio track and vocoder (firmware/src/smk_vocoder.h; the vocoder build, SMK_UAC_IN_PROBE):
  *   bands      the bank (4th order: two sections, at 22050 Hz) 0 dB at each of the VSM201's 20 centres, neighbours
  *              crossing near -3 dB between theirs, two octaves away at least 20 dB down
  *   vocoding   a sawtooth carrier (110 Hz) shaped by a 1 kHz voice: its 9th harmonic (990 Hz) in the output > 15 dB
  *              over its fundamental (110 Hz), > 40 dB over its 51st (5610 Hz), each measured exactly (Goertzel); silence in,
- *              silence out; LEVEL +3 dB a step; DRY adds the voice
- *   voicing    white noise unvoiced (> 80 % of blocks), a vowel-like voice (harmonics of 150 Hz falling 12 dB an octave)
- *              voiced (< 5 %); with SIBILANCE the noise reaches the output's top band, without it does not
+ *              silence out; LEVEL +3 dB a step; DRY adds the voice (as one voice at full scale, x 2 VOICE_FS)
+ *   HF         the speech addition: a noise voice puts > 20 dB more above 4 kHz into the output than without it
+ *   the track  MODE OFF: the voice itself, at a voice's full scale; a change of state (engine -> dry -> engine) fades out
+ *              and in: no step over 200 a sample, settled within 15 blocks
  * 44.1 kHz, blocks of 32 as the mix. */
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
 #define VOC_MAXN 32u
+#define SMK_UAC_PROBE 0
+#define VOICE_FS 24000                             /* (dsp.c) */
 #include "../firmware/src/smk_vocoder.h"
 
 static int fails;
@@ -55,12 +58,7 @@ static double tone(uint32_t n, double f)
     return db(2.0 * sqrt(re * re + im * im) / m);
 }
 
-static void reset(void)
-{
-    uint32_t r = voc.rnd;
-    memset(&voc, 0, sizeof voc);
-    voc.rnd = r | 1u;
-}
+static void reset(void) { voc_reset(); }
 
 /* run the vocoder for secs: voice(i) and carrier(i) per sample; the output into a buffer (returned length) */
 static uint32_t run(double secs, double (*voice)(uint32_t), double (*carrier)(uint32_t))
@@ -115,14 +113,6 @@ static double vnoise(uint32_t i)
     nrnd = nrnd * 1664525u + 1013904223u;
     return (double)(int16_t)(nrnd >> 16) * 0.25;
 }
-static double vowel(uint32_t i)                   /* harmonics of 150 Hz, -12 dB an octave, to 4 kHz */
-{
-    double s = 0;
-    int h;
-    for (h = 1; 150 * h < 4000; h++)
-        s += sin(2.0 * M_PI * 150.0 * h * i / FS) / ((double)h * h);
-    return 9000.0 * s;
-}
 
 int main(void)
 {
@@ -152,7 +142,7 @@ int main(void)
           cross_lo > -4.5 && cross_hi < -1.5);
     check("bands: two octaves away at least 20 dB down (a band stays its own)", skirt < -20.0);
 
-    voc_level = 4, voc_dry = 0, voc_sib = 1;
+    voc_level = 4, voc_dry = 0, voc_hf = 0;
     reset();
     n = run(1.0, v1k, saw110);
     {
@@ -171,40 +161,54 @@ int main(void)
     reset();
     n = run(1.0, vzero, saw110);
     check("silence in, silence out (the carrier alone: < 1)", rms_last(n, 0.5) < 1.0);
-    voc_dry = 2;
+    voc_dry = 3;                                    /* -6 dB (OFF, -18, -12, -6, 0) */
     reset();
     n = run(1.0, v1k, vzero);
-    check("DRY -6 dB: the voice on its own (no carrier) at half its level (+-0.1 dB)",
-          fabs(db(rms_last(n, 0.5) / (16000.0 / sqrt(2.0))) + 6.02) < 0.1);
+    printf("   DRY -6 dB: %.2f dB re a voice's full scale\n", db(rms_last(n, 0.5) / (16000.0 * 2.0 * VOICE_FS / 32768.0 / sqrt(2.0))));
+    check("DRY -6 dB: the voice on its own (no carrier), a voice's full scale halved (+-0.1 dB)",
+          fabs(db(rms_last(n, 0.5) / (16000.0 * 2.0 * VOICE_FS / 32768.0 / sqrt(2.0))) + 6.02) < 0.1);
     voc_dry = 0;
-
-    reset();
-    run(1.0, vnoise, sine220);
-    {
-        uint32_t uv = voc.blocks ? voc.uv_blocks * 100u / voc.blocks : 0;
-        printf("   white noise: unvoiced %u %% of blocks\n", uv);
-        check("voicing: white noise unvoiced (> 80 % of blocks)", uv > 80u);
-    }
-    reset();
-    run(1.0, vowel, sine220);
-    {
-        uint32_t uv = voc.blocks ? voc.uv_blocks * 100u / voc.blocks : 0;
-        printf("   a vowel (150 Hz, -12 dB an octave): unvoiced %u %% of blocks\n", uv);
-        check("voicing: a vowel voiced (< 5 % of blocks unvoiced)", uv < 5u);
-    }
     {
         double on, off;
-        voc_sib = 1;
+        voc_hf = 2;                                     /* -12 dB */
         reset();
         n = run(1.0, vnoise, sine220);
         on = hiss(n);
-        voc_sib = 0;
+        voc_hf = 0;
         reset();
         n = run(1.0, vnoise, sine220);
         off = hiss(n);
-        printf("   noise voice on a 220 Hz sine: above 4 kHz %.1f dB with SIBILANCE, %.1f dB without\n", on, off);
-        check("SIBILANCE: the noise carries the hiss above 4 kHz (> 20 dB more than without)", on - off > 20.0);
-        voc_sib = 1;
+        printf("   noise voice on a 220 Hz sine: above 4 kHz %.1f dB with HF (-12 dB), %.1f dB without\n", on, off);
+        check("HF: the speech addition carries the voice's top above 4 kHz (> 20 dB more than without)", on - off > 20.0);
+    }
+    {   /* the audio track: engine (a DC 30000) -> AUDIO IN on, MODE OFF (the voice: DC 10000) -> off again */
+        int32_t b[VOC_MAXN], prev = 30000, step = 0;
+        uint32_t blk, j, settled = 0, dry_ok = 1;
+        voc_cur = 0, voc_xg = 32767, voc_mode = VM_OFF;
+        for (blk = 0; blk < 60u; blk++) {
+            uint32_t st;
+            uin_mode = blk >= 10u && blk < 35u;        /* on for 25 blocks */
+            st = voc_state();
+            for (j = 0; j < VOC_MAXN; j++)
+                voc_in[j] = 13653, b[j] = 30000;          /* (the voice 13653 Q15: 10000 on the track's scale) */
+            if (st == 1u + VM_OFF)
+                voc_dry_block(b, VOC_MAXN);
+            voc_fade(b, VOC_MAXN);
+            for (j = 0; j < VOC_MAXN; j++) {
+                int32_t d = b[j] - prev;
+                step = (d < 0 ? -d : d) > step ? (d < 0 ? -d : d) : step;
+                prev = b[j];
+            }
+            if (blk == 24u)
+                dry_ok = voc_cur == 1u + VM_OFF && voc_xg == 32767 && b[VOC_MAXN - 1u] == VOC_VS(13653);
+            if (blk == 49u)
+                settled = voc_cur == 0u && voc_xg == 32767 && b[VOC_MAXN - 1u] == 30000;
+        }
+        printf("   the track: the largest step between samples across both changes %d\n", step);
+        check("MODE OFF: the voice itself, as one voice at full scale (VOC_VS), settled within 15 blocks", dry_ok);
+        check("a change of state fades out and in: no step over 200 a sample (no click), back to the engine settled",
+              step <= 200 && settled);
+        uin_mode = 0;
     }
     printf(fails ? "VOCODER TEST FAILED (%d)\n" : "smk_vocoder: all ok\n", fails);
     return fails != 0;

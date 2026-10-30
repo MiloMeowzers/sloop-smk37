@@ -257,6 +257,11 @@ static void con_status(void)
     con_kv("uin_bad", (int32_t)uin.bad);                 /* packets of a wrong size */
     con_kv("uin_ovr", (int32_t)uin.ovr);                 /* OverRun: a packet came while one waited (lost) */
     con_kv("uin_derr", (int32_t)uin.derr);               /* DataError: CRC */
+    con_kv("uin_gap_max_us", (int32_t)(uin.gap_max / FM1_TICKS_PER_US));   /* the longest time between two checks */
+    con_kv("uin_gaps_over_1ms", (int32_t)uin.gaps_over);
+    con_kv("uin_ovr_short", (int32_t)uin.ovr_short);     /* OverRuns after a check in time (< 0.75 ms): the hardware */
+    con_kv("uin_ovr_long", (int32_t)uin.ovr_long);       /* .. after a late one: the timing */
+    uin.gap_max = 0;
     con_kv("uin_rate_sets", (int32_t)uin.rate_sets);
     con_kv("uin_lb_under", (int32_t)uin.lb_under);       /* the loopback found the ring empty (a frame repeated) */
     con_kv("uin_lb_resync", (int32_t)uin.lb_resync);
@@ -267,11 +272,12 @@ static void con_status(void)
     con_kv("uin_mon_resync", (int32_t)uin.mon_resync);
     con_kv("uin_on", UIN_ON);                            /* USB > AUDIO IN: the audio received is played (usb.c) */
     con_kv("uin_test", UIN_TEST);                        /* .. TEST: the stems carry the probe's test signals */
-    con_kv("voc_track", voc_track);                      /* VOCODER: 0 off, 1..3 the track vocoded (smk_vocoder.h) */
-    con_kv("voc_uv_pct", voc.blocks ? (int32_t)(voc.uv_blocks * 100u / voc.blocks) : 0);   /* blocks unvoiced since */
+    con_kv("voc_mode", voc_mode);                        /* VOCODER > MODE: 0 OFF (dry), 1 SAW, 2 ENGINE (smk_vocoder.h) */
+    con_kv("voc_cur", voc_cur);                          /* the audio track's state: 0 engine, 1 dry, 2 SAW, 3 ENGINE */
+    con_kv("voc_blocks", (int32_t)voc.blocks);           /* blocks vocoded since the last status */
     con_kv("voc_peak_in", voc.peak_in);                  /* the voice's |peak|, Q15, since the last status */
     con_kv("voc_peak_out", voc.peak_out);                /* the vocoded block's, the track's scale */
-    voc.blocks = voc.uv_blocks = 0;
+    voc.blocks = 0;
     voc.peak_in = voc.peak_out = 0;
     con_kv("uin_peak_l", uin.peak_l);                    /* |sample| since the last status */
     con_kv("uin_peak_r", uin.peak_r);

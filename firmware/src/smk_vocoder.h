@@ -1,9 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* SMK-37 vocoder (SMK_UAC_IN_PROBE builds: the vocoder candidate's first step, smk37-devtools README "Candidate" and
- * vocoder-harmoniser-reference.md): a channel vocoder after the Sennheiser VSM201. The voice is the computer's audio
- * (usb.c, EP4 OUT), the carrier a SLOOP synth track (HOME > VOCODER > TRACK): fx.c mix_part_run hands the track's
- * signal here after its own chain (DIST, INSERT, SLICER, FILTER), so what comes out goes on through its LEVEL, PAN,
- * sends, punch-ins and stem as the track did.
+/* SMK-37 audio track and vocoder (SMK_UAC_IN_PROBE builds: the vocoder candidate, smk37-devtools README "Candidate"
+ * and vocoder-harmoniser-reference.md). The owner's design (2026-10-30): while HOME > USB > AUDIO IN is on, track 3 is
+ * the AUDIO TRACK (SLOOP keeps four: two engine tracks, the audio track, the drums). Its sound, made in voice.c
+ * track_render before the track's own chain (DIST, INSERT, SLICER, FILTER, LEVEL, PAN, the sends, the punch-ins, its
+ * stem), is set by HOME > VOCODER > MODE:
+ *   OFF     the computer's audio (usb.c, EP4 OUT), mono, dry: external audio in the mix with SLOOP's effects
+ *   SAW     the vocoder, its carrier plain band-limited saws on track 3's notes (keys or sequencer; voice.c voc_saw)
+ *   ENGINE  the vocoder, its carrier track 3's engine
+ * A change of state (MODE, AUDIO IN) fades the track out and in again (~5 ms each way): no click.
+ * The vocoder, after the Sennheiser VSM201:
  *   rate       the voice and the carrier down 2:1 to 22050 Hz (the VSM201's range is 100 Hz - 8 kHz), the output up
  *              2:1 again, through a half-band FIR (27 taps, 8 not zero; ~0.3 ms)
  *   analysis   the voice (mono, Q15, this block: voc_in, usb.c uin_block) through 20 band-passes at the VSM201's
@@ -11,29 +16,39 @@
  *              a band's envelope stays its own), each full-wave rectified and smoothed (attack ~3 ms, release ~8 ms:
  *              the VSM201's 20 - 50 Hz channel low-passes)
  *   synthesis  the carrier through the same 20 band-passes (4th order: a bright carrier's strong fundamental stays
- *              out of the bands above it), each scaled by its band's envelope, summed; LEVEL the make-up gain; DRY the
- *              voice added back at the full rate (the VSM201's speech addition)
- *   voicing    the VSM201's detector: channel 19's envelope (5.6 kHz) against a channel 0, a low-pass below 1 kHz;
- *              unvoiced (s, sh, t, f) when the high one passes half the low one (back under a third). With SIBILANCE
- *              the carrier then crossfades (~3 ms) to noise at the carrier's own level ("automatically matched to the
- *              voiced replacement signal"), as the VSM201's internal hiss generator
+ *              out of the bands above it), each scaled by its band's envelope, summed; LEVEL the make-up gain
+ *   HF         the VSM201's speech addition: the voice's own bands above 4 kHz (4560, 5570, 6780 Hz) added to the
+ *              output, for the consonants (the owner chose it over the hiss generator, which was hissy and imprecise)
+ *   DRY        the plain voice blended back (the VSM201's bypass)
  * Fixed point: the band-passes Q30 coefficients on 64-bit products, rounded, their signals 4 bits above the input's
- * (a low, narrow band's recursion: truncation read 0.6 dB high at 145 Hz); the envelopes Q19. 4 sections a band at
- * 22050 Hz. */
+ * (a low, narrow band's recursion: truncation read 0.6 dB high at 145 Hz); the envelopes Q19. The track's scale: a
+ * voice at full scale 2 x VOICE_FS (dsp.c); the voice (Q15) is put on it as one such voice. */
 #include "smk_vocoder_tab.h"
 
 #ifndef VOC_MAXN
 #define VOC_MAXN 32u                     /* the largest block (CTL); even */
 #endif
-static uint8_t voc_track;                /* TRACK: 0 OFF, 1..3 the synth track vocoded */
-static uint8_t voc_level = 4;            /* LEVEL: make-up gain in 3 dB steps, 0 dB .. +30 dB (default +12 dB) */
-static uint8_t voc_dry;                  /* DRY: 0 OFF, 1 -12 dB, 2 -6 dB */
-static uint8_t voc_sib = 1;              /* SIBILANCE: noise for unvoiced sounds */
-#define VOC_XMAX ((1 << 23) - 1)         /* the output's ceiling (-2^22 .. -3 x 2^20 read as the ROM's addresses
-                                                 * 0xFFC00000.., which the build's image check refuses: 2^23 is clear) */
+#define VOC_TRK 2u                       /* track 3: the audio track */
+#if !SMK_UAC_PROBE
+static uint8_t uin_mode;                 /* HOME > USB > AUDIO IN (usb.c): 0 OFF, 1 ON, 2 TEST; live, not kept */
+#define VOC_AUDIO_ON (uin_mode != 0u)
+#else
+#define VOC_AUDIO_ON 0                   /* (the loopback probe: track 3 its engine; the input on the monitor) */
+#endif
+enum { VM_OFF, VM_SAW, VM_ENGINE, VM_N };
+static uint8_t voc_mode;                 /* MODE: VM_OFF (the dry audio), VM_SAW, VM_ENGINE */
+static uint8_t voc_level = 4;            /* LEVEL: -12 .. +18 dB in 3 dB steps (default 0 dB: what the first listening
+                                          * set at +16 .. 18 of the old scale) */
+static uint8_t voc_dry;                  /* DRY: OFF, -18, -12, -6, 0 dB */
+static uint8_t voc_hf = 2;               /* HF (speech addition): OFF, -18, -12, -6, 0 dB (default -12) */
 #define VOC_LEVEL_N 11u
-#define VOC_DRY_N 3u
-static const int32_t VOC_LV_Q8[VOC_LEVEL_N] = {256, 362, 512, 724, 1024, 1448, 2048, 2896, 4096, 5793, 8192};
+#define VOC_MIX_N 5u
+static const int32_t VOC_LV_Q8[VOC_LEVEL_N] = {511, 722, 1020, 1441, 2035, 2875, 4061, 5737, 8104, 11447, 16170};
+static const int32_t VOC_MIX_Q15[VOC_MIX_N] = {0, 4125, 8231, 16423, 32767};
+#define VOC_VS(x) ((int32_t)(((int64_t)(x) * VOICE_FS) >> 14))   /* the voice (Q15) on the track's scale */
+#define VOC_XMAX ((1 << 23) - 1)         /* the output's ceiling (-2^22 .. -3 x 2^20 read as the ROM's addresses
+                                          * 0xFFC00000.., which the build's image check refuses: 2^23 is clear) */
+#define VOC_HF0 17u                      /* the speech addition's first band (4560 Hz) */
 
 #define VOC_HN 32u                       /* the half-band's history at 44.1 kHz (27 taps), a power of two */
 #define VOC_ON 16u                       /* the decimated outputs' history (the interpolator's: 2 HB), a power of two */
@@ -49,14 +64,12 @@ static struct {
     int32_t vh[VOC_HN], ch[VOC_HN];      /* the voice's and the carrier's last samples at 44.1 kHz (the decimator) */
     int32_t oh[VOC_ON];                  /* the vocoded samples at 22.05 kHz (the interpolator) */
     uint32_t hw, ow;                     /* samples written into vh / ch, into oh */
-    int32_t lf, lf_env;                  /* channel 0: the voice low-passed (Q15), its envelope (Q19) */
-    int32_t cenv;                        /* the carrier's level (its own scale), for the noise */
-    int32_t uvg;                         /* the noise's share: 0 voiced .. 32767 unvoiced, ramped */
-    uint8_t uv;                          /* the detector: unvoiced now */
-    uint32_t rnd;
-    uint32_t blocks, uv_blocks;          /* (the console) */
+    uint32_t blocks;                     /* (the console) */
     int32_t peak_in, peak_out;
-} voc = {.rnd = 0x9E3779B9u};
+} voc;
+/* the audio track's state: 0 the engine (AUDIO IN off), 1 + MODE; the one playing (cur) and its fade (Q15) */
+static uint8_t voc_cur;
+static int32_t voc_xg = 32767;
 
 /* one band-pass section of band k, rounded */
 static inline int32_t voc_sec(int32_t x, int32_t *x1, int32_t *x2, int32_t *y1, int32_t *y2, uint32_t k)
@@ -84,34 +97,17 @@ static inline int32_t voc_dec(const int32_t *h)
     return (int32_t)((a + (1 << 14)) >> 15);
 }
 
-/* the voiced / unvoiced decision for a block, from the envelopes at its start (hysteresis: on at 1/2, off at 1/3) */
-static void voc_detect(void)
+static void voc_reset(void)              /* a fresh start (the state changed): no old ringing */
 {
-    int32_t hf = voc.env[18], lf = voc.lf_env;
-    if (!voc.uv && hf * 2 > lf && hf > (64 << 4))
-        voc.uv = 1;
-    else if (voc.uv && (hf * 3 < lf || hf <= (64 << 4)))
-        voc.uv = 0;
+    memset(&voc, 0, sizeof voc);
 }
 
-/* one vocoded sample at 22.05 kHz from the voice v (Q15) and the carrier c (its own scale) */
+/* one vocoded sample at 22.05 kHz from the voice v (Q15) and the carrier c (the track's scale) */
 static int32_t voc_tick(int32_t v, int32_t c)
 {
-    int32_t ac = c < 0 ? -c : c, tgt;
     int64_t sum = 0;
+    int32_t hf = 0, o;
     uint32_t k;
-    voc.lf += (int32_t)(((int64_t)(v - voc.lf) * VOC_LF_K) >> 16);   /* channel 0 */
-    voc.lf_env = voc_env(voc.lf_env, voc.lf << 4);
-    voc.cenv += (int32_t)(((int64_t)(ac - voc.cenv) * VOC_CENV_K) >> 16);
-    tgt = voc.uv && voc_sib ? 32767 : 0;                 /* SIBILANCE: towards noise at the carrier's level, ~3 ms */
-    voc.uvg = voc.uvg < tgt ? (voc.uvg + 496 > tgt ? tgt : voc.uvg + 496) : (voc.uvg - 496 < tgt ? tgt : voc.uvg - 496);
-    if (voc.uvg) {
-        int32_t nz;
-        voc.rnd ^= voc.rnd << 13, voc.rnd ^= voc.rnd >> 17, voc.rnd ^= voc.rnd << 5;
-        nz = (int32_t)(((int64_t)(int16_t)(voc.rnd >> 16) * voc.cenv) >> 14);   /* +-2 x the level: the rectified
-                                                                           * means match */
-        c += (int32_t)(((int64_t)(nz - c) * voc.uvg) >> 15);
-    }
     v <<= 4, c <<= 4;
     for (k = 0; k < VOC_NB; k++) {
         int32_t ya = voc_sec(v, &voc.ax1[k], &voc.ax2[k], &voc.ay1[k], &voc.ay2[k], k);
@@ -120,18 +116,21 @@ static int32_t voc_tick(int32_t v, int32_t c)
         ys = voc_sec(ys, &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
         voc.env[k] = voc_env(voc.env[k], ya);            /* (ya: Q19) */
         sum += (int64_t)ys * (voc.env[k] >> 4);          /* x the envelope, Q15 (ys: the carrier's scale << 4) */
+        if (k >= VOC_HF0)
+            hf += ya;                                    /* the speech addition: the voice's top bands */
     }
-    return (int32_t)(((sum >> 19) * VOC_LV_Q8[voc_level % VOC_LEVEL_N]) >> 8);
+    o = (int32_t)(((sum >> 19) * VOC_LV_Q8[voc_level % VOC_LEVEL_N]) >> 8);
+    if (voc_hf)
+        o += (int32_t)(((int64_t)VOC_VS(hf >> 4) * VOC_MIX_Q15[voc_hf % VOC_MIX_N]) >> 15);
+    return o;
 }
 
-/* the track's block b (its own scale, n even) becomes the vocoded block, in place */
+/* the carrier block b (the track's scale, n even) becomes the vocoded block, in place */
 static void voc_process(int32_t *b, uint32_t n)
 {
     uint32_t i, j;
-    int32_t pin = voc.peak_in, pout = voc.peak_out;
-    voc_detect();
+    int32_t pin = voc.peak_in, pout = voc.peak_out, dg = VOC_MIX_Q15[voc_dry % VOC_MIX_N];
     voc.blocks++;
-    voc.uv_blocks += voc.uv;
     for (i = 0; i + 1u < n && i + 1u < VOC_MAXN; i += 2u) {
         int32_t o[2], d, k;
         int64_t a = 0;
@@ -153,8 +152,8 @@ static void voc_process(int32_t *b, uint32_t n)
         o[1] = (int32_t)((a + (1 << 13)) >> 14);         /* (x 2: the zeros between) */
         for (k = 0; k < 2; k++) {
             int32_t x = o[k];
-            if (voc_dry)
-                x += voc_in[i + (uint32_t)k] >> (voc_dry == 2u ? 1 : 2);   /* DRY: -6 / -12 dB */
+            if (dg)
+                x += (int32_t)(((int64_t)VOC_VS(voc_in[i + (uint32_t)k]) * dg) >> 15);   /* DRY */
             x = x > VOC_XMAX ? VOC_XMAX : x < -VOC_XMAX ? -VOC_XMAX : x;
             if ((x < 0 ? -x : x) > pout)
                 pout = x < 0 ? -x : x;
@@ -162,4 +161,34 @@ static void voc_process(int32_t *b, uint32_t n)
         }
     }
     voc.peak_in = pin, voc.peak_out = pout;
+}
+
+/* voice.c track_render, track 3, at its start: the state to render this block. A change fades the old state out first
+ * (voc_fade), then switches (the vocoder starts afresh) and fades the new one in */
+static uint32_t voc_state(void)
+{
+    uint32_t req = VOC_AUDIO_ON ? 1u + voc_mode % VM_N : 0u;
+    if (req != voc_cur && voc_xg == 0) {
+        voc_cur = (uint8_t)req;
+        voc_reset();
+    }
+    return voc_cur;
+}
+static void voc_dry_block(int32_t *out, uint32_t n)      /* MODE OFF: the voice itself */
+{
+    uint32_t i;
+    for (i = 0; i < n && i < VOC_MAXN; i++)
+        out[i] = VOC_VS(voc_in[i]);
+}
+/* .. at its end: the fade (~5 ms either way: 148 a sample of Q15); out of the way when settled */
+static void voc_fade(int32_t *out, uint32_t n)
+{
+    uint32_t req = VOC_AUDIO_ON ? 1u + voc_mode % VM_N : 0u, i;
+    int32_t tgt = req == voc_cur ? 32767 : 0;
+    if (voc_xg == tgt && tgt)
+        return;
+    for (i = 0; i < n; i++) {
+        voc_xg = voc_xg < tgt ? (voc_xg + 148 > tgt ? tgt : voc_xg + 148) : (voc_xg - 148 < tgt ? tgt : voc_xg - 148);
+        out[i] = (int32_t)(((int64_t)out[i] * voc_xg) >> 15);
+    }
 }

@@ -196,9 +196,8 @@ static uint8_t stem_layout;              /* this start's (main.c): 0 STEREO, non
 static uint8_t stem_feed;                /* this render: the host records the stems (audio.c) */
 static int32_t stem_syn[NPART][CTL], stem_drum[CTL];
 #if SMK_UAC_IN_PROBE
-#define VOC_MAXN CTL
-#include "smk_vocoder.h"      /* the vocoder (the playback probe: the computer's audio the voice) */
-static void uin_block(int16_t *dst, uint32_t n);   /* (usb.c: this block's voice, mono, at the engines' rate) */
+static void uin_block(int16_t *dst, uint32_t n);   /* (usb.c: the computer's audio for this block, mono, the engines'
+                                                    * rate; voice.c smk_vocoder.h: the audio track) */
 #endif
 static int32_t stem_stage[6][CTL];       /* the last block's channels, in the layout's order */
 static const int32_t *const STEM_STAGE[6] = {stem_stage[0], stem_stage[1], stem_stage[2], stem_stage[3], stem_stage[4],
@@ -798,11 +797,6 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
             if (djf_block(f, t->p[P_TFLT], &fc, tflt_reso()))
                 tflt_run(f, &fc, b, n, 0);
         }
-#if SMK_UAC_IN_PROBE
-        if (voc_track && (uint32_t)(t - trk) == voc_track - 1u)
-            voc_process(b, n);                          /* VOCODER: this track the carrier, the computer's voice the
-                                                         * modulator; on through LEVEL, PAN, the sends as the track */
-#endif
         int32_t lvl0, dl, gl0, dgl, gr0, dgr;          /* (2.7) LEVEL (and a new sound's trim) and PAN glide (drums.c
                                                          * mix_glide), ramped sample by sample inside the block */
         if (!t->mix_on)
@@ -1438,8 +1432,8 @@ static void mix_block(int32_t *out, uint32_t n)
     events_block(n);
     duck_block(n * (uint32_t)song.g[G_BPM]);
 #if SMK_UAC_IN_PROBE
-    if (voc_track && n <= CTL)
-        uin_block(voc_in, n);                           /* the vocoder's voice, before either core's units run */
+    if (VOC_AUDIO_ON && n <= CTL)
+        uin_block(voc_in, n);                           /* the audio track's input, before either core's units run */
 #endif
 #if BOARD_SMK37
     {   /* STEM FX: the memory shared out again when the mode changes (the menu's STEM FX, live), the stems' punch-ins'

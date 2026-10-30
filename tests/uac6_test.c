@@ -39,7 +39,11 @@
 #endif
 #define SMK_UAC_IN_PROBE T_UIN
 #if T_UIN
-static uint8_t voc_track;                         /* (fx.c smk_vocoder.h: the monitor plays while it is 0) */
+#define FM1_TICKS_PER_US 24u
+static uint32_t fm1_ticks(void) { return 0; }      /* (uin_rx's timing: the SIE is never touched here) */
+#if T_STEMS
+static uint8_t uin_mode;                          /* (voice.c smk_vocoder.h: HOME > USB > AUDIO IN) */
+#endif
 #endif
 #ifndef FS
 #define FS 44100                                  /* (core.h) */
@@ -556,7 +560,8 @@ static void test_uin_monitor(void)
         }
         memset(out, 0, sizeof out);
         for (k = 0; k < 256u; k += 32u)
-            uin_mix(out + 2u * k, 32u);
+            uin_take(out + 2u * k, 0, 32u);           /* (the monitor's resampler: the vocoder build's audio track
+                                                       * takes it mono, uin_block) */
         if (r > 172u)                                           /* after 1 s: measured */
             for (i = 0; i < 256u; i++, rendered++) {
                 double x = out[2u * i];

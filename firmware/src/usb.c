@@ -55,12 +55,10 @@
 #error "SMK_UAC_IN_PROBE: the console build (FELUCCA_CDC=1)"
 #endif
 #if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
-static uint8_t uin_mode;                         /* HOME > USB > AUDIO IN (the owner's): 0 OFF, the audio received is
-                                                  * ignored (nothing on the headphones or the vocoder); 1 ON; 2 TEST,
-                                                  * ON and, with a stems layout, the stems carry the probe's test signals
-                                                  * and the playback loopback (uac6_probe_packet) instead of the music.
-                                                  * Live, not kept: OFF at start. (The playback device stays described:
-                                                  * taking it off the bus would be a re-plug, as USB LAYOUT) */
+/* uin_mode (smk_vocoder.h): HOME > USB > AUDIO IN (the owner's): 0 OFF, the audio received is ignored; 1 ON, track 3
+ * is the audio track; 2 TEST, ON and, with a stems layout, the stems carry the probe's test signals and the playback
+ * loopback (uac6_probe_packet) instead of the music. Live, not kept: OFF at start. (The playback device stays
+ * described: taking it off the bus would be a re-plug, as USB LAYOUT) */
 #define UIN_ON (uin_mode != 0u)
 #define UIN_TEST (uin_mode == 2u)
 #else
@@ -193,6 +191,10 @@ static struct {
     uint32_t mon_r, mon_frac, mon_step, mon_under, mon_resync;
     uint32_t mon_lo, mon_hi;     /* the monitor's fill (frames) since the stream started */
     uint16_t peak_l, peak_r;     /* |sample| since the console last read them */
+    /* (2026-10-30, the stems layouts lost ~5 % of the packets, STEREO none: is the check late, or the hardware?)
+     * the time between two checks of EP4 OUT while the host plays (TIMER4 ticks), its longest, those over 1 ms; an
+     * OverRun found after a short gap (< 0.75 ms: the check was in time, the packet was lost anyway) or a long one */
+    uint32_t t_last, gap_max, gaps_over, ovr_short, ovr_long;
 } uin;
 #endif
 #if FELUCCA_UAC_48K
@@ -1832,12 +1834,27 @@ static uint32_t uac6_probe_packet(uint8_t *d)
 static void uin_rx(void)
 {
     uint32_t csr, n, i, w;
-    if (!usb.up || !usb.config || !uin.alt)
+    uint32_t now, gap;
+    if (!usb.up || !usb.config || !uin.alt) {
+        uin.t_last = 0;
         return;
+    }
+    now = fm1_ticks();
+    gap = uin.t_last ? now - uin.t_last : 0u;
+    uin.t_last = now | 1u;
+    if (gap > uin.gap_max)
+        uin.gap_max = gap;
+    if (gap > 1000u * FM1_TICKS_PER_US)
+        uin.gaps_over++;
     sie_wr(S_INDEX, 4);
     csr = sie_rd(S_RXCSR1) | (sie_rd(S_RXCSR2) << 8);
-    if (csr & 0x04u)
+    if (csr & 0x04u) {
         uin.ovr++;
+        if (gap && gap < 750u * FM1_TICKS_PER_US)
+            uin.ovr_short++;
+        else
+            uin.ovr_long++;
+    }
     if (!(csr & 1u)) {
         if (csr & 0x04u)
             sie_wr(S_RXCSR1, csr & ~0x04u & 0xFFu);
@@ -1936,10 +1953,14 @@ quiet:
         for (; i < n; i++)
             mono[i] = 0;
 }
-static void uin_mix(int32_t *out, uint32_t n)           /* audio.c: the monitor, while the vocoder is off */
+static void uin_mix(int32_t *out, uint32_t n)           /* audio.c: the monitor (the loopback probe; the vocoder build
+                                                         * plays the input on the audio track instead) */
 {
-    if (!voc_track)
-        uin_take(out, 0, n);
+#if SMK_UAC_PROBE
+    uin_take(out, 0, n);
+#else
+    (void)out, (void)n;
+#endif
 }
 static void uin_block(int16_t *dst, uint32_t n)         /* fx.c mix_block: the vocoder's voice for this block */
 {
