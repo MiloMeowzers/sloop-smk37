@@ -493,7 +493,7 @@ static void test_uin_desc(void)
         if (p[1] == 0x24u && p[2] == 2u && p[3] == 1u && p[0] >= 8u && cur_if == UIN_AS_IF)
             fmt = p[0] == 11u && p[4] == 2u && p[5] == 2u && p[6] == 16u && p[7] == 1u &&
                   (p[8] | p[9] << 8 | p[10] << 16) == 48000;
-        if (p[0] == 9u && p[1] == 5u && p[2] == 0x04u)
+        if (p[0] == 9u && p[1] == 5u && p[2] == UIN_EP)
             ep = cur_if == UIN_AS_IF && alt == 1u && p[3] == 0x09u && le16(p + 4) == 196u && p[6] == 1u;
     }
     check("playback: 6 interfaces, each in order (audio 0-3, CDC 4-5)", nif == 6u && seen == 6u && ok_seq);
@@ -501,7 +501,7 @@ static void test_uin_desc(void)
     check("playback: AC header 53 bytes, collection 2, 3, 1", hdr);
     check("playback: input terminal 3 USB streaming 2 ch, output terminal 4 speaker from 3", it3 && ot4);
     check("playback: interface 3 alt 0 and alt 1, format 2 x 16 bit 48000", alts == 3 && fmt);
-    check("playback: EP 0x04 OUT isochronous adaptive, 196 bytes, 1 ms", ep);
+    check("playback: UIN_EP (2) OUT isochronous adaptive, 196 bytes, 1 ms; not an endpoint the rest use", ep && UIN_EP == 2u);
 }
 
 #if !T_STEMS

@@ -255,6 +255,8 @@ static void con_status(void)
     con_kv("uin_pkts", (int32_t)uin.pkts);
     con_kv("uin_frames", (int32_t)uin.frames);
     con_kv("uin_bad", (int32_t)uin.bad);                 /* packets of a wrong size */
+    con_kv("uin_small", (int32_t)uin.small);             /* packets under 47 frames (UIN_EP's FIFO cutting them?) */
+    con_kv("uin_ep", UIN_EP);                            /* the playback endpoint */
     con_kv("uin_ovr", (int32_t)uin.ovr);                 /* OverRun: a packet came while one waited (lost) */
     con_kv("uin_derr", (int32_t)uin.derr);               /* DataError: CRC */
     con_kv("uin_gap_max_us", (int32_t)(uin.gap_max / FM1_TICKS_PER_US));   /* the longest time between two checks */

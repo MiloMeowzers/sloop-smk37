@@ -41,7 +41,7 @@
 #define SMK_UAC_PROBE 0
 #endif
 /* SMK-37, the vocoder candidate's bring-up (smk37-devtools README, "Candidate"): SMK_UAC_IN_PROBE=1 adds audio FROM the
- * computer: a playback device, 2 ch 16 bit 48 kHz on EP4 OUT (isochronous, adaptive: the host's clock), to the
+ * computer: a playback device, 2 ch 16 bit 48 kHz on EP2 OUT (UIN_EP: isochronous, adaptive: the host's clock), to the
  * headphones at -6 dB, resampled to the engines' rate with a servo on the ring's fill (uin_mix), or the vocoder's voice
  * (smk_vocoder.h, HOME > VOCODER). The console build only (FELUCCA_CDC=1); the console: `status`, uin_* voc_*.
  * With the stems probe too (SMK_UAC_PROBE=1, its test signals on the host's clock) the frames received go back out on
@@ -66,6 +66,10 @@
 #define UIN_TEST SMK_UAC_PROBE
 #endif
 #define UIN_MAXF 49u                     /* the playback packets: 48 frames a ms from the host, one more allowed */
+/* the playback stream's endpoint (OUT). EP4 OUT first: with a stems layout ~3 % of its packets were lost although
+ * each was checked in time (2026-10-30: uin_ovr_short), STEREO none: EP4's two directions interfere while the stems'
+ * large IN packets (up to 882 bytes) go out. EP2 OUT is free (the console's EP2 is IN, its notification) */
+#define UIN_EP 2u
 #define UIN_MAXP (UIN_MAXF * 4u)
 /* SMK-37: the stems (smk37-port.yaml follow_up.stems). Menu USB > USB LAYOUT: STEREO (the master, as before), or 6
  * mono channels, 24 bit: DRUMS+RET (the drum groups + the shared FX return), SYNTHS+RET (the 3 synth tracks, the kit
@@ -179,12 +183,12 @@ static struct {
 #define UIN_N 1024u                      /* a power of two: ~21 ms */
 #define UIN_LB_T 96u                     /* the loopback's distance behind the writer, frames (2 ms) */
 #define UIN_MON_T 384u                   /* the monitor's (8 ms), held by its servo: a render takes ~279 frames at once */
-static uint8_t ep4rx[UIN_MAXP + 4u] __attribute__((aligned(4)));
+static uint8_t uin_rxb[UIN_MAXP + 4u] __attribute__((aligned(4)));   /* UIN_EP's DMA buffer */
 static uint32_t uin_ring[UIN_N];
 static volatile uint32_t uin_w;
 static struct {
     volatile uint8_t alt;        /* the host plays (alt 1) */
-    uint8_t e0_rx;               /* SET_CUR on EP 0x04: its data stage (taken, ignored: 48 kHz only) */
+    uint8_t e0_rx;               /* SET_CUR on the playback endpoint: its data stage (taken, ignored: 48 kHz only) */
     uint8_t lb_go, mon_go;
     uint32_t starts, pkts, frames, bad, ovr, derr, rate_sets;
     uint32_t lb_r, lb_last, lb_under, lb_resync;
@@ -192,9 +196,10 @@ static struct {
     uint32_t mon_lo, mon_hi;     /* the monitor's fill (frames) since the stream started */
     uint16_t peak_l, peak_r;     /* |sample| since the console last read them */
     /* (2026-10-30, the stems layouts lost ~5 % of the packets, STEREO none: is the check late, or the hardware?)
-     * the time between two checks of EP4 OUT while the host plays (TIMER4 ticks), its longest, those over 1 ms; an
+     * the time between two checks of UIN_EP while the host plays (TIMER4 ticks), its longest, those over 1 ms; an
      * OverRun found after a short gap (< 0.75 ms: the check was in time, the packet was lost anyway) or a long one */
     uint32_t t_last, gap_max, gaps_over, ovr_short, ovr_long;
+    uint32_t small;              /* packets under 47 frames (an endpoint whose FIFO cuts them short) */
 } uin;
 #endif
 #if FELUCCA_UAC_48K
@@ -332,7 +337,7 @@ static const uint8_t CFG_DESC[] = {
     9, 4, UIN_AS_IF, 1, 1, 1, 2, 0, 0,                  /* alt 1: the stream */
     7, 0x24, 1, 3, 1, 0x01, 0x00,                       /* AS general: terminal 3, delay 1, PCM */
     11, 0x24, 2, 1, 2, 2, 16, 1, 0x80, 0xBB, 0x00,      /* type I: 2 ch, 16 bit, 48000 */
-    9, 5, 0x04, 0x09, UIN_MAXP & 0xFF, UIN_MAXP >> 8, 1, 0, 0,   /* EP4 OUT isochronous adaptive, 1 ms */
+    9, 5, UIN_EP, 0x09, UIN_MAXP & 0xFF, UIN_MAXP >> 8, 1, 0, 0,   /* UIN_EP OUT isochronous adaptive, 1 ms */
     7, 0x25, 1, 0x00, 0, 0, 0,                          /* CS endpoint: no controls */
 #endif
 #endif
@@ -684,10 +689,15 @@ static void uac_ep4_reset(void)                         /* drop a queued packet;
 }
 
 #if SMK_UAC_IN_PROBE
-static void uin_ep4_reset(void)                         /* EP4 OUT: flush, isochronous; its DMA buffer */
+static void uin_ep_reset(void)                          /* UIN_EP OUT: flush, isochronous; its DMA buffer */
 {
-    fm1_usb_ep4_rxbuf(ep4rx);
-    sie_wr(S_INDEX, 4);
+#if UIN_EP == 4
+    fm1_usb_ep4_rxbuf(uin_rxb);
+#else
+    fm1_usb_ep_rxbuf(UIN_EP, uin_rxb);
+#endif
+    fm1_usb_ep_enable(1u << UIN_EP);
+    sie_wr(S_INDEX, UIN_EP);
     sie_wr(S_RXMAXP, 0xFF);
     sie_wr(S_RXCSR1, 0x90);                             /* ClrDataTog + FlushFIFO (as EP1 / EP3) */
     sie_wr(S_RXCSR2, 0x40);                             /* ISO */
@@ -790,7 +800,7 @@ static void ep1_config(void)
     sie_wr(S_TXMAXP, 0xFF);
     uac_ep4_reset();
 #if SMK_UAC_IN_PROBE
-    uin_ep4_reset();
+    uin_ep_reset();
     uin_stream(0);
 #endif
     fm1_usb_ep_enable(1u << 4);
@@ -958,7 +968,7 @@ static void ep0_service(void)
 #endif
 #if SMK_UAC_IN_PROBE
         if (s[4] == UIN_AS_IF && wvalue <= 1u && usb.config) {
-            uin_ep4_reset();
+            uin_ep_reset();
             uin_stream(wvalue);
             goto ack;
         }
@@ -992,7 +1002,7 @@ static void ep0_service(void)
         uint32_t ep = s[4] & 0x0Fu, last = 1u;
 #endif
 #if FELUCCA_UAC
-        if (wvalue == 0 && (s[4] == 0x84u || (SMK_UAC_IN_PROBE && s[4] == 0x04u)))
+        if (wvalue == 0 && (s[4] == 0x84u || (SMK_UAC_IN_PROBE && s[4] == UIN_EP)))
             goto ack;                                   /* isochronous: no halt, no toggle */
 #endif
         if (wvalue != 0 || ep > last)
@@ -1027,7 +1037,7 @@ static void ep0_service(void)
 #if FELUCCA_UAC
     case 0x2201:                                        /* SET_CUR, endpoint: sampling frequency */
 #if SMK_UAC_IN_PROBE
-        if (s[4] == 0x04u && s[3] == 1u) {              /* the playback endpoint's: taken, 48 kHz stays */
+        if (s[4] == UIN_EP && s[3] == 1u) {             /* the playback endpoint's: taken, 48 kHz stays */
             if (wlength) {
                 uin.e0_rx = 1;
                 sie_wr(S_INDEX, 0);
@@ -1054,7 +1064,7 @@ static void ep0_service(void)
         static const uint8_t RATE48[3] = {48000u & 0xFF, (48000u >> 8) & 0xFF, 48000u >> 16};
 #endif
 #if SMK_UAC_IN_PROBE
-        if (s[4] == 0x04u && s[3] == 1u) {              /* the playback endpoint: 48 kHz, CUR / MIN / MAX */
+        if (s[4] == UIN_EP && s[3] == 1u) {             /* the playback endpoint: 48 kHz, CUR / MIN / MAX */
             e0_send(RATE48, 3, wlength);
             return;
         }
@@ -1828,7 +1838,7 @@ static uint32_t uac6_probe_packet(uint8_t *d)
 #endif
 
 #if SMK_UAC_IN_PROBE
-/* TIMER5: a packet received on EP4 OUT (one a ms; polled at 2 kHz, so each is taken before the next; nested in the
+/* TIMER5: a packet received on UIN_EP OUT (one a ms; polled at 2 kHz, so each is taken before the next; nested in the
  * render too, main.c): its frames into the ring, then the FIFO released (as ep3_rx). OverRun: a packet came while one
  * waited (lost) */
 static void uin_rx(void)
@@ -1846,7 +1856,7 @@ static void uin_rx(void)
         uin.gap_max = gap;
     if (gap > 1000u * FM1_TICKS_PER_US)
         uin.gaps_over++;
-    sie_wr(S_INDEX, 4);
+    sie_wr(S_INDEX, UIN_EP);
     csr = sie_rd(S_RXCSR1) | (sie_rd(S_RXCSR2) << 8);
     if (csr & 0x04u) {
         uin.ovr++;
@@ -1863,6 +1873,8 @@ static void uin_rx(void)
     if (csr & 0x08u)
         uin.derr++;                                     /* DataError: a CRC failed */
     n = sie_rd(S_RXCOUNT1) | (sie_rd(S_RXCOUNT2) << 8);
+    if (n < 47u * 4u)
+        uin.small++;
     if (n > UIN_MAXP || (n & 3u)) {
         uin.bad++;
         n = n > UIN_MAXP ? UIN_MAXP : n & ~3u;
@@ -1870,7 +1882,7 @@ static void uin_rx(void)
     fm1_usb_rx_sync();
     w = uin_w;
     for (i = 0; i < n / 4u; i++) {
-        const uint8_t *b = ep4rx + 4u * i;
+        const uint8_t *b = uin_rxb + 4u * i;
         uint32_t f = (uint32_t)b[0] | (uint32_t)b[1] << 8 | (uint32_t)b[2] << 16 | (uint32_t)b[3] << 24;
         int32_t l = (int16_t)(f & 0xFFFFu), r = (int16_t)(f >> 16);
         uint32_t al = (uint32_t)(l < 0 ? -l : l), ar = (uint32_t)(r < 0 ? -r : r);
