@@ -42,11 +42,19 @@ static const char *voc_trk_name(const track_t *t)      /* the name the UI shows 
  * UNISON put one note on all 8 voices of the shared budget, monophonic, gliding, the first stolen; 2026-10-30) */
 #define TRK_VMODE(t) (VOC_TRK_AUDIO(t) ? (uint32_t)V_POLY : (uint32_t)(t)->p[P_VOICE])
 #define TRK_GLIDE(t) (VOC_TRK_AUDIO(t) ? 0 : (t)->p[P_GLIDE])
+/* the carrier's voices are its own, as the VSM201's synthesizer was another instrument: track 3's 8 outside the
+ * budget the other parts share (not counted, never a victim of their notes, never shed: a saw costs little) */
+#define VOC_POOL(p) && !VOC_TRK_AUDIO(&trk[p])
+#define VOC_POOL_T(t) && !VOC_TRK_AUDIO(t)
+#define VOC_POOL_SKIP(t) VOC_TRK_AUDIO(t) ||
 #else
 #define VOC_OWNENV e->ownenv
 #define VOC_NOSAW
 #define TRK_VMODE(t) ((uint32_t)(t)->p[P_VOICE])
 #define TRK_GLIDE(t) ((t)->p[P_GLIDE])
+#define VOC_POOL(p)
+#define VOC_POOL_T(t)
+#define VOC_POOL_SKIP(t)
 #endif
 #if BOARD_SMK37
 /* the SMK-37 Pro's wheels (main.c smk_wheels), on the selected synth track: the pitch wheel bends
@@ -128,7 +136,7 @@ static uint32_t voices_busy(void)                       /* sounding voices of al
     uint32_t p, i, n = 0;
     for (p = 0; p < NPART; p++)
         for (i = 0; i < NVOICE; i++)
-            n += trk[p].v[i].active && trk[p].v[i].stage != 4u;
+            n += trk[p].v[i].active && trk[p].v[i].stage != 4u VOC_POOL(p);
     return n;
 }
 
@@ -150,7 +158,7 @@ static uint32_t voice_victim(const track_t *self, int soft, track_t **pp)
         track_t *t = &trk[p];
         uint32_t mode = TRK_VMODE(t), nu = mode == V_UNISON ? trk_nvoice(t) : 1u;
         uint32_t low = mode == V_POLY ? lowest_held(t) : NVOICE;
-        if (soft && t == self)
+        if (VOC_POOL_SKIP(t) (soft && t == self))
             continue;
         for (i = 0; i < NVOICE; i++) {
             const voice_t *v = &t->v[i];
@@ -200,7 +208,7 @@ static void shed_voice(void)
     for (p = 0; p < NPART; p++)
         for (i = 0; i < NVOICE; i++) {
             voice_t *v = &trk[p].v[i];
-            if (v->active && !v->gate && v->stage != 4u && (!best || v->env < best->env))
+            if (v->active && !v->gate && v->stage != 4u VOC_POOL(p) && (!best || v->env < best->env))
                 best = v;
         }
     if (best) {
@@ -213,7 +221,7 @@ static void shed_voice(void)
         uint32_t mode = TRK_VMODE(t), low = mode == V_POLY ? lowest_held(t) : 0u;
         for (i = 0; i < NVOICE; i++) {
             voice_t *v = &trk[p].v[i];
-            if (v->active && v->gate && v->stage != 4u &&
+            if (v->active && v->gate && v->stage != 4u VOC_POOL(p) &&
                 ((mode == V_POLY && i != low) || (mode != V_POLY && i > 0u)) && (!best || v->age < best->age))
                 best = v;
         }
@@ -254,7 +262,7 @@ static voice_t *voice_alloc(track_t *t, uint32_t note)
             return &t->v[i];
         nfree += !t->v[i].active;
     }
-    if (nfree && voices_busy() >= NVOICE) {
+    if (nfree && voices_busy() >= NVOICE VOC_POOL_T(t)) {
         track_t *vp = 0;
         uint32_t k = voice_victim(t, 0, &vp);
         if (k < np && vp == t)

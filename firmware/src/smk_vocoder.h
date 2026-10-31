@@ -65,7 +65,10 @@ static uint8_t voc_res;
 enum { VV_AUTO, VV_VOICED, VV_UNVOICED, VV_N };
 static uint8_t voc_vmode;                /* CARRIER > VOICE: the VSM201's VOICE MODE (AUTOMATIC, VOICED / UNVOICED ONLY) */
 static uint8_t voc_pink;                 /* CARRIER > NOISE: WHITE, PINK (the PINK FILTER switch) */
-static uint8_t voc_bridge;               /* SILENCE > BRIDGE: OFF, -18 .. 0 dB (VOC_MIX_Q15); the manual's basic: off */
+static uint8_t voc_bridge;               /* SILENCE > BRIDGE: OFF, -24 .. 0 dB in 3 dB steps (VOC_BRG_Q15); the manual's
+                                          * basic: off */
+#define VOC_BR_N 10u
+static const int32_t VOC_BRG_Q15[VOC_BR_N] = {0, 2068, 2921, 4125, 5827, 8231, 11627, 16423, 23197, 32767};
 static uint8_t voc_thr = 2;              /* SILENCE > THRESHOLD: VOC_THR_DB[]; the speech / pause detector's */
 #define VOC_THR_N 6u
 static const int8_t VOC_THR_DB[VOC_THR_N] = {-54, -48, -42, -36, -30, -24};
@@ -246,8 +249,8 @@ static void voc_process(int32_t *b, uint32_t n)
 {
     uint32_t i, j;
     int32_t pout = voc.peak_out, dg = VOC_MIX_Q15[voc_dry % VOC_MIX_N];
-    uint32_t vm = voc_vmode % VV_N, br = voc_bridge % VOC_MIX_N != 0u;
-    int32_t badd = br ? (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * VOC_MIX_Q15[voc_bridge % VOC_MIX_N] >> 15) *
+    uint32_t vm = voc_vmode % VV_N, br = voc_bridge % VOC_BR_N != 0u;
+    int32_t badd = br ? (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * VOC_BRG_Q15[voc_bridge % VOC_BR_N] >> 15) *
                                   VOC_BR_Q15 >> 15) : 0;
     int32_t uvt = vm == VV_UNVOICED ? 32767 : vm == VV_VOICED ? 0 :                 /* the noise's share wanted */
                   voc_ab[voc_aw ^ 1u].unvoiced && (!br || voc_ab[voc_aw ^ 1u].speech) ? 32767 : 0;

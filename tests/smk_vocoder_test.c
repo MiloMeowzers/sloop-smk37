@@ -237,7 +237,7 @@ int main(void)
     }
     {   /* the silence bridging */
         double on, off, ref = 8000.0 / sqrt(3.0);       /* (the saw's rms) */
-        voc_bridge = 4;                                 /* 0 dB */
+        voc_bridge = VOC_BR_N - 1u;                     /* 0 dB */
         reset();
         n = run(1.0, vzero, saw110);
         on = rms_last(n, 0.5);
@@ -248,7 +248,7 @@ int main(void)
         printf("   no voice, a 110 Hz saw: BRIDGE 0 dB %.1f dB re the saw, OFF %.1f\n", db(on / ref), off);
         check("BRIDGE: in a pause the saws play on (0 dB: within 6 dB of the saw), OFF nothing (< 1)",
               fabs(db(on / ref)) < 6.0 && off < 1.0);
-        voc_bridge = 4;
+        voc_bridge = VOC_BR_N - 1u;
         reset();
         n = run(1.0, v1k, saw110);
         on = rms_last(n, 0.5);

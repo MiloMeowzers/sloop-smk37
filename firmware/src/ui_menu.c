@@ -304,10 +304,16 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_VPINK:                                    /* the unvoiced replacement: WHITE, PINK (dim: VOICED only) */
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && voc_vmode % VV_N != VV_VOICED ? C_HI : C_DIM;
         return voc_pink ? "PINK" : "WHITE";
-    case MI_VBR: {                                    /* the silence bridging's level */
-        static const char *const N[VOC_MIX_N] = {"OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"};
+    case MI_VBR: {                                    /* the silence bridging's level: OFF, -24 .. 0 dB */
+        static char b[10];
+        uint32_t k = voc_bridge % VOC_BR_N;
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
-        return N[voc_bridge % VOC_MIX_N];
+        if (!k)
+            return "OFF";
+        b[0] = '-';
+        fmt_int(b + (k < VOC_BR_N - 1u), (int32_t)(3u * (VOC_BR_N - 1u - k)));
+        str_cpy(b + str_len(b), " DB", 4);
+        return b;
     }
     case MI_VTHR: {                                   /* the speech / pause detector's threshold (dim: no bridging) */
         static char b[10];
@@ -675,9 +681,9 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_VPINK:                                     /* right PINK, left WHITE; OCT+ toggles */
         voc_pink = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_pink);
         break;
-    case MI_VBR:                                       /* OFF, -18 .. 0 dB (stops at the ends); OCT+ round */
-        voc_bridge = (uint8_t)(s > 0 ? (voc_bridge + 1u < VOC_MIX_N ? voc_bridge + 1u : voc_bridge)
-                                     : s < 0 ? (voc_bridge ? voc_bridge - 1u : 0u) : (voc_bridge + 1u) % VOC_MIX_N);
+    case MI_VBR:                                       /* OFF, -24 .. 0 dB in 3 dB (stops at the ends); OCT+ round */
+        voc_bridge = (uint8_t)(s > 0 ? (voc_bridge + 1u < VOC_BR_N ? voc_bridge + 1u : voc_bridge)
+                                     : s < 0 ? (voc_bridge ? voc_bridge - 1u : 0u) : (voc_bridge + 1u) % VOC_BR_N);
         break;
     case MI_VTHR:                                      /* -54 .. -24 dB in 6 dB steps (stops at the ends); OCT+ -42 */
         voc_thr = (uint8_t)(s > 0 ? (voc_thr + 1u < VOC_THR_N ? voc_thr + 1u : voc_thr)
