@@ -457,7 +457,7 @@ static void drum_tw_get(const project_t *p)
     }
 }
 
-#if BOARD_SMK37 && FELUCCA_FLASH && SMK_UAC_IN_PROBE
+#if BOARD_SMK37 && FELUCCA_FLASH && SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
 static void vocset_cap(const project_t *p);             /* the vocoder's settings with a project slot (below) */
 static void vocset_load(const project_t *p);
 static void vocset_drop(uint32_t slot);
@@ -919,7 +919,7 @@ static void smkset_save(void)
     if (memcmp(&s, &smkset_saved, sizeof s) && st_save(OBJ_SMKSET, &s, sizeof s) == 0)
         smkset_saved = s;
 }
-#if SMK_UAC_IN_PROBE
+#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
 /* the vocoder build: AUDIO IN and the vocoder's settings (VOCODER, CARRIER, SILENCE) kept over a power-off (cur), and
  * each project slot's (sec[]: saved with it, applied when it loads; a slot saved before this, or restored from the
  * editor, has none: the settings stay as they are). An object of its own (storage.c OBJ_VOCSET): the project format
@@ -1072,7 +1072,7 @@ UI_SMALL static void persist_boot(void)                    /* before settings_in
     wcal_boot();                                   /* SMK-37: the wheels' calibration */
     daw_boot();                                    /* SMK-37: DAW mode */
     smkset_boot();                                 /* SMK-37: the HOME menu's own settings */
-#if SMK_UAC_IN_PROBE
+#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
     vocset_boot();                                 /* the vocoder build: AUDIO IN, the vocoder's settings */
 #endif
 #endif
