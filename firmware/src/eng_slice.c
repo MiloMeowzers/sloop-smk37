@@ -54,8 +54,9 @@ typedef struct {
 } slc_src_t;
 
 static const slc_src_t SLC_BREAK = SLC_BREAK_INIT;
-static slc_src_t slc_usr[SMP_USER_SLOTS];
-static int16_t slc_rbuf[NPART][NVOICE][SLC_RB];       /* reverse windows, one per part voice */
+static slc_src_t slc_usr[SMP_USER_SLOTS] __attribute__((section(".pool")));   /* (.pool, zeroed at boot: RAM is
+                                                                               * full; SMK-37 vocoder build) */
+static int16_t slc_rbuf[NPART][NVOICE][SLC_RB] __attribute__((section(".pool")));   /* reverse windows, one per part voice */
 static const char *const N_SLC_SRC[] = {"BREAK", "USR1", "USR2", "USR3"};
 static const char *const N_SLC_DIV[] = {"4", "8", "16", "32", "AUTO"};
 static const char *const N_SLC_MODE[] = {"ONE", "GATE", "LOOP"};
