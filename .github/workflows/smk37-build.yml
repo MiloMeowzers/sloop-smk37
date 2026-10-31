@@ -95,6 +95,7 @@ jobs:
           BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 sh build.sh > out/build-smk37-elite-console.log 2>&1 ||
             { tail -50 out/build-smk37-elite-console.log; exit 1; }
           cp build/sloop-smk37-elite.fwsc out/sloop-smk37-elite-console.fwsc
+          gzip -9c build/felucca.dis > out/felucca-console.dis.gz     # (where the flash goes: the vocoder build's against it)
           tail -3 out/build-smk37-elite-console.log
           # the stems probe (smk37-port.yaml follow_up.stems first_tests): the console build with the USB audio input
           # as 6 x 24 bit at 48 kHz and test signals instead of the music (SMK_UAC_PROBE=1). For testing only
@@ -113,6 +114,7 @@ jobs:
           BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_IN_PROBE=1 sh build.sh \
             > out/build-smk37-elite-voc.log 2>&1 || { tail -50 out/build-smk37-elite-voc.log; exit 1; }
           cp build/sloop-smk37-elite.fwsc out/sloop-smk37-elite-vocoder.fwsc
+          gzip -9c build/felucca.dis > out/felucca-vocoder.dis.gz
           tail -3 out/build-smk37-elite-voc.log
           ls -l out/*.fwsc
 

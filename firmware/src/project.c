@@ -457,6 +457,21 @@ static void drum_tw_get(const project_t *p)
     }
 }
 
+#if BOARD_SMK37 && FELUCCA_FLASH && SMK_UAC_IN_PROBE
+static void vocset_cap(const project_t *p);             /* the vocoder's settings with a project slot (below) */
+static void vocset_load(const project_t *p);
+static void vocset_drop(uint32_t slot);
+static void vocset_save(void);
+#define VOCSET_CAP(p) vocset_cap(p)
+#define VOCSET_LOAD(p) vocset_load(p)
+#define VOCSET_DROP(s) vocset_drop(s)
+#define VOCSET_SAVE() vocset_save()
+#else
+#define VOCSET_CAP(p) ((void)0)
+#define VOCSET_LOAD(p) ((void)0)
+#define VOCSET_DROP(s) ((void)0)
+#define VOCSET_SAVE() ((void)0)
+#endif
 UI_SMALL static void proj_capture(project_t *p)        /* what is playing now, as a project */
 {
     uint32_t i;
@@ -481,6 +496,7 @@ UI_SMALL static void proj_capture(project_t *p)        /* what is playing now, a
     }
     drum_tw_put(p);                                     /* (2.7) the drum sounds' TUNE and DECAY */
     p->sum = proj_sum(p);
+    VOCSET_CAP(p);                                      /* (a slot's: its vocoder settings) */
 }
 
 /* a project's tracks (and its globals, all: a load; or only the drum level / reverb / delay: a song
@@ -592,6 +608,7 @@ UI_SMALL static void project_save(uint32_t slot)
             ui_message("SAVE ERROR");
         else
             ui_say("SAVED SECTION ", SEC_NAME[slot & 3u]);
+        VOCSET_SAVE();
         return;
     }
 #endif
@@ -621,6 +638,7 @@ UI_SMALL static void project_erase(uint32_t slot)
     fm1_irq_off();
     memset(&proj_slot[slot], 0, sizeof proj_slot[slot]);
     sec_dirty &= (uint8_t)~(1u << slot);
+    VOCSET_DROP(slot);
     if (live_sec == (int8_t)slot)
         live_sec = -1;
 #if FELUCCA_ARRANGER
@@ -651,6 +669,7 @@ UI_SMALL static void project_apply(const project_t *p)
         }
     sync_reload = 1;
     ui.force = 1;
+    VOCSET_LOAD(p);                                     /* (a slot's, if it has them: its vocoder settings) */
 }
 
 UI_SMALL static void project_load(uint32_t slot)
@@ -900,6 +919,66 @@ static void smkset_save(void)
     if (memcmp(&s, &smkset_saved, sizeof s) && st_save(OBJ_SMKSET, &s, sizeof s) == 0)
         smkset_saved = s;
 }
+#if SMK_UAC_IN_PROBE
+/* the vocoder build: AUDIO IN and the vocoder's settings (VOCODER, CARRIER, SILENCE) kept over a power-off (cur), and
+ * each project slot's (sec[]: saved with it, applied when it loads; a slot saved before this, or restored from the
+ * editor, has none: the settings stay as they are). An object of its own (storage.c OBJ_VOCSET): the project format
+ * and the other builds stay as they are. AUDIO IN is the unit's, never a project's */
+#define VOCSET_MAGIC 0x53434F56u                   /* "VOCS" */
+typedef struct { uint8_t mode, lvl, dry, hf, cut, res, vm, pink, br, thr, have, uin; } vocv_t;
+typedef struct {
+    uint32_t magic;
+    vocv_t cur, sec[4];
+} vocset_t;
+_Static_assert(sizeof(vocset_t) == 64u, "vocset: the magic, 5 x 12 bytes");
+static vocset_t vocset, vocset_saved;
+static void vocv_get(vocv_t *v)
+{
+    v->mode = voc_mode, v->lvl = voc_level, v->dry = voc_dry, v->hf = voc_hf, v->cut = voc_cut, v->res = voc_res;
+    v->vm = voc_vmode, v->pink = voc_pink, v->br = voc_bridge, v->thr = voc_thr;
+    v->have = 1, v->uin = (uint8_t)(uin_mode != 0u);   /* (TEST: kept as ON) */
+}
+static void vocv_put(const vocv_t *v)
+{
+    voc_mode = (uint8_t)(v->mode % VM_N), voc_level = (uint8_t)(v->lvl % VOC_LEVEL_N);
+    voc_dry = (uint8_t)(v->dry % VOC_MIX_N), voc_hf = (uint8_t)(v->hf % VOC_MIX_N);
+    voc_cut = (uint8_t)(v->cut & 127u), voc_res = (uint8_t)(v->res & 127u);
+    voc_vmode = (uint8_t)(v->vm % VV_N), voc_pink = (uint8_t)(v->pink & 1u);
+    voc_bridge = (uint8_t)(v->br % VOC_BR_N), voc_thr = (uint8_t)(v->thr % VOC_THR_N);
+}
+static void vocset_cap(const project_t *p)
+{
+    uint32_t k = (uint32_t)(p - proj_slot);
+    if (p >= proj_slot && k < 4u)
+        vocv_get(&vocset.sec[k]);
+}
+static void vocset_load(const project_t *p)
+{
+    uint32_t k = (uint32_t)(p - proj_slot);
+    if (p >= proj_slot && k < 4u && vocset.sec[k].have)
+        vocv_put(&vocset.sec[k]);
+}
+static void vocset_drop(uint32_t slot) { vocset.sec[slot & 3u].have = 0; }
+static void vocset_boot(void)                      /* after smkset_boot */
+{
+    vocset_t s;
+    if (st_load(OBJ_VOCSET, &s, sizeof s) == (int)sizeof s && s.magic == VOCSET_MAGIC) {
+        vocset = s;
+        if (s.cur.have) {
+            vocv_put(&s.cur);
+            uin_mode = (uint8_t)(s.cur.uin & 1u);
+        }
+    }
+    vocset.magic = VOCSET_MAGIC;
+    vocset_saved = vocset;
+}
+static void vocset_save(void)
+{
+    vocv_get(&vocset.cur);
+    if (memcmp(&vocset, &vocset_saved, sizeof vocset) && st_save(OBJ_VOCSET, &vocset, sizeof vocset) == 0)
+        vocset_saved = vocset;
+}
+#endif
 #endif
 
 UI_SMALL static void persist_boot(void)                    /* before settings_init / panel_init */
@@ -993,6 +1072,9 @@ UI_SMALL static void persist_boot(void)                    /* before settings_in
     wcal_boot();                                   /* SMK-37: the wheels' calibration */
     daw_boot();                                    /* SMK-37: DAW mode */
     smkset_boot();                                 /* SMK-37: the HOME menu's own settings */
+#if SMK_UAC_IN_PROBE
+    vocset_boot();                                 /* the vocoder build: AUDIO IN, the vocoder's settings */
+#endif
 #endif
     up_boot();                                     /* user presets */
     fm6_bank_boot();                               /* the FM6 patch bank (fm6_bank.c) */
@@ -1155,6 +1237,7 @@ UI_SMALL static void settings_save(void)
     wcal_save();
     daw_save();
     smkset_save();
+    VOCSET_SAVE();
 #endif
     {
         uint8_t mp[MIDI_PART];
@@ -1235,6 +1318,7 @@ UI_SMALL static uint32_t project_restore(uint32_t slot, const void *raw, uint32_
             return 4;
         memset(&proj_slot[slot], 0, sizeof proj_slot[slot]);
         sec_dirty &= (uint8_t)~(1u << slot);
+        VOCSET_DROP(slot);
         return 0;
     }
     if (!proj_import(&autosave_buf, raw, (int)n))
@@ -1247,6 +1331,7 @@ UI_SMALL static uint32_t project_restore(uint32_t slot, const void *raw, uint32_
         return 4;
     memcpy(&proj_slot[slot], &autosave_buf, sizeof proj_slot[slot]);
     sec_dirty &= (uint8_t)~(1u << slot);
+    VOCSET_DROP(slot);                                  /* (the editor's project: no vocoder settings) */
     return 0;
 }
 #endif
@@ -1290,6 +1375,8 @@ UI_SMALL static void sections_write(void)                        /* the dirty se
         for (i = 0; i < 4u; i++)
             if (((sec_dirty >> i) & 1u) && st_save(OBJ_PROJECT0 + i, &proj_slot[i], sizeof proj_slot[i]) == 0)
                 sec_dirty &= (uint8_t)~(1u << i);       /* (a failed write stays dirty: tried again later) */
+    if (flash_ok)
+        VOCSET_SAVE();                                  /* (the sections' vocoder settings) */
     if (!flash_ok)
 #endif
         sec_dirty = 0;
