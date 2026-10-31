@@ -304,7 +304,7 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_VPINK:                                    /* the unvoiced replacement: WHITE, PINK (dim: VOICED only) */
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && voc_vmode % VV_N != VV_VOICED ? C_HI : C_DIM;
         return voc_pink ? "PINK" : "WHITE";
-    case MI_VBR: {                                    /* the silence bridging's level: OFF, -24 .. 0 dB */
+    case MI_VBR: {                                    /* the silence bridging's level: OFF, -48 .. 0 dB */
         static char b[10];
         uint32_t k = voc_bridge % VOC_BR_N;
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
@@ -681,7 +681,7 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_VPINK:                                     /* right PINK, left WHITE; OCT+ toggles */
         voc_pink = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_pink);
         break;
-    case MI_VBR:                                       /* OFF, -24 .. 0 dB in 3 dB (stops at the ends); OCT+ round */
+    case MI_VBR:                                       /* OFF, -48 .. 0 dB in 3 dB (stops at the ends); OCT+ round */
         voc_bridge = (uint8_t)(s > 0 ? (voc_bridge + 1u < VOC_BR_N ? voc_bridge + 1u : voc_bridge)
                                      : s < 0 ? (voc_bridge ? voc_bridge - 1u : 0u) : (voc_bridge + 1u) % VOC_BR_N);
         break;

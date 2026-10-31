@@ -44,17 +44,16 @@ static const char *voc_trk_name(const track_t *t)      /* the name the UI shows 
 #define TRK_GLIDE(t) (VOC_TRK_AUDIO(t) ? 0 : (t)->p[P_GLIDE])
 /* the carrier's voices are its own, as the VSM201's synthesizer was another instrument: track 3's 8 outside the
  * budget the other parts share (not counted, never a victim of their notes, never shed: a saw costs little) */
-#define VOC_POOL(p) && !VOC_TRK_AUDIO(&trk[p])
+#define VOC_NPOOL (VOC_AUDIO_ON ? NPART - 1u : NPART)   /* (track 3 the last part: a loop bound, no test a voice) */
 #define VOC_POOL_T(t) && !VOC_TRK_AUDIO(t)
-#define VOC_POOL_SKIP(t) VOC_TRK_AUDIO(t) ||
+_Static_assert(VOC_TRK == NPART - 1u, "the audio track is the last synth part");
 #else
 #define VOC_OWNENV e->ownenv
 #define VOC_NOSAW
 #define TRK_VMODE(t) ((uint32_t)(t)->p[P_VOICE])
 #define TRK_GLIDE(t) ((t)->p[P_GLIDE])
-#define VOC_POOL(p)
+#define VOC_NPOOL NPART
 #define VOC_POOL_T(t)
-#define VOC_POOL_SKIP(t)
 #endif
 #if BOARD_SMK37
 /* the SMK-37 Pro's wheels (main.c smk_wheels), on the selected synth track: the pitch wheel bends
@@ -134,9 +133,9 @@ static uint32_t trk_nvoice(const track_t *t)
 static uint32_t voices_busy(void)                       /* sounding voices of all parts (not the fading ones) */
 {
     uint32_t p, i, n = 0;
-    for (p = 0; p < NPART; p++)
+    for (p = 0; p < VOC_NPOOL; p++)
         for (i = 0; i < NVOICE; i++)
-            n += trk[p].v[i].active && trk[p].v[i].stage != 4u VOC_POOL(p);
+            n += trk[p].v[i].active && trk[p].v[i].stage != 4u;
     return n;
 }
 
@@ -154,11 +153,11 @@ static uint32_t lowest_held(const track_t *t)           /* index of the lowest h
 static uint32_t voice_victim(const track_t *self, int soft, track_t **pp)
 {
     uint32_t p, i, best = NVOICE, cat = 4;
-    for (p = 0; p < NPART; p++) {
+    for (p = 0; p < VOC_NPOOL; p++) {
         track_t *t = &trk[p];
         uint32_t mode = TRK_VMODE(t), nu = mode == V_UNISON ? trk_nvoice(t) : 1u;
         uint32_t low = mode == V_POLY ? lowest_held(t) : NVOICE;
-        if (VOC_POOL_SKIP(t) (soft && t == self))
+        if (soft && t == self)
             continue;
         for (i = 0; i < NVOICE; i++) {
             const voice_t *v = &t->v[i];
@@ -205,10 +204,10 @@ static void shed_voice(void)
 {
     uint32_t p, i;
     voice_t *best = 0;
-    for (p = 0; p < NPART; p++)
+    for (p = 0; p < VOC_NPOOL; p++)
         for (i = 0; i < NVOICE; i++) {
             voice_t *v = &trk[p].v[i];
-            if (v->active && !v->gate && v->stage != 4u VOC_POOL(p) && (!best || v->env < best->env))
+            if (v->active && !v->gate && v->stage != 4u && (!best || v->env < best->env))
                 best = v;
         }
     if (best) {
@@ -216,12 +215,12 @@ static void shed_voice(void)
         shed_count++;
         return;
     }
-    for (p = 0; p < NPART; p++) {
+    for (p = 0; p < VOC_NPOOL; p++) {
         const track_t *t = &trk[p];
         uint32_t mode = TRK_VMODE(t), low = mode == V_POLY ? lowest_held(t) : 0u;
         for (i = 0; i < NVOICE; i++) {
             voice_t *v = &trk[p].v[i];
-            if (v->active && v->gate && v->stage != 4u VOC_POOL(p) &&
+            if (v->active && v->gate && v->stage != 4u &&
                 ((mode == V_POLY && i != low) || (mode != V_POLY && i > 0u)) && (!best || v->age < best->age))
                 best = v;
         }
