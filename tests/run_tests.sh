@@ -245,6 +245,11 @@ $CC -DBOARD_SMK37=1 -Ifirmware/hal -o "$OUT/smk_flash_test" tests/smk_flash_test
 run "SMK-37 Pro flash map: allow-lists never reach the head, BTIF/USRTRIM, USR, key_mac" "$OUT/smk_flash_test"
 $CC -DBOARD_SMK37=1 -DSMK_UAC_IN_PROBE=1 -Ifirmware/hal -o "$OUT/smk_flash_voc_test" tests/smk_flash_test.c
 run "SMK-37 flash map, the vocoder build (its settings object)" "$OUT/smk_flash_voc_test"
+# the vocoder build lean (SMK_VOC_LEAN, core.h): its samples header (no built-in sets) ahead of build/gen's
+mkdir -p build/gen_lean
+SMK_VOC_LEAN=1 FELUCCA_SLICE=1 python3 tools/gen_samples.py build/gen_lean/felucca_samples.h >/dev/null
+$CC -O2 -w -DSMK_VOC_LEAN=1 -DFELUCCA_SLICE=1 -Ibuild/gen_lean -Ibuild/gen -Ifirmware/src -Ifirmware/hal     -o "$OUT/smk_lean_test" tests/smk_lean_test.c -lm
+run "SMK-37 vocoder build lean: PRESETS, the engines left out, user sources only, the delay at 22.05 kHz"     "$OUT/smk_lean_test"
 python3 tools/fm1pkg_make.py --board smk37 build/felucca.bin build/loader/ota.bin "$OUT/smk_new.fwsc" >/dev/null
 python3 tools/fm1pkg_make.py --board smk37 "$OUT/old_app.bin" build/loader/ota.bin "$OUT/smk_old.fwsc" >/dev/null
 run "SMK-37 Pro package layout (fm1pkg_make --board smk37): PRCT 0x9D000, stock region table"     python3 tests/smk_pkg_test.py "$OUT/smk_new.fwsc"

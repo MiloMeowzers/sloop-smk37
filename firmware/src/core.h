@@ -17,6 +17,15 @@ enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 #ifndef FELUCCA_SLICE
 #define FELUCCA_SLICE 0          /* the SLICE engine (eng_slice.c): kept in the tree, not built by default */
 #endif
+#ifndef SMK_VOC_LEAN
+#define SMK_VOC_LEAN 0           /* SMK-37, the vocoder build (smk37-devtools vocoder-ui-spec.md §1): no built-in samples
+                                  * (the user slots and kits stay), no TEXTURE, no DIGITAL / LOFI / VOICE / TRIO /
+                                  * NOISE (their numbers kept: engines.c eng_live), SLICE on user samples, the delay
+                                  * stored at 22.05 kHz (fx.c) */
+#endif
+#if SMK_VOC_LEAN && !FELUCCA_SLICE
+#error "SMK_VOC_LEAN: built with SLICE (FELUCCA_SLICE=1)"
+#endif
 /* SLOOP 2.4: FM6 (eng_fm6.c) is engine 9 in every build; SLICE, when built, comes last (10). Projects and user
  * presets store the engine index as a byte, and no shipped SLOOP was built with SLICE, so its number is stored
  * nowhere: FM6 may take 9 and SLICE moves up (engines.c ENGINES[], params.c N_ENGNAME follow this order) */

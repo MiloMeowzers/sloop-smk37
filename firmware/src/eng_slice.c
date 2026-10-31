@@ -394,16 +394,22 @@ static void slice_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
 
 /* PATTERNS (ui.c): 9 CHOP (16 slices re-ordered), 10 STUTTER (8 slices, repeats), 11 SLICES (0..15 in order) */
 static const preset_t SLICE_PRESETS[] = {
+#if !SMK_VOC_LEAN                                       /* (the vocoder build: no BREAK, user samples only) */
     {"BREAK 16", {0, 2, 0, 0, SLC_ONE, 0, 127, 127}, {0, 127, 127, 30}, 0, 0, FX(0, 0, 0, 12), PAT(9)},
     {"CHOP 8", {0, 1, 0, 0, SLC_GATE, 0, 90, 110}, {0, 127, 127, 12}, 0, 0, FX(10, 0, 20, 10), PAT(10)},
     {"REVERSE", {0, 2, 0, -2, SLC_ONE, 1, 127, 100}, {0, 127, 127, 30}, 0, 0, FX(0, 0, 30, 30), PAT(11)},
+#endif
     {"USR SLICE", {1, SLC_DIV_AUTO, 0, 0, SLC_ONE, 0, 127, 127}, {0, 127, 127, 30}, 0, 0, FX(0, 0, 0, 12), PAT(11)},
 };
 
 static const engine_t ENG_SLICE = {
     "SLICE", {"SLCE", "PLAY"},
     {
+#if SMK_VOC_LEAN
+        {"SRC", F_ENUM, 1, 3, 1, N_SLC_SRC, 0},
+#else
         {"SRC", F_ENUM, 0, 3, 0, N_SLC_SRC, 0},
+#endif
         {"DIV", F_ENUM, 0, 4, 2, N_SLC_DIV, 0},
         {"START", F_INT, 0, 31, 0, 0, 0},
         {"PTCH", F_SEMI, -24, 24, 0, 0, 0},

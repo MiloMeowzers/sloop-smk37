@@ -206,7 +206,13 @@ static const param_desc_t GP[G_COUNT] = {
     [G_FXFADE] = PD("FADE", F_INT, 0, 15, 0),     /* 2.7.2: the punch-in FX fade (FX layer SELECT), 0 off .. 15 (punch.c) */
 };
 
+#if SMK_VOC_LEAN                    /* the vocoder build: no GM kit samples, the sampled kits before DRUM_SAMPLED gone */
+static const param_desc_t DRUM_KIT_DESC = {"KIT", F_ENUM, DRUM_SAMPLED,
+                                           (int16_t)(sizeof(DRUM_KIT_NAMES) / sizeof(DRUM_KIT_NAMES[0]) - 1),
+                                           DRUM_SAMPLED, DRUM_KIT_NAMES, 0};
+#else
 static const param_desc_t DRUM_KIT_DESC = PE("KIT", DRUM_KIT_NAMES, 0);
+#endif
 /* the INSERT's A B C as its TYPE means them (TP's ranges and defaults): the drives DRIVE TONE LEVEL, CRUSH BITS RATE
  * LPF, the swept ones RATE DEPTH FDBK; OFF TP's own */
 #define PU(l, f, df, n, u) {l, f, 0, 127, df, n, u}
@@ -424,8 +430,10 @@ static const page_t PAGES[] = {
                                                                            * setting in these two pages (IN and OUT on
                                                                            * SYSTEM too, the drums' channel on DRUMS) */
     {"MIDI 3", FAM_GLO, SC_GLOBAL, GR_NONE, {G_FXCH, G_DRMAP, G_RMCH, G_CLKOUT}},   /* 2.7: the punch-in FX over MIDI */
+#if !SMK_VOC_LEAN                                       /* (the vocoder build: no TEXTURE) */
     {"TEXTURE", FAM_GLO, SC_GLOBAL, GR_NONE, {G_TXSRC, G_TXLVL, G_TXTONE, G_TXMOVE}},   /* 2.6: the bed under the mix */
     {"TEXTURE 2", FAM_GLO, SC_GLOBAL, GR_NONE, {G_TXRATE, G_TXWHEN, G_TXDUCK, 0xFF}},
+#endif
     {"PRESETS", FAM_SAVE, SC_GLOBAL, GR_BROWSE, {0xFF, 0xFF, 0xFF, 0xFF}},   /* browser: PRESETS knob / KNOB 1 */
     {"USER", FAM_SAVE, SC_GLOBAL, GR_USER, {0xFF, 0xFF, 0xFF, 0xFF}},       /* user presets: SLOT LOAD ERASE SAVE */
     {"SECTION", FAM_SAVE, SC_GLOBAL, GR_SLOTS, {G_SLOT, 0xFF, G_LOAD, G_SAVE}},   /* ("PROJECT" before 2.7) */   /* (KNOB 2: ERASE, 2.6: ui_input.c) */

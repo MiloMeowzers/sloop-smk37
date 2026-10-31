@@ -132,7 +132,11 @@ static inline int32_t gr_dec(const smp_zone_t *z, uint32_t pos, int32_t *pred, i
 static int32_t gr_find(uint32_t src, uint32_t note)
 {
     uint32_t i, nz = gr_nz(src);
+#if SMK_VOC_LEAN
+    int32_t zl = -1;                                    /* (the built-in sets are empty) */
+#else
     int32_t zl = src < SMP_NSETS ? 0 : -1;
+#endif
     for (i = 0; i < nz && i < GR_MAXZ; i++) {
         const smp_zone_t *z = gr_zone(src, i);
         if (note >= z->lo && note <= z->hi)
@@ -419,6 +423,11 @@ static void grain_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
     v->s[2] = y;
 }
 
+#if SMK_VOC_LEAN
+static const preset_t GRAIN_PRESETS[] = {              /* the vocoder build: no built-in sets, USR1 */
+    {"USR GRAIN", {SMP_NSETS, 45, 95, 85, 0, 35, 12, 80}, {70, 90, 120, 90}, 0, 0, FX(0, 45, 20, 70)},
+};
+#else
 static const preset_t GRAIN_PRESETS[] = {
     /* name, {SRC, POS, SIZE, DENS, PTCH, SPRD, RAND, TONE}, {A D S R}, fenv, mono.
      * SRC: the SAMPLE sets (0 PIANO, 2 VIBES, 5 FLUTE...: tools/gen_samples.py CC0_SETS) */
@@ -432,11 +441,12 @@ static const preset_t GRAIN_PRESETS[] = {
     {"PNO FREEZE", {0, 40, 127, 127, 0, 5, 0, 100}, {80, 100, 127, 100}, 0, 0, FX(0, 30, 20, 75)},
     {"HORN CLOUD", {3, 30, 100, 90, 0, 30, 15, 90}, {70, 100, 120, 95}, 0, 0, FX(0, 40, 20, 70)},
 };
+#endif
 
 static const engine_t ENG_GRAIN = {
     "GRAIN", {"GRAN", "SPRY"},
     {
-        {"SRC", F_ENUM, 0, SMP_NALL - 1, 0, SMP_ALL_NAMES, 0},
+        {"SRC", F_ENUM, SMP_SRC_MIN, SMP_NALL - 1, SMP_SRC_MIN, SMP_ALL_NAMES, 0},
         {"POS", F_PCT, 0, 127, 32, 0, 0},
         {"SIZE", F_PCT, 0, 127, 80, 0, 0},
         {"DENS", F_PCT, 0, 127, 80, 0, 0},

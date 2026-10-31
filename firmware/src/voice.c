@@ -338,7 +338,11 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
     const engine_t *e = ENGINES[t->engine];
     int sounding = v->active && v->stage != 0;
     uint32_t ph0 = v->ph[0], ph1 = v->ph[1], ph2 = v->ph[2];
+#if SMK_VOC_LEAN
+    int32_t s0 = v->s[0], s1 = v->s[1];                 /* (s[4..7]: the engines the vocoder build leaves out) */
+#else
     int32_t s0 = v->s[0], s1 = v->s[1], s4 = v->s[4], s5 = v->s[5], s6 = v->s[6], s7 = v->s[7];
+#endif
     v->note = (uint8_t)note;
     v->vel = (uint8_t)vel;
     v->gate = 1;
@@ -367,6 +371,7 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
         if (e == &ENG_ANALOG) {
             v->s[0] = s0;
             v->s[1] = s1;
+#if !SMK_VOC_LEAN                                       /* (the vocoder build: not built) */
         } else if (e == &ENG_DIGITAL) {
             v->s[5] = s5;
             v->s[6] = s6;
@@ -378,9 +383,11 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
             v->s[0] = s0;                               /* filter */
             v->s[1] = s1;
             v->s[4] = s4;                               /* the sample waiting for its step corrections */
+#endif
         } else if (e == &ENG_PHASE) {
             v->s[0] = s0;                               /* the WAVE / WAVE2 toggles go with the phases kept */
             v->s[1] = s1;
+#if !SMK_VOC_LEAN
         } else if (e == &ENG_NOISE) {
             v->s[0] = s0;                               /* the filter and the colour poles (2.5) */
             v->s[1] = s1;
@@ -388,6 +395,7 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
             v->s[5] = s5;
             v->s[6] = s6;
             v->s[7] = s7;
+#endif
         }
     }
 }

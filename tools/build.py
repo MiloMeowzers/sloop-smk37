@@ -193,7 +193,7 @@ def build_app():
     flags = [*CFLAGS, *BOARD_DEFS[BOARD], "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_CDC", "FELUCCA_UART",
                  "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_CDC_ON", "FELUCCA_DATA_UNTAGGED_OK",
-                 "FELUCCA_CPU1", "FELUCCA_LOGO_TEXT", "SMK_UAC_PROBE", "SMK_UAC_IN_PROBE"):
+                 "FELUCCA_CPU1", "FELUCCA_LOGO_TEXT", "SMK_UAC_PROBE", "SMK_UAC_IN_PROBE", "SMK_VOC_LEAN"):
         v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")

@@ -303,6 +303,12 @@ UI_SMALL static int up_load_to(track_t *t, uint32_t k)       /* user preset k in
 #endif
     keep_arp = t->p[P_AMODE] && !arp_is_sounds(t);     /* (2.7.1: not the arp the old sound brought) */
     r = up_rec(k);
+#if SMK_VOC_LEAN
+    if (eng_live(r->engine) != r->engine % NENGINES) {  /* an engine the vocoder build leaves out */
+        ui_say("NOT IN THIS BUILD", "");
+        return 1;
+    }
+#endif
     up_values(r, v);
     for (i = 0; i < P_COUNT; i++)                       /* (LEN etc. of a kept pattern changed too, and */
         if (param_kept(i) || (keep_arp && i >= P_AMODE && i <= P_AORDER) ||   /* a preset pattern then counted as */

@@ -64,6 +64,11 @@ _Static_assert(SMP_USER_FLASH_SLOTS == SMP_USER_SLOTS && SMP_USER_BASE + SMP_USE
 #define SMP_USER_DATA 512u
 #define SMP_USER_MAGIC 0x504D5346u                  /* "FSMP" */
 #define SMP_NALL (SMP_NSETS + SMP_USER_SLOTS)
+#if SMK_VOC_LEAN
+#define SMP_SRC_MIN SMP_NSETS        /* the vocoder build: the built-in sets empty, the user slots only (the numbers kept) */
+#else
+#define SMP_SRC_MIN 0
+#endif
 typedef struct {
     uint32_t magic;
     uint16_t version;
@@ -226,7 +231,7 @@ static void sample_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
 static const engine_t ENG_SAMPLE = {
     "SAMPLE", {"SET", "TONE"},
     {
-        {"SET", F_ENUM, 0, SMP_NALL - 1, 0, SMP_ALL_NAMES, 0},
+        {"SET", F_ENUM, SMP_SRC_MIN, SMP_NALL - 1, SMP_SRC_MIN, SMP_ALL_NAMES, 0},
         {"TUNE", F_SEMI, -24, 24, 0, 0, 0},
         {"BITS", F_INT, 0, 127, 0, 0, 0},
         {"LOOP", F_ENUM, 0, 1, 1, N_ONOFF_E, 0},

@@ -4,7 +4,14 @@
  * Stereo dry mix; the chorus and the reverb come back in stereo, the delay in the middle. */
 #define DLY_LEN 65536u           /* 1.49 s: 1/4 down to 41 BPM, 1/8 dotted down to 31, 1/4 dotted down to 61 (clamped below) */
 #define CHO_LEN 2048u
-static int16_t dly_buf[DLY_LEN] __attribute__((section(".pool")));
+#if SMK_VOC_LEAN
+/* the vocoder build: the line stored at 22.05 kHz, half the RAM for the same 1.49 s (the repeats are low-passed by
+ * COLOR anyway): two samples averaged into one, a sample read between two (fx_buses) */
+#define DLY_STORE (DLY_LEN / 2u)
+#else
+#define DLY_STORE DLY_LEN
+#endif
+static int16_t dly_buf[DLY_STORE] __attribute__((section(".pool")));
 static int16_t cho_buf[CHO_LEN] __attribute__((section(".pool")));
 /* the reverb: two input diffusers, then four delay lines mixed by a Hadamard matrix (a feedback delay
  * network: every echo feeds all four, so it thickens instead of ringing like a comb), damped in the
@@ -18,6 +25,9 @@ static int16_t rev_ap[556 + 441] __attribute__((section(".pool")));
 static struct {
     uint32_t dly_w, cho_w, cho_ph, rev_ph;
     int32_t dly_lp;
+#if SMK_VOC_LEAN
+    int32_t dly_acc;                                    /* the first of the pair to store (DLY_STORE) */
+#endif
     uint16_t line_i[4], ap_i[2];
     int32_t line_lp[4];
 } fx;
@@ -313,10 +323,24 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         }
         fx.cho_w++;
         /* delay with a low-passed feedback (in the middle) */
+#if SMK_VOC_LEAN
+        {   /* (positions at 44.1 kHz, a stored sample holding two: read between two, store a pair's mean) */
+            uint32_t q = fx.dly_w - dl;
+            int32_t w = dly_buf[(q >> 1) & (DLY_STORE - 1u)];
+            x = q & 1u ? (w + dly_buf[((q >> 1) + 1u) & (DLY_STORE - 1u)]) >> 1 : w;
+            fx.dly_lp += mulq15(x - fx.dly_lp, col);
+            w = (dly_in[i] >> 1) + mulq15(fx.dly_lp, fb);
+            if (fx.dly_w & 1u)
+                dly_buf[(fx.dly_w >> 1) & (DLY_STORE - 1u)] = (int16_t)clamp((fx.dly_acc + w) >> 1, -32768, 32767);
+            else
+                fx.dly_acc = w;
+        }
+#else
         x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
         fx.dly_lp += mulq15(x - fx.dly_lp, col);
         dly_buf[fx.dly_w & (DLY_LEN - 1u)] =
             (int16_t)clamp((dly_in[i] >> 1) + mulq15(fx.dly_lp, fb), -32768, 32767);
+#endif
         fx.dly_w++;
         x = mulq15(x << 1, dmix);
         yl += x;
@@ -1145,7 +1169,7 @@ static uint32_t units_split(void)
     if (!mask)
         return 0;
     for (k = 0; k < NPART; k++)
-        nform += ENGINES[trk[k].engine] == &ENG_FORMANT;
+        nform += ENG_IS_FORMANT(ENGINES[trk[k].engine]);
     for (k = 0; k < NPART; k++) {
         const track_t *t = &trk[k];
         const engine_t *e = ENGINES[t->engine];
@@ -1157,7 +1181,7 @@ static uint32_t units_split(void)
             continue;
         inc = p[P_LSYNC] ? lfo_sync_inc(p) : LFO_INC[p[P_LRATE] & 127];   /* (2.6: LFO 2 SYNC, as track_lfo_tick) */
         if (t->lfo_ph + inc < t->lfo_ph || (e == &ENG_PHYS && phys_render_draws(t, fade ? t->pe_old[0] : p[P_E0])) ||
-            (e == &ENG_FORMANT && nform > 1u))
+            (ENG_IS_FORMANT(e) && nform > 1u))
             mask &= ~(1u << k);
     }
     return mask;
@@ -1546,8 +1570,10 @@ static void mix_block(int32_t *out, uint32_t n)
         }
     }
 #endif
+#if !SMK_VOC_LEAN                                       /* (the vocoder build: no TEXTURE) */
     texture_mix(mix_l, mix_r, n);                       /* GLO > TEXTURE (2.6): the bed, dry; after both cores' units
                                                          * (what it adds does not depend on them: the same sum) */
+#endif
     punch_freeze_feed(acc[0].sr, mix_l, mix_r, n);     /* punch-in FREEZE: the whole dry mix into the held reverb */
     fx_buses(acc[0].sc, acc[0].sd, acc[0].sr, wet_l, wet_r, n);
     for (i = 0; i < n; i++) {

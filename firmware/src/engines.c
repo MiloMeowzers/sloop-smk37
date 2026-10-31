@@ -17,17 +17,25 @@ static inline int32_t soft_knee(int32_t y, int32_t k)   /* linear up to k, then 
 }
 /* (pitch_inc: felucca_tables.h, SLOOP 2.5: from the top octave) */
 #include "eng_analog.c"
+#if !SMK_VOC_LEAN
 #include "eng_digital.c"
+#endif
 #include "eng_phase.c"
+#if !SMK_VOC_LEAN
 #include "eng_lofi.c"
+#endif
 #include "eng_sample.c"
+#if !SMK_VOC_LEAN
 #include "eng_formant.c"
 #include "eng_trio.c"
+#endif
 #include "eng_drawbar.c"
 #include "eng_grain.c"
 #include "eng_fm6.c"            /* FM6: 6-operator FM, msfa ported (fm6_core.c, Apache-2.0); SLOOP 2.4 */
 #include "eng_phys.c"           /* PHYS: physical models, from Felucca 1.0 (DaisySP, Rings: MIT); SLOOP 2.5 */
+#if !SMK_VOC_LEAN
 #include "eng_noise.c"          /* NOISE: from Felucca 1.0; SLOOP 2.5 */
+#endif
 
 typedef union {
     gr_part_t grain;
@@ -80,6 +88,20 @@ static int phys_render_draws(const track_t *t, int32_t model)   /* model: the MO
 #include "eng_slice.c"
 #endif
 
+#if SMK_VOC_LEAN
+/* the vocoder build: an engine left out keeps its number (the stores, the editor protocol), its slot ANALOG's;
+ * eng_live turns its number into ANALOG's (0) wherever one comes in, so it is never a track's */
+static const engine_t *const ENGINES[NENGINES] = {&ENG_ANALOG, &ENG_ANALOG, &ENG_PHASE, &ENG_ANALOG, &ENG_SAMPLE,
+                                                    &ENG_ANALOG, &ENG_ANALOG, &ENG_DRAWBAR, &ENG_GRAIN, &ENG_FM6,
+                                                    &ENG_PHYS, &ENG_ANALOG, &ENG_SLICE};
+static uint32_t eng_live(uint32_t e)
+{
+    e %= NENGINES;
+    return e && ENGINES[e] == &ENG_ANALOG ? 0u : e;
+}
+#define ENG_IS_FORMANT(e) 0
+#else
+#define ENG_IS_FORMANT(e) ((e) == &ENG_FORMANT)
 static const engine_t *const ENGINES[NENGINES] = {&ENG_ANALOG, &ENG_DIGITAL, &ENG_PHASE, &ENG_LOFI, &ENG_SAMPLE,
                                                     &ENG_FORMANT, &ENG_TRIO, &ENG_DRAWBAR,   /* 7: ENGI_DRAWBAR (eng_drawbar.c) */
                                                     &ENG_GRAIN,
@@ -89,6 +111,7 @@ static const engine_t *const ENGINES[NENGINES] = {&ENG_ANALOG, &ENG_DIGITAL, &EN
                                                     &ENG_SLICE,
 #endif
 };
+#endif
 _Static_assert(ENGI_FM6 == 9u, "ENGINES[ENGI_FM6] is FM6");
 _Static_assert(ENGI_GRAIN == 8u && ENGI_PHYS == 10u && ENGI_NOISE == 11u && ENGI_SLICE == 12u, "ENGINES[] order");
 

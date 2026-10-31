@@ -472,6 +472,9 @@ static void vocset_save(void);
 #define VOCSET_DROP(s) ((void)0)
 #define VOCSET_SAVE() ((void)0)
 #endif
+#if SMK_VOC_LEAN
+static uint8_t proj_gone;                               /* proj_apply: an engine the vocoder build leaves out (ANALOG) */
+#endif
 UI_SMALL static void proj_capture(project_t *p)        /* what is playing now, as a project */
 {
     uint32_t i;
@@ -517,7 +520,12 @@ static void proj_apply(const project_t *p, int all)
     for (k = 0; k < NTRK; k++) {
         track_t *t = &trk[k];
         const proj_trk_t *s = &p->t[k];
+#if SMK_VOC_LEAN
+        uint32_t e = k < NPART ? eng_live(s->engine) : 0u;
+        proj_gone |= k < NPART && e != s->engine % NENGINES;   /* (an engine the vocoder build leaves out) */
+#else
         uint32_t e = k < NPART ? s->engine % NENGINES : 0u;
+#endif
         t->eng_req = (uint8_t)e;
         t->user = 0;                                    /* (no user preset slot is saved) */
         t->lk_n = 0;                                    /* (the locks in force: the values come from the project) */
@@ -670,6 +678,11 @@ UI_SMALL static void project_apply(const project_t *p)
     sync_reload = 1;
     ui.force = 1;
     VOCSET_LOAD(p);                                     /* (a slot's, if it has them: its vocoder settings) */
+#if SMK_VOC_LEAN
+    if (proj_gone)
+        ui_say("NOT IN THIS BUILD", ": ANALOG");
+    proj_gone = 0;
+#endif
 }
 
 UI_SMALL static void project_load(uint32_t slot)
@@ -721,6 +734,10 @@ UI_SMALL static void autosave_tick(void)                /* main loop */
     autosave_checked = now;
     proj_capture(&autosave_buf);
     h = autosave_buf.sum;
+#if BOARD_SMK37 && FELUCCA_FLASH && SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
+    if (audio_quiet())
+        VOCSET_SAVE();                                  /* the vocoder's settings, if changed: kept as the project is */
+#endif
     if (h == autosave_hash || !audio_quiet())
         return;
     if (st_save(OBJ_AUTOSAVE, &autosave_buf, sizeof autosave_buf) == 0)

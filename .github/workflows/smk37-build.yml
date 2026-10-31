@@ -110,8 +110,9 @@ jobs:
           cp build/sloop-smk37-elite.fwsc out/sloop-smk37-elite-uinprobe.fwsc
           tail -3 out/build-smk37-elite-uin.log
           # the vocoder build: the playback input and HOME > VOCODER on the console build, SLOOP's USB audio as usual
-          # (no test signals: USB LAYOUT stereo or the stems). For testing only
-          BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_IN_PROBE=1 sh build.sh \
+          # (no test signals: USB LAYOUT stereo or the stems), lean (SMK_VOC_LEAN: smk37-devtools vocoder-ui-spec.md
+          # §1: no built-in samples, TEXTURE or five engines; SLICE on user samples; the delay at 22.05 kHz)
+          BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_IN_PROBE=1 SMK_VOC_LEAN=1 FELUCCA_SLICE=1 sh build.sh \
             > out/build-smk37-elite-voc.log 2>&1 || { tail -50 out/build-smk37-elite-voc.log; exit 1; }
           cp build/sloop-smk37-elite.fwsc out/sloop-smk37-elite-vocoder.fwsc
           gzip -9c build/felucca.dis > out/felucca-vocoder.dis.gz
