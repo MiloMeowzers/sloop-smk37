@@ -142,11 +142,6 @@ static struct {                          /* the synthesis (track 3's core): the 
     int32_t ch[VOC_HN];                  /* the carrier's last samples at 44.1 kHz (the decimator) */
     int32_t oh[VOC_ON];                  /* the vocoded samples at 22.05 kHz (the interpolator) */
     uint32_t hw, ow;                     /* samples written into ch, into oh */
-    int32_t lh[VOC_HN];                  /* the low bands (0 .. VOC_LO - 1, at 11.025 kHz): the carrier at 22.05 (their
-                                          * decimator), */
-    int32_t lo[VOC_ON];                  /* .. their sum at 11.025 (their interpolator), */
-    uint32_t lw, low;                    /* .. samples written into lh, into lo, */
-    int32_t lo_odd;                      /* .. and their next 22.05 kHz sample (the half-band's, between two) */
     uint32_t blocks;                     /* (the console) */
     int32_t peak_out;
     int32_t cenv, uvg;                   /* the carrier's rectified level (the noise's), the noise's share (Q15) */
@@ -294,44 +289,26 @@ static int64_t voc_bands(int32_t c, uint32_t k, uint32_t k1, const int32_t *env,
     voc_bq *s = &voc.b[k];
     if (mode == VT_PLAIN) {
         for (; k < k1; k++, s++)
-            sum += (int64_t)voc_band(c, VOC_SB0S[k], VOC_SB0[k], VOC_SC1[k], VOC_SA2[k], s) * env[k];   /* Q15 */
+            sum += (int64_t)voc_band(c, VOC_B0S[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], s) * env[k];   /* Q15 */
     } else if (mode == VT_SUM) {
         for (; k < k1; k++, s++)
-            sum += (int64_t)voc_band(c, VOC_SB0S[k], VOC_SB0[k], VOC_SC1[k], VOC_SA2[k], s) * (env[k] + bk[k]);
+            sum += (int64_t)voc_band(c, VOC_B0S[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], s) * (env[k] + bk[k]);
     } else {
         for (; k < k1; k++, s++) {
             int32_t e = (env[k] * cf) >> 15;
-            sum += (int64_t)voc_band(c, VOC_SB0S[k], VOC_SB0[k], VOC_SC1[k], VOC_SA2[k], s) *
+            sum += (int64_t)voc_band(c, VOC_B0S[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], s) *
                    (fill ? (e > bk[k] ? e : bk[k]) : e + bk[k]);
         }
     }
     return sum;
 }
 /* one vocoded sample at 22.05 kHz from the carrier c (the track's scale), j the sample's place in the block (the
- * analysis's envelopes of the block before): the bank multirate (vocoder-ui-spec.md §7c), its bands from VOC_LO at
- * 22.05 kHz, the ones below at 11.025, every other sample, behind a second 2:1 half-band and back up through it (the low
- * bands ~1.3 ms later than the rest: under their own filters' delay, ~8 ms at 145 Hz) */
+ * analysis's envelopes of the block before) */
 static int32_t voc_tick(int32_t c, uint32_t j, const int32_t *bk, int32_t cf, uint32_t mode, uint32_t fill)
 {
     const int32_t *env = voc_ab[voc_aw ^ 1u].env[j];
-    int32_t o, lo;
-    c <<= 4;
-    voc.lh[voc.lw++ & (VOC_HN - 1u)] = c;
-    if (!(voc.lw & 1u)) {                                /* two in: the low bands' sample, the two it makes */
-        int64_t a = 0;
-        uint32_t i;
-        voc.lo[voc.low++ & (VOC_ON - 1u)] =
-            (int32_t)(voc_bands(voc_dec(voc.lh, voc.lw), 0, VOC_LO, env, bk, cf, mode, fill) >> 19);
-        lo = voc.lo[(voc.low - 1u - VOC_HB) & (VOC_ON - 1u)];
-        for (i = 0; i < VOC_HB; i++)
-            a += (int64_t)VOC_HBT[i] * (voc.lo[(voc.low - 1u - VOC_HB - i) & (VOC_ON - 1u)] +
-                                        voc.lo[(voc.low - VOC_HB + i) & (VOC_ON - 1u)]);
-        voc.lo_odd = (int32_t)((a + (1 << 13)) >> 14);   /* (x 2: the zeros between) */
-    } else {
-        lo = voc.lo_odd;
-    }
-    o = (int32_t)((((voc_bands(c, VOC_LO, VOC_NB, env, bk, cf, mode, fill) >> 19) + lo) *
-                   VOC_LV_Q8[voc_level % VOC_LEVEL_N]) >> 8);
+    int32_t o = (int32_t)(((voc_bands(c << 4, 0, VOC_NB, env, bk, cf, mode, fill) >> 19) *
+                           VOC_LV_Q8[voc_level % VOC_LEVEL_N]) >> 8);
     if (voc_hf)
         o += (int32_t)(((int64_t)VOC_VS(voc_ab[voc_aw ^ 1u].hf[j] >> 4) * VOC_MIX_Q15[voc_hf % VOC_MIX_N]) >> 15);
     return o;

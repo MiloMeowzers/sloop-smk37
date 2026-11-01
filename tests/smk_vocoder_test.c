@@ -1,7 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Host test of the SMK-37 audio track and vocoder (firmware/src/smk_vocoder.h; the vocoder build, SMK_UAC_IN_PROBE):
- *   multirate  the synthesis bank's low bands at 11025 Hz: a 6 / 6.5 kHz carrier's fold-back > 50 dB under it
- *              (measured 57.5)
  *   bands      the bank (4th order: two sections, at 22050 Hz) 0 dB at each of the VSM201's 20 centres, neighbours
  *              crossing near -3 dB between theirs, two octaves away at least 20 dB down
  *   vocoding   a sawtooth carrier (110 Hz) shaped by a 1 kHz voice: its 9th harmonic (990 Hz) in the output > 15 dB
@@ -148,8 +146,6 @@ static double vwobble(uint32_t i)
 
 static double saw110(uint32_t i) { double p = fmod(110.0 * i / FS, 1.0); return 8000.0 * (2.0 * p - 1.0); }
 static double sine220(uint32_t i) { return 8000.0 * sin(2.0 * M_PI * 220.0 * i / FS); }
-static double mr_f;                                       /* (the multirate check's carrier) */
-static double mr_sine(uint32_t i) { return 8000.0 * sin(2.0 * M_PI * mr_f * i / FS); }
 static double v1k(uint32_t i) { return 16000.0 * sin(2.0 * M_PI * 1000.0 * i / FS); }
 static double vzero(uint32_t i) { (void)i; return 0.0; }
 static double vquiet(uint32_t i) { return 184.0 * sin(2.0 * M_PI * 1000.0 * i / FS); }   /* -45 dBFS */
@@ -279,26 +275,6 @@ int main(void)
         check("VOICE UNVOICED: the noise is the carrier's level-matched: no carrier, no output (white, pink: < 1)",
               a < 1.0 && v < 1.0);
         voc_vmode = VV_VOICED;
-    }
-    {   /* the multirate bank: the low bands at 11.025 kHz; a carrier tone above 5.5 kHz folds back below it there */
-        static const double F_HI[2] = {6000.0, 6500.0};
-        double mr_worst = 1e9;
-        uint32_t j;
-        voc_bridge = VOC_BR_N - 1u;                     /* (no voice: the bridge opens every band, 0 dB) */
-        for (j = 0; j < 2u; j++) {
-            double t, a;
-            mr_f = F_HI[j];
-            reset();
-            n = run(1.0, vzero, mr_sine);
-            t = tone(n, F_HI[j]);
-            a = tone(n, 11025.0 - F_HI[j]);
-            printf("   multirate: a %.0f Hz carrier %.1f dB, its fold-back (%.0f Hz) %.1f dB\n", F_HI[j], t,
-                   11025.0 - F_HI[j], a);
-            if (t - a < mr_worst)
-                mr_worst = t - a;
-        }
-        voc_bridge = 0;
-        check("multirate: a carrier above 5.5 kHz folds back into the low bands > 50 dB under itself", mr_worst > 50.0);
     }
     {   /* the silence bridging */
         double on, off, ref = 8000.0 / sqrt(3.0);       /* (the saw's rms) */
