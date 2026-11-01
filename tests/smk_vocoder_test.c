@@ -16,7 +16,8 @@
  *              100 %); COLOUR 100 % puts a voice under THRESHOLD on the bridge, 0 does not; FILL between the bridge alone
  *              and SUM; TILT +3 dB an octave lifts the bridge's top and drops its bottom
  *   NORMAL     the VSM201's weights (B11 / B12): ch1 10.6 dB over ch20, folded into the synthesis bank
- *   AGC        one note at a voice's level untouched; a three-note chord levelled to the ceiling (VOC_AGC_T)
+ *   AGC        OFF (the default): a three-note chord untouched; FULL: one note at a voice's level untouched, a
+ *              three-note chord levelled to the ceiling (VOC_AGC_TQ)
  *   zipper     a voice gated as speech goes, BRIDGE 0 dB, TILT -3: the output above 9 kHz (the bank stops at 6.78) > 60 dB
  *              under it (the bridge and COLOUR ramped over a block: 62.7 dB; stepped block by block they made 54.5)
  *   the track  MODE AUDIO: the voice itself, at a voice's full scale; a change of state (engine -> dry -> engine) fades out
@@ -401,15 +402,20 @@ int main(void)
               fabs(d - 10.63) < 0.1 && worst < 0.001);
         voc_bridge = 0;
         reset();
+        run(1.0, v1k, chord3);
+        check("AGC OFF (the default): a three-note chord untouched (gain 1.0)", voc_agc == 0 && voc.agc_g == 32767);
+        voc_agc = VOC_AGC_N - 1u;                       /* FULL */
+        reset();
         run(1.0, v1k, saw24k);
-        check("AGC: one note at a voice's level untouched (gain 1.0)", voc.agc_g == 32767);
+        check("AGC FULL: one note at a voice's level untouched (gain 1.0)", voc.agc_g == 32767);
         reset();
         run(1.0, v1k, chord3);
-        printf("   AGC on a three-note chord (3 x a voice): gain %.2f dB, the carrier's level after it %.0f (ceiling %d)\n",
-               db(voc.agc_g / 32767.0), (double)voc.agc_env * voc.agc_g / 32767.0, VOC_AGC_T);
-        check("AGC: a chord levelled to the ceiling (down to -10 %: the gain drops fast, recovers slowly), never above it",
-              voc.agc_g < 32767 && (double)voc.agc_env * voc.agc_g / 32767.0 <= VOC_AGC_T * 1.01 &&
-              (double)voc.agc_env * voc.agc_g / 32767.0 > VOC_AGC_T * 0.9);
+        printf("   AGC FULL on a three-note chord (3 x a voice): gain %.2f dB, the carrier's level after it %.0f (ceiling %d)\n",
+               db(voc.agc_g / 32767.0), (double)voc.agc_env * voc.agc_g / 32767.0, (int)VOC_AGC_TQ[voc_agc]);
+        check("AGC FULL: a chord levelled to the ceiling (down to -10 %: the gain drops fast, recovers slowly), never above it",
+              voc.agc_g < 32767 && (double)voc.agc_env * voc.agc_g / 32767.0 <= VOC_AGC_TQ[voc_agc] * 1.01 &&
+              (double)voc.agc_env * voc.agc_g / 32767.0 > VOC_AGC_TQ[voc_agc] * 0.9);
+        voc_agc = 0;
     }
     {   /* the audio track: engine (a DC 30000) -> AUDIO IN on, MODE OFF (the voice: DC 10000) -> off again */
         int32_t b[VOC_MAXN], prev = 30000, step = 0;

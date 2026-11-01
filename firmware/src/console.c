@@ -287,6 +287,7 @@ static void con_status(void)
     con_kv("voc_tilt", (int32_t)voc_tilt - (int32_t)VOC_TILT_FLAT);   /* BRIDGE TONE: TILT, half dB an octave */
     con_kv("voc_colour", voc_colour * 10);               /* .. COLOUR % */
     con_kv("voc_blend", voc_blend);                      /* .. BLEND: 0 SUM, 1 FILL */
+    con_kv("voc_agc", voc_agc);                          /* SILENCE > AGC: 0 OFF, 1 PEAKS, 2 LIGHT, 3 FULL */
     con_kv("voc_agc_env", voc.agc_env);                  /* the carrier AGC: the summed carrier's level (mean |x|) */
     con_kv("voc_agc_g", voc.agc_g);                      /* .. its gain now, Q15 (32767: 1.0) */
     con_kv("voc_vmode", voc_vmode);                      /* CARRIER > VOICE: 0 AUTO, 1 VOICED, 2 UNVOICED */

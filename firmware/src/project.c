@@ -946,8 +946,9 @@ typedef struct { uint8_t mode, lvl, dry, hf, cut, res, vm, pink, br, thr, have, 
 typedef struct {
     uint32_t magic;
     vocv_t cur, sec[4];
-    uint8_t tilt, colour, blend, rsv;    /* BRIDGE TONE (2026-11-01; the unit's, not a project's): an object of 64 bytes
-                                          * (before it) loads with these at their defaults */
+    uint8_t tilt, colour, blend, agc;    /* BRIDGE TONE (2026-11-01; the unit's, not a project's): an object of 64 bytes
+                                          * (before it) loads with these at their defaults; SILENCE > AGC (the byte spare
+                                          * before it, 0: OFF) */
 } vocset_t;
 #define VOCSET_V1 64u                    /* (the object's size before BRIDGE TONE) */
 _Static_assert(sizeof(vocset_t) == 68u && __builtin_offsetof(vocset_t, tilt) == VOCSET_V1, "vocset: the magic, 5 x 12 bytes, tone");
@@ -985,10 +986,10 @@ static void vocset_boot(void)                      /* after smkset_boot */
     int n = st_load(OBJ_VOCSET, &s, sizeof s);
     if ((n == (int)sizeof s || n == (int)VOCSET_V1) && s.magic == VOCSET_MAGIC) {
         if (n == (int)VOCSET_V1)                       /* (saved before BRIDGE TONE: its defaults) */
-            s.tilt = voc_tilt, s.colour = voc_colour, s.blend = voc_blend, s.rsv = 0;
+            s.tilt = voc_tilt, s.colour = voc_colour, s.blend = voc_blend, s.agc = 0;
         vocset = s;
         voc_tilt = (uint8_t)(s.tilt % VOC_TILT_N), voc_colour = (uint8_t)(s.colour % VOC_COLOUR_N);
-        voc_blend = (uint8_t)(s.blend & 1u);
+        voc_blend = (uint8_t)(s.blend & 1u), voc_agc = (uint8_t)(s.agc % VOC_AGC_N);
         if (s.cur.have) {
             vocv_put(&s.cur);
             uin_mode = (uint8_t)(s.cur.uin & 1u);
@@ -1000,7 +1001,7 @@ static void vocset_boot(void)                      /* after smkset_boot */
 static void vocset_save(void)
 {
     vocv_get(&vocset.cur);
-    vocset.tilt = voc_tilt, vocset.colour = voc_colour, vocset.blend = voc_blend;
+    vocset.tilt = voc_tilt, vocset.colour = voc_colour, vocset.blend = voc_blend, vocset.agc = voc_agc;
     if (memcmp(&vocset, &vocset_saved, sizeof vocset) && st_save(OBJ_VOCSET, &vocset, sizeof vocset) == 0)
         vocset_saved = vocset;
 }

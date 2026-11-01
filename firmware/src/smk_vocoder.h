@@ -89,9 +89,13 @@ static uint8_t voc_blend;                /* BLEND: 0 SUM, 1 FILL */
 #define VOC_COLOUR_N 11u
 #define VOC_REST_N 2205u                 /* COLOUR 0: the bands rest after 50 ms below THRESHOLD (44.1 kHz samples): ~6 of
                                           * the envelopes' release (~8 ms), each band then ~50 dB under where it began */
-#define VOC_AGC_T 18000                  /* the carrier AGC's ceiling (mean |x|, the track's scale): a saw voice at
-                                          * velocity ~85 passes (mean ~16000: a voice peaks at VOICE_FS x 2 at full, its
-                                          * mean half that), one at full comes down ~2.5 dB, a chord to this; to tune */
+/* SILENCE > AGC: the carrier AGC's ceiling (mean |x|, the track's scale; vocoder-ui-spec.md §7a). OFF (the default,
+ * 2026-11-01: at FULL the unit's summed carrier, the sequence and chords on track 3, sat at 25000 .. 45000 and the gain
+ * at -4 .. -8.6 dB the whole time: chords could not stack or cut through), PEAKS (the hottest stacks only), LIGHT (~2 dB
+ * on that playing), FULL (a saw voice at velocity ~85 passes, mean ~16000; one at full ~2.5 dB down, a chord to it) */
+#define VOC_AGC_N 4u
+static uint8_t voc_agc;
+static const int32_t VOC_AGC_TQ[VOC_AGC_N] = {0, 48000, 32000, 18000};
 #define VOC_BR_Q15 6300                  /* the bridging at full: the saws out at their own level (LEVEL 0 dB; every band
                                           * open at once: + 14.3 dB, measured, tests/smk_vocoder_test.c) */
 #define VOC_PINK_Q15 11105               /* the pink filter's rms over white: 2.95 (Kellet's, at 22050 Hz): back to 1 */
@@ -350,9 +354,10 @@ static void voc_process(int32_t *b, uint32_t n)
         voc.cf = to;
     }
     {   /* the carrier AGC (the VSM201's, no control): the gain that keeps the summed carrier's level (agc_env, its mean
-         * |x|) at most VOC_AGC_T, 1.0 under it; the gain follows it down in ~5 ms, back up in ~150 ms, ramped over the
+         * |x|) at most the ceiling (AGC), 1.0 under it; the gain follows it down in ~5 ms, back up in ~150 ms, ramped over the
          * block (no step) */
-        int32_t g = voc.agc_env > VOC_AGC_T ? (int32_t)(((int64_t)VOC_AGC_T * 32767) / voc.agc_env) : 32767;
+        int32_t ct = VOC_AGC_TQ[voc_agc % VOC_AGC_N];   /* (0: OFF, the gain back to 1.0 as from below the ceiling) */
+        int32_t g = ct && voc.agc_env > ct ? (int32_t)(((int64_t)ct * 32767) / voc.agc_env) : 32767;
         ag = voc.agc_g;
         g = ag + (int32_t)(((int64_t)(g - ag) * (g < ag ? VOC_AGC_DN : VOC_AGC_UP) + (g > ag ? 65535 : 0)) >> 16);   /* (up:
                                                                  * rounded up, so it gets back to 1.0) */
