@@ -23,10 +23,11 @@ enum {
     TS_TAIL,     /* the tail handed to core 1 (core 0's last section) */
     TS_FX,       /* the tail (core 1, alongside core 0's sections): the buses (chorus, delay, reverb) */
     TS_POST,     /* .. dust, punch-in, DJ filter, master, limiter, the stems staged */
-    TS_EVH,      /* inside pre_ev (seq.c events_block): the transport, the arranger, the routing, a panic */
+    TS_EVX,      /* inside pre_ev (seq.c events_block): the transport, the count-in, CLK OUT, the arranger, the fills */
+    TS_EVT,      /* .. the routing, a panic, the tracks' per-block checks (engine_block, the arp / KBD HOLD flags) */
     TS_EVK,      /* .. the keys (keyboard_block), the drum audition, the strums */
     TS_EVM,      /* .. USB / TRS MIDI in */
-    TS_EVS,      /* .. the sequencer (seq_tick, every track) */
+    TS_ES1, TS_ES2, TS_ES3, TS_ESD,   /* .. the sequencer (seq_tick): tracks 1..3, the drums */
     TS_EVA,      /* .. the metronome, ROLL, the arps, the clock */
     TS_U1, TS_U2, TS_U3, TS_UD,                         /* core 0's units: tracks 1..3, the drums (0: on core 1) */
     TS_C1,       /* core 1's job */
@@ -39,8 +40,9 @@ enum {
     TS_N
 };
 static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wait", "pre_go", "ana", "units",
-                                          "stem", "wait", "tail_go", "fx", "post", "ev_head", "ev_keys", "ev_midi",
-                                          "ev_seq", "ev_arp", "u1", "u2", "u3", "ud", "c1",
+                                          "stem", "wait", "tail_go", "fx", "post", "ev_xport", "ev_trk", "ev_keys",
+                                          "ev_midi", "ev_s1", "ev_s2", "ev_s3", "ev_sd", "ev_arp", "u1", "u2", "u3", "ud",
+                                          "c1",
                                           "c1_u1", "c1_u2", "c1_u3", "c1_ud", "c1_stem", "voc", "rest", "t5", "all"};
 static struct {
     uint32_t t, ut[2];                                  /* the section's start; the unit's, each core */

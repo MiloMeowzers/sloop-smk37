@@ -3426,6 +3426,7 @@ static void events_block(uint32_t n)
         fill_arm = 0;
     }
     fill_now = (uint8_t)(fill_held || fill_bar_on);
+    TIM_LAP(TS_EVX, te);
     {   /* GLO > SYSTEM > IN changed to or from CH n, or a channel of GLO > MIDI / DRUMS (2.6): what the other routing
          * started is released (its note-offs would go elsewhere now: stuck notes), the pedals and wheels too */
         static uint8_t route_was;
@@ -3502,7 +3503,7 @@ static void events_block(uint32_t n)
     }
     if (pr)
         arp_keep_req = 0;
-    TIM_LAP(TS_EVH, te);
+    TIM_LAP(TS_EVT, te);
     keyboard_block();
     drum_audition_poll();                             /* (the editor's DRUM SYNTH page) */
     strum_block(n);                                   /* (voice.c: the strummed notes due) */
@@ -3622,9 +3623,10 @@ static void events_block(uint32_t n)
         }
     }
     TIM_LAP(TS_EVM, te);
-    for (i = 0; i < NTRK; i++)
+    for (i = 0; i < NTRK; i++) {
         seq_tick(&trk[i], adv);
-    TIM_LAP(TS_EVS, te);
+        TIM_LAP(TS_ES1 + i, te);
+    }
     click_tick();
     roll_block(adv);
     for (i = 0; i < NPART; i++)
