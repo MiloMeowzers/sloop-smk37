@@ -50,16 +50,19 @@ static struct {
     uint32_t max[TS_N], worst[TS_N], over[TS_N];        /* each worst; the worst half's; the shedding halves' summed */
     uint32_t halves, n_over;
 } tim;
-#define TIM_START() (tim.t = fm1_ticks())
-#define TIM_MARK(s) do { uint32_t tm_ = fm1_ticks(); tim.cur[s] += tm_ - tim.t; tim.t = tm_; } while (0)
+/* TIMER4 read in place (FM1_T4_CNT, as fm1_ticks): the tail's code runs from RAM (fx.c RAMHOT), where a call to
+ * fm1_ticks in the flash is out of reach */
+#define TIM_NOW() FM1_T4_CNT
+#define TIM_START() (tim.t = TIM_NOW())
+#define TIM_MARK(s) do { uint32_t tm_ = TIM_NOW(); tim.cur[s] += tm_ - tim.t; tim.t = tm_; } while (0)
 #define TIM_ADD(s, t) (tim.cur[s] += (t))
 /* the units, on either core (mx: the core's sums, acc[0] core 0's): each core its own start and slots */
-#define TIM_U0(mx) (tim.ut[(mx) != &acc[0]] = fm1_ticks())
-#define TIM_UNIT(mx, k) do { uint32_t c_ = (mx) != &acc[0], tm_ = fm1_ticks(); \
+#define TIM_U0(mx) (tim.ut[(mx) != &acc[0]] = TIM_NOW())
+#define TIM_UNIT(mx, k) do { uint32_t c_ = (mx) != &acc[0], tm_ = TIM_NOW(); \
                              tim.cur[(c_ ? TS_C1U1 : TS_U1) + (k)] += tm_ - tim.ut[c_]; tim.ut[c_] = tm_; } while (0)
-#define TIM_VOC_T(v) uint32_t v = fm1_ticks()
-#define TIM_VOC(v) TIM_ADD(TS_VOC, fm1_ticks() - (v))
-#define TIM_LAP(s, v) do { uint32_t tm_ = fm1_ticks(); TIM_ADD(s, tm_ - (v)); (v) = tm_; } while (0)   /* (the tail) */
+#define TIM_VOC_T(v) uint32_t v = TIM_NOW()
+#define TIM_VOC(v) TIM_ADD(TS_VOC, TIM_NOW() - (v))
+#define TIM_LAP(s, v) do { uint32_t tm_ = TIM_NOW(); TIM_ADD(s, tm_ - (v)); (v) = tm_; } while (0)   /* (the tail) */
 static void tim_half(uint32_t all, uint32_t t5, uint32_t over)   /* audio.c, each half: all and t5 in ticks */
 {
     uint32_t i, s = 0;
