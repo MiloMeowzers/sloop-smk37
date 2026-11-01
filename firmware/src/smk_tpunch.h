@@ -204,6 +204,24 @@ static void tp_block(uint32_t n, int32_t want)
     if (tp.cur < 0 && want >= 0)
         tp_start(want);
     tp_live = 0;
+    if (tp.cur < 0 && !tp.g) {                          /* idle (none playing, none fading out): the rings' writes only;
+                                                         * with tp_md 0 tp_x reads nothing else (the crossfade's sines
+                                                         * a sample: not needed; vocoder-ui-spec.md §7d), the same
+                                                         * output */
+        for (i = 0; i < n; i++) {
+            if (tp.s == 1u || (tp.t & 1u)) {
+                uint32_t d = tp.ws - tp.own_lo;
+                tp_wr[i] = (uint8_t)(tp.own_n && d >= tp.own_n && d % tp.cap < tp.own_n ? 3u : 1u);
+                tp_wi[i] = (uint16_t)(tp.ws % tp.cap);
+                tp.ws++;
+            } else {
+                tp_wr[i] = 0;
+            }
+            tp_md[i] = 0;
+            tp.t++;
+        }
+        return;
+    }
     for (i = 0; i < n; i++) {
         int32_t fx = tp.cur, wg = 32767;
         uint32_t target = want == fx && fx >= 0 ? 32767u : 0u, last = tp.s == 1u || (tp.t & 1u);
