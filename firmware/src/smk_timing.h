@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* SMK-37, the vocoder build's console (SMK_TIMING): where an audio half's time goes, to find what lines up when it
  * sheds (audio.c: two halves in a row over 85 %, TIMER5 nested included). Core 0's mix_block in sections, each core's
- * units one by one, core 1's stems, the vocoder's synthesis, summed over the half's blocks; at the half's end (audio.c
+ * units one by one, core 1's stems, the vocoder's synthesis, the blocks' tails (fx.c MIX_PIPE: on core 1, alongside
+ * core 0's next block), summed over the half's blocks; at the half's end (audio.c
  * tim_half) each figure's worst, the worst half's own split, and the halves over the shed line: how many, their figures
  * summed. TIMER4 ticks; a section includes any TIMER5 nested in it (T5: the half's nested total). Console "timing"
  * (read, then cleared). Nothing in any other build */
@@ -13,13 +14,15 @@ enum {
     TS_PEV,      /* the block's start: the sums cleared, the throws, events (the sequencer, the arp, notes), duck */
     TS_PIN,      /* .. the USB voice in (uin_block) */
     TS_PTP,      /* .. the stems' punch-ins' timeline (tp_block) */
-    TS_PGO,      /* .. the analysis's buffers flipped, core 1's job handed over */
+    TS_TW,       /* .. waiting for the block before's tail (core 1), its output finished (audio.c mix_done) */
+    TS_PGO,      /* .. the sums cleared, the throws, the analysis's buffers flipped, core 1's job handed over */
     TS_ANA,      /* the vocoder's analysis */
     TS_UNITS,    /* core 0's units (U1..UD) */
     TS_STEM,     /* core 0's share of the stems */
     TS_WAIT,     /* waiting for core 1, adding its sums, the stems committed */
-    TS_FX,       /* the buses (chorus, delay, reverb) */
-    TS_POST,     /* dust, punch-in, DJ filter, master, limiter, the stems staged */
+    TS_TAIL,     /* the tail handed to core 1 (core 0's last section) */
+    TS_FX,       /* the tail (core 1, alongside core 0's sections): the buses (chorus, delay, reverb) */
+    TS_POST,     /* .. dust, punch-in, DJ filter, master, limiter, the stems staged */
     TS_U1, TS_U2, TS_U3, TS_UD,                         /* core 0's units: tracks 1..3, the drums (0: on core 1) */
     TS_C1,       /* core 1's job */
     TS_C1U1, TS_C1U2, TS_C1U3, TS_C1UD,                 /* .. its units (0: on core 0) */
@@ -30,9 +33,9 @@ enum {
     TS_ALL,      /* the whole half */
     TS_N
 };
-static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "pre_go", "ana", "units", "stem", "wait", "fx",
-                                          "post", "u1", "u2", "u3", "ud", "c1", "c1_u1", "c1_u2", "c1_u3", "c1_ud",
-                                          "c1_stem", "voc", "rest", "t5", "all"};
+static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wait", "pre_go", "ana", "units",
+                                          "stem", "wait", "tail_go", "fx", "post", "u1", "u2", "u3", "ud", "c1",
+                                          "c1_u1", "c1_u2", "c1_u3", "c1_ud", "c1_stem", "voc", "rest", "t5", "all"};
 static struct {
     uint32_t t, ut[2];                                  /* the section's start; the unit's, each core */
     uint32_t cur[TS_N];                                 /* this half's */
@@ -48,10 +51,11 @@ static struct {
                              tim.cur[(c_ ? TS_C1U1 : TS_U1) + (k)] += tm_ - tim.ut[c_]; tim.ut[c_] = tm_; } while (0)
 #define TIM_VOC_T(v) uint32_t v = fm1_ticks()
 #define TIM_VOC(v) TIM_ADD(TS_VOC, fm1_ticks() - (v))
+#define TIM_LAP(s, v) do { uint32_t tm_ = fm1_ticks(); TIM_ADD(s, tm_ - (v)); (v) = tm_; } while (0)   /* (the tail) */
 static void tim_half(uint32_t all, uint32_t t5, uint32_t over)   /* audio.c, each half: all and t5 in ticks */
 {
     uint32_t i, s = 0;
-    for (i = TS_PEV; i <= TS_POST; i++)
+    for (i = TS_PEV; i <= TS_TAIL; i++)                  /* (core 0's sections) */
         s += tim.cur[i];
     tim.cur[TS_REST] = all > s ? all - s : 0u;
     tim.cur[TS_T5] = t5;
@@ -77,4 +81,5 @@ static void tim_half(uint32_t all, uint32_t t5, uint32_t over)   /* audio.c, eac
 #define TIM_UNIT(mx, k) ((void)0)
 #define TIM_VOC_T(v)
 #define TIM_VOC(v) ((void)0)
+#define TIM_LAP(s, v) ((void)0)
 #endif

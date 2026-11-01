@@ -29,6 +29,13 @@ static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 
 {
     uint32_t i;
     mix_block(out, n);
+#if MIX_PIPE
+    (void)i;
+}
+static void mix_done(int32_t *out, uint32_t n)          /* fx.c: the block's tail done (core 1 or here): the rest of it */
+{
+    uint32_t i;
+#endif
 #if FELUCCA_UAC
 #if UAC6
     if (!stem_feed)                                     /* (SMK-37 stems: fx.c sets the block aside for uac6_tap) */
@@ -81,6 +88,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #endif
         for (b = 0; b < HALF_FRAMES; b += CTL)
             audio_block(o + 2u * b, CTL);
+#if MIX_PIPE
+        mix_tail_wait();                                /* (the last block's tail: the half whole before it plays) */
+#endif
         fm1_audio_ack_half();
         audio_halves++;
 #if FELUCCA_CPU1

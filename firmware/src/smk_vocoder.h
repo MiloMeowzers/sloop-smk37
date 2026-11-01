@@ -113,9 +113,11 @@ static const int32_t VOC_MIX_Q15[VOC_MIX_N] = {0, 4125, 8231, 16423, 32767};
 _Static_assert(VOC_HN >= 4u * VOC_HB && VOC_ON >= 2u * VOC_HB && !(VOC_HN & (VOC_HN - 1u)) && !(VOC_ON & (VOC_ON - 1u)),
                "the half-band's rings: powers of two, each its span");
 static int16_t voc_in[VOC_MAXN];         /* this block's voice: mono, Q15, the engines' rate */
+/* a band's two sections' state: x its input, y the first's output (the second's input: its history is y's, kept once), z
+ * the second's; each the last two */
+typedef struct { int32_t x1, x2, y1, y2, z1, z2; } voc_bq;
 static struct {                          /* the analysis (core 0, fx.c mix_block): the voice */
-    int32_t ax1[VOC_NB], ax2[VOC_NB], ay1[VOC_NB], ay2[VOC_NB];   /* section 1 */
-    int32_t bx1[VOC_NB], bx2[VOC_NB], by1[VOC_NB], by2[VOC_NB];   /* section 2 */
+    voc_bq a[VOC_NB];                    /* the bands */
     int32_t env[VOC_NB];                 /* the band envelopes, Q19 */
     int32_t vh[VOC_HN];                  /* the last samples at 44.1 kHz (the decimator) */
     uint32_t hw;
@@ -136,11 +138,15 @@ static struct {
 } voc_ab[2];
 static uint8_t voc_aw;
 static struct {                          /* the synthesis (track 3's core): the carrier */
-    int32_t sx1[VOC_NB], sx2[VOC_NB], sy1[VOC_NB], sy2[VOC_NB];   /* section 1 */
-    int32_t tx1[VOC_NB], tx2[VOC_NB], ty1[VOC_NB], ty2[VOC_NB];   /* section 2 */
+    voc_bq b[VOC_NB];                    /* the bands */
     int32_t ch[VOC_HN];                  /* the carrier's last samples at 44.1 kHz (the decimator) */
     int32_t oh[VOC_ON];                  /* the vocoded samples at 22.05 kHz (the interpolator) */
     uint32_t hw, ow;                     /* samples written into ch, into oh */
+    int32_t lh[VOC_HN];                  /* the low bands (0 .. VOC_LO - 1, at 11.025 kHz): the carrier at 22.05 (their
+                                          * decimator), */
+    int32_t lo[VOC_ON];                  /* .. their sum at 11.025 (their interpolator), */
+    uint32_t lw, low;                    /* .. samples written into lh, into lo, */
+    int32_t lo_odd;                      /* .. and their next 22.05 kHz sample (the half-band's, between two) */
     uint32_t blocks;                     /* (the console) */
     int32_t peak_out;
     int32_t cenv, uvg;                   /* the carrier's rectified level (the noise's), the noise's share (Q15) */
@@ -154,7 +160,7 @@ static struct {                          /* the synthesis (track 3's core): the 
 static uint8_t voc_cur;
 static int32_t voc_xg = 32767;
 
-/* one band-pass section of band k, rounded; b0 its input gain (VOC_B0[k], or VOC_B0S[k]: with the NORMAL weight) */
+/* one band-pass section of band k at 22.05 kHz, rounded; b0 its input gain (the host test: the analysis bank's response) */
 static inline int32_t voc_sec(int32_t x, int32_t b0, int32_t *x1, int32_t *x2, int32_t *y1, int32_t *y2, uint32_t k)
 {
     int64_t a = (int64_t)b0 * (x - *x2) + (int64_t)VOC_C1[k] * *y1 - (int64_t)VOC_A2[k] * *y2 + (1 << 29);
@@ -169,6 +175,14 @@ static inline int32_t voc_env(int32_t e, int32_t y)      /* full-wave rectified 
         t = 1 << 23;
     d = t - e;
     return e + (int32_t)(((int64_t)d * (d > 0 ? VOC_ENV_ATT : VOC_ENV_REL)) >> 16);
+}
+/* a band's two sections (each as voc_sec; the second's input history the first's output history) */
+static inline int32_t voc_band(int32_t x, int32_t b0a, int32_t b0b, int32_t c1, int32_t a2, voc_bq *s)
+{
+    int32_t y = (int32_t)(((int64_t)b0a * (x - s->x2) + (int64_t)c1 * s->y1 - (int64_t)a2 * s->y2 + (1 << 29)) >> 30);
+    int32_t z = (int32_t)(((int64_t)b0b * (y - s->y2) + (int64_t)c1 * s->z1 - (int64_t)a2 * s->z2 + (1 << 29)) >> 30);
+    s->x2 = s->x1, s->x1 = x, s->y2 = s->y1, s->y1 = y, s->z2 = s->z1, s->z1 = z;
+    return z;
 }
 /* the half-band, 2:1 down: the sample 2 HB behind the next, filtered (h: a history, w the samples written; Q15 taps) */
 static inline int32_t voc_dec(const int32_t *h, uint32_t w)
@@ -225,8 +239,7 @@ static void voc_analyse(uint32_t n)
         if (voa.rest)
             continue;                                    /* (a pause: the bands at rest, voc_ab cleared below) */
         for (k = 0; k < VOC_NB; k++) {
-            int32_t ya = voc_sec(v, VOC_B0[k], &voa.ax1[k], &voa.ax2[k], &voa.ay1[k], &voa.ay2[k], k);
-            ya = voc_sec(ya, VOC_B0[k], &voa.bx1[k], &voa.bx2[k], &voa.by1[k], &voa.by2[k], k);
+            int32_t ya = voc_band(v, VOC_B0[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], &voa.a[k]);
             voa.env[k] = voc_env(voa.env[k], ya);        /* (ya: Q19) */
             voc_ab[voc_aw].env[j][k] = voa.env[k] >> 4;  /* (Q15) */
             if (k >= VOC_HF0)
@@ -257,10 +270,7 @@ static void voc_analyse(uint32_t n)
     if (voa.rest && !voa.quiet) {
         voa.rest = 0;                                    /* speech (or COLOUR up): the bands run from the next block, from rest */
     } else if (!voa.rest && voa.quiet >= VOC_REST_N) {   /* a pause long enough: the bands rest, their state cleared */
-        memset(voa.ax1, 0, sizeof voa.ax1), memset(voa.ax2, 0, sizeof voa.ax2);
-        memset(voa.ay1, 0, sizeof voa.ay1), memset(voa.ay2, 0, sizeof voa.ay2);
-        memset(voa.bx1, 0, sizeof voa.bx1), memset(voa.bx2, 0, sizeof voa.bx2);
-        memset(voa.by1, 0, sizeof voa.by1), memset(voa.by2, 0, sizeof voa.by2);
+        memset(voa.a, 0, sizeof voa.a);
         memset(voa.env, 0, sizeof voa.env);
         voa.lp1 = voa.lp2 = voa.env0 = 0;
         voa.rest = 1;
@@ -271,40 +281,57 @@ static void voc_analyse(uint32_t n)
     voa.pause_blocks += voc_ab[voc_aw].speech == 0u;
 }
 
-/* one vocoded sample at 22.05 kHz from the carrier c (the track's scale), j the sample's place in the block: the
- * analysis's envelopes of the block before, each times cf (COLOUR in a pause, Q15), with the band's bridge bk[k] (TILT)
- * added (SUM) or the larger of the two (FILL); the bank's first section carries the VSM201's NORMAL weights. mode (chosen
- * a block, voc_process): VT_PLAIN no bridge and COLOUR full (speech: the loop as it was before BRIDGE TONE), VT_SUM the
- * bridge added, VT_ALL COLOUR and FILL too: the bridge costs only where it is heard */
+/* the synthesis bank's bands k .. k1 - 1 on the carrier sample c (the carrier's scale << 4), each times its envelope:
+ * the analysis's, times cf (COLOUR in a pause, Q15), with the band's bridge bk[k] (TILT) added (SUM) or the larger of the
+ * two (FILL); the first section carries the VSM201's NORMAL weights. mode (chosen a block, voc_process): VT_PLAIN no
+ * bridge and COLOUR full (speech: the loop as it was before BRIDGE TONE), VT_SUM the bridge added, VT_ALL COLOUR and FILL
+ * too: the bridge costs only where it is heard */
 enum { VT_PLAIN, VT_SUM, VT_ALL };
+static int64_t voc_bands(int32_t c, uint32_t k, uint32_t k1, const int32_t *env, const int32_t *bk, int32_t cf,
+                         uint32_t mode, uint32_t fill)
+{
+    int64_t sum = 0;
+    voc_bq *s = &voc.b[k];
+    if (mode == VT_PLAIN) {
+        for (; k < k1; k++, s++)
+            sum += (int64_t)voc_band(c, VOC_SB0S[k], VOC_SB0[k], VOC_SC1[k], VOC_SA2[k], s) * env[k];   /* Q15 */
+    } else if (mode == VT_SUM) {
+        for (; k < k1; k++, s++)
+            sum += (int64_t)voc_band(c, VOC_SB0S[k], VOC_SB0[k], VOC_SC1[k], VOC_SA2[k], s) * (env[k] + bk[k]);
+    } else {
+        for (; k < k1; k++, s++) {
+            int32_t e = (env[k] * cf) >> 15;
+            sum += (int64_t)voc_band(c, VOC_SB0S[k], VOC_SB0[k], VOC_SC1[k], VOC_SA2[k], s) *
+                   (fill ? (e > bk[k] ? e : bk[k]) : e + bk[k]);
+        }
+    }
+    return sum;
+}
+/* one vocoded sample at 22.05 kHz from the carrier c (the track's scale), j the sample's place in the block (the
+ * analysis's envelopes of the block before): the bank multirate (vocoder-ui-spec.md §7c), its bands from VOC_LO at
+ * 22.05 kHz, the ones below at 11.025, every other sample, behind a second 2:1 half-band and back up through it (the low
+ * bands ~1.3 ms later than the rest: under their own filters' delay, ~8 ms at 145 Hz) */
 static int32_t voc_tick(int32_t c, uint32_t j, const int32_t *bk, int32_t cf, uint32_t mode, uint32_t fill)
 {
     const int32_t *env = voc_ab[voc_aw ^ 1u].env[j];
-    int64_t sum = 0;
-    int32_t o;
-    uint32_t k;
+    int32_t o, lo;
     c <<= 4;
-    if (mode == VT_PLAIN) {
-        for (k = 0; k < VOC_NB; k++) {
-            int32_t ys = voc_sec(c, VOC_B0S[k], &voc.sx1[k], &voc.sx2[k], &voc.sy1[k], &voc.sy2[k], k);
-            ys = voc_sec(ys, VOC_B0[k], &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
-            sum += (int64_t)ys * env[k];                 /* x the envelope, Q15 (ys: the carrier's scale << 4) */
-        }
-    } else if (mode == VT_SUM) {
-        for (k = 0; k < VOC_NB; k++) {
-            int32_t ys = voc_sec(c, VOC_B0S[k], &voc.sx1[k], &voc.sx2[k], &voc.sy1[k], &voc.sy2[k], k);
-            ys = voc_sec(ys, VOC_B0[k], &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
-            sum += (int64_t)ys * (env[k] + bk[k]);       /* (+ the band's bridge) */
-        }
+    voc.lh[voc.lw++ & (VOC_HN - 1u)] = c;
+    if (!(voc.lw & 1u)) {                                /* two in: the low bands' sample, the two it makes */
+        int64_t a = 0;
+        uint32_t i;
+        voc.lo[voc.low++ & (VOC_ON - 1u)] =
+            (int32_t)(voc_bands(voc_dec(voc.lh, voc.lw), 0, VOC_LO, env, bk, cf, mode, fill) >> 19);
+        lo = voc.lo[(voc.low - 1u - VOC_HB) & (VOC_ON - 1u)];
+        for (i = 0; i < VOC_HB; i++)
+            a += (int64_t)VOC_HBT[i] * (voc.lo[(voc.low - 1u - VOC_HB - i) & (VOC_ON - 1u)] +
+                                        voc.lo[(voc.low - VOC_HB + i) & (VOC_ON - 1u)]);
+        voc.lo_odd = (int32_t)((a + (1 << 13)) >> 14);   /* (x 2: the zeros between) */
     } else {
-        for (k = 0; k < VOC_NB; k++) {
-            int32_t ys = voc_sec(c, VOC_B0S[k], &voc.sx1[k], &voc.sx2[k], &voc.sy1[k], &voc.sy2[k], k);
-            int32_t e = (env[k] * cf) >> 15;             /* (COLOUR, in a pause) */
-            ys = voc_sec(ys, VOC_B0[k], &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
-            sum += (int64_t)ys * (fill ? (e > bk[k] ? e : bk[k]) : e + bk[k]);
-        }
+        lo = voc.lo_odd;
     }
-    o = (int32_t)(((sum >> 19) * VOC_LV_Q8[voc_level % VOC_LEVEL_N]) >> 8);
+    o = (int32_t)((((voc_bands(c, VOC_LO, VOC_NB, env, bk, cf, mode, fill) >> 19) + lo) *
+                   VOC_LV_Q8[voc_level % VOC_LEVEL_N]) >> 8);
     if (voc_hf)
         o += (int32_t)(((int64_t)VOC_VS(voc_ab[voc_aw ^ 1u].hf[j] >> 4) * VOC_MIX_Q15[voc_hf % VOC_MIX_N]) >> 15);
     return o;

@@ -73,6 +73,10 @@ static void track_dist(track_t *t, int32_t *b, uint32_t n)
  * needs, so a hot kick or bass is already turned down when it comes. Before, the gain caught up in ~4 samples and the
  * first ones went through the tanh knee at up to 4x: a crackle on the beats with the MASTER up (in headphones most) */
 #define LIM_T 18000
+#ifndef MIX_PIPE                                /* the block's tail on core 1 while the next block starts (mix_block); the
+                                                 * vocoder build (tests/mix_split_test.c: on the host, one core or two) */
+#define MIX_PIPE (BOARD_SMK37 && SMK_UAC_IN_PROBE)
+#endif
 #ifndef SMK_MIX
 #define SMK_MIX BOARD_SMK37                     /* (tests/smk_mix_test.c: on the host) */
 #endif
@@ -1498,11 +1502,60 @@ static void texture_mix(int32_t *l, int32_t *r, uint32_t n)
         texture_reset(src);                             /* faded out: the new source from rest */
 }
 
+#if MIX_PIPE
+/* SMK-37, the vocoder build (smk37-devtools vocoder-ui-spec.md §7c): a block's tail (the buses, dust, the punch-ins,
+ * the DJ filter, the master, the limiter, the stems staged: mix_tail) on core 1 while core 0 starts the next block (its
+ * events, duck, the voice in, the stems' punch-in timeline: none of them read or write what the tail does). Core 0 waits
+ * for it before it clears the sums, sets the throws (the ECHO THROW's feedback: the buses read it) and hands core 1 the
+ * next block's units; a half's last block is waited for at the half's end (audio.c), so the output is as late as
+ * before. The tail of a block always before the next block's sums, as on one core: the same output, one core or two */
+static void mix_tail(int32_t *out, uint32_t n);
+static void mix_done(int32_t *out, uint32_t n);        /* audio.c: the block's output finished (the USB tap, the scope) */
+static struct {
+    int32_t *out;
+    uint32_t n;
+    uint8_t busy, c1;                                   /* a tail not yet waited for; on core 1 */
+} tail;
+static void cpu1_tail_job(uint32_t arg)                 /* core 1's job: the block's tail */
+{
+    uint32_t t0 = cpu1_ticks();
+    (void)arg;
+    mix_tail(tail.out, tail.n);
+    cpu1_job_ticks += cpu1_ticks() - t0;
+}
+static void mix_tail_wait(void)                         /* the tail in flight done (late: here, once), its output finished */
+{
+    if (!tail.busy)
+        return;
+    tail.busy = 0;
+    if (tail.c1) {
+        uint32_t w0 = cpu1_ticks();
+        if (cpu1_wait())                                /* core 1 did not finish in time: held from now on (cpu1.h); the
+                                                         * tail here (what it half did is this block's glitch) */
+            mix_tail(tail.out, tail.n);
+        cpu1_wait_ticks += cpu1_ticks() - w0;
+    }
+    mix_done(tail.out, tail.n);
+}
+static void mix_tail_go(int32_t *out, uint32_t n)
+{
+    tail.out = out, tail.n = n, tail.busy = 1;
+    tail.c1 = (uint8_t)(cpu1_on() && cpu1_units != 0 && cpu1_run(cpu1_tail_job, 0));   /* (2ND CORE OFF: here) */
+    if (!tail.c1)
+        mix_tail(out, n);
+}
+#endif
+
 static void mix_block(int32_t *out, uint32_t n)
 {
     uint32_t i, c1;
+#if !MIX_PIPE
     int32_t m0, m1, *mix_l = acc[0].l, *mix_r = acc[0].r;
+#else
+    int32_t *mix_l = acc[0].l, *mix_r = acc[0].r;
+#endif
     TIM_START();
+#if !MIX_PIPE
     for (i = 0; i < n; i++)
         acc[0].l[i] = acc[0].r[i] = acc[0].sc[i] = acc[0].sd[i] = acc[0].sr[i] = 0;
 #if BOARD_SMK37
@@ -1517,6 +1570,7 @@ static void mix_block(int32_t *out, uint32_t n)
         thr_rev = (q & 1u) ? (thr_rev + 1928 > 32767 ? 32767 : thr_rev + 1928) : (thr_rev > 1928 ? thr_rev - 1928 : 0);
         thr_dly = (q & 2u) ? (thr_dly + 1928 > 32767 ? 32767 : thr_dly + 1928) : (thr_dly > 1928 ? thr_dly - 1928 : 0);
     }
+#endif
     events_block(n);
     duck_block(n * (uint32_t)song.g[G_BPM]);
     TIM_MARK(TS_PEV);
@@ -1530,6 +1584,9 @@ static void mix_block(int32_t *out, uint32_t n)
          * timeline for this block */
         uint32_t mode = (stem_fx % SFX_N) | (uint32_t)stem_layout << 2;
         if (mode != tp.mode) {
+#if MIX_PIPE
+            mix_tail_wait();                            /* (the punch-in's ring and state: the tail's) */
+#endif
             tp_setup(stem_fx % SFX_N, stem_layout);
             tp.mode = (uint8_t)mode;
         }
@@ -1539,6 +1596,23 @@ static void mix_block(int32_t *out, uint32_t n)
     }
 #endif
     TIM_MARK(TS_PTP);
+#if MIX_PIPE
+    mix_tail_wait();                                    /* the block before's tail (core 1): done with the sums */
+    TIM_MARK(TS_TW);
+    for (i = 0; i < n; i++)
+        acc[0].l[i] = acc[0].r[i] = acc[0].sc[i] = acc[0].sd[i] = acc[0].sr[i] = 0;
+#if BOARD_SMK37
+    if (stem_feed) {                                    /* (a silent track writes nothing: its stem stays 0) */
+        memset(stem_syn, 0, sizeof stem_syn);
+        memset(stem_drum, 0, sizeof stem_drum);
+    }
+#endif
+    {   /* REV / ECHO THROW (2.6): as without the pipeline, after the tail (its buses read thr_dly) */
+        uint32_t q = thr_req | thr_ed;
+        thr_rev = (q & 1u) ? (thr_rev + 1928 > 32767 ? 32767 : thr_rev + 1928) : (thr_rev > 1928 ? thr_rev - 1928 : 0);
+        thr_dly = (q & 2u) ? (thr_dly + 1928 > 32767 ? 32767 : thr_dly + 1928) : (thr_dly > 1928 ? thr_dly - 1928 : 0);
+    }
+#endif
 #if SMK_UAC_IN_PROBE
     {   /* the vocoder's analysis (smk_vocoder.h): on this core, into the buffer track 3's synthesis reads next block */
         static uint8_t ana_on;
@@ -1648,13 +1722,28 @@ static void mix_block(int32_t *out, uint32_t n)
     texture_mix(mix_l, mix_r, n);                       /* GLO > TEXTURE (2.6): the bed, dry; after both cores' units
                                                          * (what it adds does not depend on them: the same sum) */
 #endif
+#if MIX_PIPE
+    (void)mix_l, (void)mix_r;
+    mix_tail_go(out, n);                                /* the rest on core 1, while the next block starts */
+    TIM_MARK(TS_TAIL);
+}
+static void mix_tail(int32_t *out, uint32_t n)
+{
+    uint32_t i;
+    int32_t m0, m1, *mix_l = acc[0].l, *mix_r = acc[0].r;
+    TIM_VOC_T(tt);                                      /* (the console's timing: on either core, its own clock) */
+#endif
     punch_freeze_feed(acc[0].sr, mix_l, mix_r, n);     /* punch-in FREEZE: the whole dry mix into the held reverb */
     fx_buses(acc[0].sc, acc[0].sd, acc[0].sr, wet_l, wet_r, n);
     for (i = 0; i < n; i++) {
         mix_l[i] += wet_l[i];
         mix_r[i] += wet_r[i];
     }
+#if MIX_PIPE
+    TIM_LAP(TS_FX, tt);
+#else
     TIM_MARK(TS_FX);
+#endif
     dust_process(mix_l, mix_r, n);
     punch_process(mix_l, mix_r, n);
     djf_process(mix_l, mix_r, n);
@@ -1735,5 +1824,9 @@ static void mix_block(int32_t *out, uint32_t n)
             }
         }
     }
+#if MIX_PIPE
+    TIM_LAP(TS_POST, tt);
+#else
     TIM_MARK(TS_POST);
+#endif
 }

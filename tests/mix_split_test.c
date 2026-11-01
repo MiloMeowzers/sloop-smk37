@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Andre Rezemini (the SLOOP dualcore branch, github.com/andrerezemini/sloop-lab) */
 /* The render split over the two cores (fx.c mix_units): the same output, bit for bit, whatever the split.
+ * Also built with -DMIX_PIPE=1 (tests/cpu1_modes.sh; the SMK-37 vocoder build's pipeline, fx.c mix_tail): each block's
+ * tail on core 1 while the next block starts, waited for at the end of a half (8 blocks, as audio.c); the UI's changes
+ * between the halves, as on the device (the main loop runs between the audio ISRs, when no tail is in flight).
  * Each scene renders about two seconds with cpu1_units = 0 (every unit on this core, as SLOOP 2.5 renders) and
  * again with every other split: each unit alone, pairs, all four, the firmware's own choice (-1); each render
  * in a fresh fork()ed child of a process that never touched the DSP state, as tests/regress.c does. The FNV-1a
@@ -207,26 +210,49 @@ static void scene_block(uint32_t s, uint32_t b)          /* what the UI would do
 }
 
 typedef struct { uint64_t hash; uint32_t jobs, timeouts; } res_t;
+#if MIX_PIPE
+static void mix_done(int32_t *out, uint32_t n) { (void)out, (void)n; }   /* (audio.c's: the output finished) */
+#define HALF_B 8u                                        /* blocks a half (audio.c: HALF_FRAMES / CTL) */
+#endif
+static void hash_block(res_t *r, const int32_t *o)
+{
+    uint32_t i, k;
+    for (i = 0; i < 2u * CTL; i++) {
+        uint32_t u = (uint32_t)o[i];
+        for (k = 0; k < 4u; k++) {
+            r->hash ^= (u >> (8u * k)) & 0xFFu;
+            r->hash *= 0x100000001B3ull;
+        }
+    }
+}
 
 static res_t render(uint32_t s, int32_t mask)
 {
     res_t r = {0xcbf29ce484222325ull, 0, 0};
-    uint32_t b, i, k;
+    uint32_t b;
     cpu1_host_mode();                                    /* init: the env (CORES, CHAOS, CPU1_TIMEOUT_AT) */
     cpu1_units = mask;
     scene_setup(s);
+#if MIX_PIPE
+    for (b = 0; b < BLOCKS; b += HALF_B) {
+        int32_t o[HALF_B][2 * CTL];
+        uint32_t j, nb = BLOCKS - b < HALF_B ? BLOCKS - b : HALF_B;
+        for (j = 0; j < nb; j++)
+            scene_block(s, b + j);                       /* (the UI: between the halves) */
+        for (j = 0; j < nb; j++)
+            mix_block(o[j], CTL);
+        mix_tail_wait();                                 /* (audio.c: the half's last tail) */
+        for (j = 0; j < nb; j++)
+            hash_block(&r, o[j]);
+    }
+#else
     for (b = 0; b < BLOCKS; b++) {
         int32_t o[2 * CTL];
         scene_block(s, b);
         mix_block(o, CTL);
-        for (i = 0; i < 2u * CTL; i++) {
-            uint32_t u = (uint32_t)o[i];
-            for (k = 0; k < 4u; k++) {
-                r.hash ^= (u >> (8u * k)) & 0xFFu;
-                r.hash *= 0x100000001B3ull;
-            }
-        }
+        hash_block(&r, o);
     }
+#endif
     r.jobs = cpu1_host_jobs();
     r.timeouts = cpu1_host_timeouts();
     return r;
