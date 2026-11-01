@@ -114,6 +114,37 @@ int main(void)
     check(sizeof dly_buf == DLY_LEN, "the delay line: 32768 samples (64 KB), the same 1.49 s");
     check(delay_back(1, 120), "the delay at 22.05 kHz: back after 1/8 at 120 BPM, at its level");
     check(delay_back(8, 61), "the delay at 22.05 kHz: back after its longest (1/4D, 61 BPM), at its level");
+    {   /* the buses skipped when idle (fx.c fxb_run): a burst into all three, then silence: each stops once its tail is
+         * gone, its output then exactly 0; a send starts it again in that block */
+        static int32_t in[32], zero[32], wl[32], wr[32];
+        uint32_t t, i, b, nz = 0, idle;
+        song.g[G_BPM] = 120;
+        song.g[G_DTIME] = 1;
+        song.g[G_DFDBK] = 64;
+        song.g[G_DMIX] = 127;
+        song.g[G_RSIZE] = 0;
+        for (t = 0; t < 6u * 44100u; t += 32u) {
+            for (i = 0; i < 32u; i++)
+                in[i] = t + i < 400u ? 8000 : 0;
+            fx_buses(in, in, in, wl, wr, 32);
+        }
+        for (idle = 1, b = 0; b < 3u; b++)
+            idle &= fx.idle_n[b] == FXB_LEN[b];
+        check(idle, "the buses: idle once their tails are gone (6 s after a burst)");
+        fx_buses(zero, zero, zero, wl, wr, 32);
+        for (i = 0; i < 32u; i++)
+            nz |= wl[i] | wr[i] | rev_l[i] | rev_r[i];
+        check(!nz, "... their output then exactly 0");
+        for (i = 0; i < 32u; i++)
+            in[i] = 8000;
+        fx_buses(zero, in, zero, wl, wr, 32);
+        check(fx.idle_n[1] == 0u && fx.idle_n[0] == FXB_LEN[0] && fx.idle_n[2] == FXB_LEN[2],
+              "a delay send starts the delay in that block, the others stay idle");
+        rev_frz = 1;
+        fx_buses(zero, zero, zero, wl, wr, 32);
+        rev_frz = 0;
+        check(fx.idle_n[2] == FXB_LEN[2], "FREEZE runs the reverb (nothing in it: still quiet)");
+    }
     printf("smk lean: %s\n", fails ? "FAIL" : "all ok");
     return fails != 0;
 }

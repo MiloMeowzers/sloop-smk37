@@ -30,6 +30,9 @@ static struct {
 #endif
     uint16_t line_i[4], ap_i[2];
     int32_t line_lp[4];
+#if SMK_VOC_LEAN
+    uint32_t idle_n[3];                                 /* the buses' quiet run: samples in silence, the output quiet */
+#endif
 } fx;
 static volatile uint8_t rev_frz;         /* punch-in FREEZE (punch.c): the reverb holds, no loss, no damping */
 static int32_t rev_l[CTL], rev_r[CTL];   /* the reverb's own return of this block (FREEZE plays it) */
@@ -284,6 +287,30 @@ static uint32_t delay_samples(void)
 /* process the three buses for one block; sends in, wet out (stereo). The LFOs (chorus, reverb line)
  * are computed per block and ramped: no sine per sample */
 #define HALF0(v) ((v) >= 0 ? (v) >> 1 : -(-(v) >> 1))   /* v / 2 towards zero */
+#if SMK_VOC_LEAN
+/* the vocoder build (smk37-devtools vocoder-ui-spec.md §7): a bus (0 chorus, 1 delay, 2 reverb) is skipped for a block
+ * once its input has been silent and its output quiet (|x| <= 4, -78 dB) for the whole of its line: nothing is left
+ * in it to hear. Anything sent to it starts it again in that block, from what is left (inaudible); FREEZE keeps the
+ * reverb running. Its CPU goes to the voices (the sends at 0: dry stems) */
+static const uint32_t FXB_LEN[3] = {CHO_LEN, DLY_LEN, sizeof rev_line / 2u + sizeof rev_ap / 2u};
+static uint32_t fxb_run(uint32_t b, const int32_t *in, uint32_t n, uint32_t *loud)   /* 1: bus b runs this block */
+{
+    uint32_t i;
+    int32_t o = 0;
+    for (i = 0; i < n; i++)
+        o |= in[i];
+    *loud = o != 0;
+    return o != 0 || fx.idle_n[b] < FXB_LEN[b];
+}
+static void fxb_done(uint32_t b, uint32_t run, uint32_t loud, uint32_t n)
+{
+    if (run)
+        fx.idle_n[b] = loud ? 0u : fx.idle_n[b] + n > FXB_LEN[b] ? FXB_LEN[b] : fx.idle_n[b] + n;
+}
+#define FXB_LOUD(l, x) ((l) |= (uint32_t)((x) + 4) > 8u)
+#else
+#define FXB_LOUD(l, x) ((void)0)
+#endif
 static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet_l,
                      int32_t *wet_r, uint32_t n)
 {
@@ -297,6 +324,13 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
                                                          * loss, rounded to nearest; 0: as always, bit for bit) */
     int32_t cdepth = song.g[G_CDEPTH] * 6;
     int32_t ca0, ca1, cb0, cb1, ma, mb, dca, dcb;
+#if SMK_VOC_LEAN
+    uint32_t lc, ld, lr, rc = fxb_run(0, cho_in, n, &lc), rd = fxb_run(1, dly_in, n, &ld), rr = fxb_run(2, rev_in, n, &lr);
+    if (rev_frz)
+        rr = 1;                                         /* (FREEZE: the reverb holds what is in it) */
+#else
+    const uint32_t rc = 1, rd = 1, rr = 1;
+#endif
     const uint32_t L0 = REV_LINE[0] + REV_MOD + 2u, B1 = L0, B2 = B1 + REV_LINE[1], B3 = B2 + REV_LINE[2];
     {   /* the chorus' two read points (Q8 samples back) and line 0's extra length, at both ends of the block */
         int32_t s0 = osc_sine(fx.cho_ph), s1, m0 = osc_sine(fx.rev_ph), m1;
@@ -312,93 +346,113 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
     for (i = 0; i < n; i++) {
         int32_t yl, yr, x, a, o0, o1, o2, o3;
         /* chorus: two modulated short delays, 5..15 ms, the LFO half a turn apart: left and right move apart */
-        cho_buf[fx.cho_w & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
-        {
-            int32_t r0 = ca0 + dca * (int32_t)i, r1 = cb0 + dcb * (int32_t)i;
-            uint32_t i0 = (uint32_t)r0 >> 8, i1 = (uint32_t)r1 >> 8;
-            int32_t c0 = cho_buf[(fx.cho_w - i0) & (CHO_LEN - 1u)], c1 = cho_buf[(fx.cho_w - i0 - 1u) & (CHO_LEN - 1u)];
-            int32_t d0 = cho_buf[(fx.cho_w - i1) & (CHO_LEN - 1u)], d1 = cho_buf[(fx.cho_w - i1 - 1u) & (CHO_LEN - 1u)];
-            yl = (c0 + (((c1 - c0) * (r0 & 255)) >> 8)) << 1;
-            yr = (d0 + (((d1 - d0) * (r1 & 255)) >> 8)) << 1;
+        yl = yr = 0;
+        if (rc) {
+            cho_buf[fx.cho_w & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
+            {
+                int32_t r0 = ca0 + dca * (int32_t)i, r1 = cb0 + dcb * (int32_t)i;
+                uint32_t i0 = (uint32_t)r0 >> 8, i1 = (uint32_t)r1 >> 8;
+                int32_t c0 = cho_buf[(fx.cho_w - i0) & (CHO_LEN - 1u)], c1 = cho_buf[(fx.cho_w - i0 - 1u) & (CHO_LEN - 1u)];
+                int32_t d0 = cho_buf[(fx.cho_w - i1) & (CHO_LEN - 1u)], d1 = cho_buf[(fx.cho_w - i1 - 1u) & (CHO_LEN - 1u)];
+                yl = (c0 + (((c1 - c0) * (r0 & 255)) >> 8)) << 1;
+                yr = (d0 + (((d1 - d0) * (r1 & 255)) >> 8)) << 1;
+            }
+            fx.cho_w++;
+            FXB_LOUD(lc, yl);
+            FXB_LOUD(lc, yr);
         }
-        fx.cho_w++;
         /* delay with a low-passed feedback (in the middle) */
+        if (rd) {
 #if SMK_VOC_LEAN
-        {   /* (positions at 44.1 kHz, a stored sample holding two: read between two, store a pair's mean) */
-            uint32_t q = fx.dly_w - dl;
-            int32_t w = dly_buf[(q >> 1) & (DLY_STORE - 1u)];
-            x = q & 1u ? (w + dly_buf[((q >> 1) + 1u) & (DLY_STORE - 1u)]) >> 1 : w;
-            fx.dly_lp += mulq15(x - fx.dly_lp, col);
-            w = (dly_in[i] >> 1) + mulq15(fx.dly_lp, fb);
-            if (fx.dly_w & 1u)
-                dly_buf[(fx.dly_w >> 1) & (DLY_STORE - 1u)] = (int16_t)clamp((fx.dly_acc + w) >> 1, -32768, 32767);
-            else
-                fx.dly_acc = w;
-        }
+            {   /* (positions at 44.1 kHz, a stored sample holding two: read between two, store a pair's mean) */
+                uint32_t q = fx.dly_w - dl;
+                int32_t w = dly_buf[(q >> 1) & (DLY_STORE - 1u)];
+                x = q & 1u ? (w + dly_buf[((q >> 1) + 1u) & (DLY_STORE - 1u)]) >> 1 : w;
+                fx.dly_lp += mulq15(x - fx.dly_lp, col);
+                w = (dly_in[i] >> 1) + mulq15(fx.dly_lp, fb);
+                if (fx.dly_w & 1u)
+                    dly_buf[(fx.dly_w >> 1) & (DLY_STORE - 1u)] = (int16_t)clamp((fx.dly_acc + w) >> 1, -32768, 32767);
+                else
+                    fx.dly_acc = w;
+            }
 #else
-        x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
-        fx.dly_lp += mulq15(x - fx.dly_lp, col);
-        dly_buf[fx.dly_w & (DLY_LEN - 1u)] =
-            (int16_t)clamp((dly_in[i] >> 1) + mulq15(fx.dly_lp, fb), -32768, 32767);
+            x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
+            fx.dly_lp += mulq15(x - fx.dly_lp, col);
+            dly_buf[fx.dly_w & (DLY_LEN - 1u)] =
+                (int16_t)clamp((dly_in[i] >> 1) + mulq15(fx.dly_lp, fb), -32768, 32767);
 #endif
-        fx.dly_w++;
-        x = mulq15(x << 1, dmix);
-        yl += x;
-        yr += x;
-        /* reverb: two diffusers, then the four lines */
-        a = mulq15(rev_in[i], 13000);
-        {
-            int16_t *c = rev_ap;
-            for (k = 0; k < 2u; k++) {
-                int32_t b = c[fx.ap_i[k]], v = a + (b >> 1);
-                c[fx.ap_i[k]] = (int16_t)clamp(v, -32768, 32767);
-                a = b - (v >> 1);
-                if (++fx.ap_i[k] >= REV_AP[k])
-                    fx.ap_i[k] = 0;
-                c += REV_AP[k];
-            }
+            fx.dly_w++;
+            FXB_LOUD(ld, x);
+            x = mulq15(x << 1, dmix);
+            yl += x;
+            yr += x;
         }
-        {
-            int16_t *c = rev_line;
-            int32_t s0, s1, d0, d1, r = ma + (((mb - ma) * (int32_t)i) >> CTL_LOG2);   /* (between the two: never below 0) */
-            uint32_t ri = fx.line_i[0] + ((uint32_t)r >> 8), rj;
-            if (ri >= L0)                                   /* (the oldest sample is at line_i: reading */
-                ri -= L0;                                   /* past it shortens line 0 by 0..2 REV_MOD) */
-            rj = ri + 1u >= L0 ? 0u : ri + 1u;
-            o0 = c[ri] + (((c[rj] - c[ri]) * (r & 255) + frnd) >> 8);
-            o1 = c[B1 + fx.line_i[1]];
-            o2 = c[B2 + fx.line_i[2]];
-            o3 = c[B3 + fx.line_i[3]];
-            s0 = o0 + o1, d0 = o0 - o1, s1 = o2 + o3, d1 = o2 - o3;   /* Hadamard / 2: each feeds all four */
-            if (!frnd) {
-                fx.line_lp[0] += mulq15(((s0 + s1) >> 1) - fx.line_lp[0], lpk);
-                fx.line_lp[1] += mulq15(((d0 + d1) >> 1) - fx.line_lp[1], lpk);
-                fx.line_lp[2] += mulq15(((s0 - s1) >> 1) - fx.line_lp[2], lpk);
-                fx.line_lp[3] += mulq15(((d0 - d1) >> 1) - fx.line_lp[3], lpk);
-                c[fx.line_i[0]] = (int16_t)clamp(mulq15(fx.line_lp[0], g) + a, -32768, 32767);
-                c[B1 + fx.line_i[1]] = (int16_t)clamp(mulq15(fx.line_lp[1], g) - a, -32768, 32767);
-                c[B2 + fx.line_i[2]] = (int16_t)clamp(mulq15(fx.line_lp[2], g) + a, -32768, 32767);
-                c[B3 + fx.line_i[3]] = (int16_t)clamp(mulq15(fx.line_lp[3], g) - a, -32768, 32767);
-            } else {                                    /* FREEZE: a loop gain of exactly 1, so no rounding that
-                                                         * leans one way (a DC that would grow while held): the
-                                                         * halves towards zero, no damping or gain multiply */
-                fx.line_lp[0] = HALF0(s0 + s1), fx.line_lp[1] = HALF0(d0 + d1);
-                fx.line_lp[2] = HALF0(s0 - s1), fx.line_lp[3] = HALF0(d0 - d1);
-                c[fx.line_i[0]] = (int16_t)clamp(fx.line_lp[0] + a, -32768, 32767);
-                c[B1 + fx.line_i[1]] = (int16_t)clamp(fx.line_lp[1] - a, -32768, 32767);
-                c[B2 + fx.line_i[2]] = (int16_t)clamp(fx.line_lp[2] + a, -32768, 32767);
-                c[B3 + fx.line_i[3]] = (int16_t)clamp(fx.line_lp[3] - a, -32768, 32767);
+        /* reverb: two diffusers, then the four lines */
+        o0 = o1 = o2 = o3 = 0;
+        if (rr) {
+            a = mulq15(rev_in[i], 13000);
+            {
+                int16_t *c = rev_ap;
+                for (k = 0; k < 2u; k++) {
+                    int32_t b = c[fx.ap_i[k]], v = a + (b >> 1);
+                    c[fx.ap_i[k]] = (int16_t)clamp(v, -32768, 32767);
+                    a = b - (v >> 1);
+                    if (++fx.ap_i[k] >= REV_AP[k])
+                        fx.ap_i[k] = 0;
+                    c += REV_AP[k];
+                }
             }
-            if (++fx.line_i[0] >= L0) fx.line_i[0] = 0;
-            if (++fx.line_i[1] >= REV_LINE[1]) fx.line_i[1] = 0;
-            if (++fx.line_i[2] >= REV_LINE[2]) fx.line_i[2] = 0;
-            if (++fx.line_i[3] >= REV_LINE[3]) fx.line_i[3] = 0;
+            {
+                int16_t *c = rev_line;
+                int32_t s0, s1, d0, d1, r = ma + (((mb - ma) * (int32_t)i) >> CTL_LOG2);   /* (between the two: never below 0) */
+                uint32_t ri = fx.line_i[0] + ((uint32_t)r >> 8), rj;
+                if (ri >= L0)                                   /* (the oldest sample is at line_i: reading */
+                    ri -= L0;                                   /* past it shortens line 0 by 0..2 REV_MOD) */
+                rj = ri + 1u >= L0 ? 0u : ri + 1u;
+                o0 = c[ri] + (((c[rj] - c[ri]) * (r & 255) + frnd) >> 8);
+                o1 = c[B1 + fx.line_i[1]];
+                o2 = c[B2 + fx.line_i[2]];
+                o3 = c[B3 + fx.line_i[3]];
+                s0 = o0 + o1, d0 = o0 - o1, s1 = o2 + o3, d1 = o2 - o3;   /* Hadamard / 2: each feeds all four */
+                if (!frnd) {
+                    fx.line_lp[0] += mulq15(((s0 + s1) >> 1) - fx.line_lp[0], lpk);
+                    fx.line_lp[1] += mulq15(((d0 + d1) >> 1) - fx.line_lp[1], lpk);
+                    fx.line_lp[2] += mulq15(((s0 - s1) >> 1) - fx.line_lp[2], lpk);
+                    fx.line_lp[3] += mulq15(((d0 - d1) >> 1) - fx.line_lp[3], lpk);
+                    c[fx.line_i[0]] = (int16_t)clamp(mulq15(fx.line_lp[0], g) + a, -32768, 32767);
+                    c[B1 + fx.line_i[1]] = (int16_t)clamp(mulq15(fx.line_lp[1], g) - a, -32768, 32767);
+                    c[B2 + fx.line_i[2]] = (int16_t)clamp(mulq15(fx.line_lp[2], g) + a, -32768, 32767);
+                    c[B3 + fx.line_i[3]] = (int16_t)clamp(mulq15(fx.line_lp[3], g) - a, -32768, 32767);
+                } else {                                    /* FREEZE: a loop gain of exactly 1, so no rounding that
+                                                             * leans one way (a DC that would grow while held): the
+                                                             * halves towards zero, no damping or gain multiply */
+                    fx.line_lp[0] = HALF0(s0 + s1), fx.line_lp[1] = HALF0(d0 + d1);
+                    fx.line_lp[2] = HALF0(s0 - s1), fx.line_lp[3] = HALF0(d0 - d1);
+                    c[fx.line_i[0]] = (int16_t)clamp(fx.line_lp[0] + a, -32768, 32767);
+                    c[B1 + fx.line_i[1]] = (int16_t)clamp(fx.line_lp[1] - a, -32768, 32767);
+                    c[B2 + fx.line_i[2]] = (int16_t)clamp(fx.line_lp[2] + a, -32768, 32767);
+                    c[B3 + fx.line_i[3]] = (int16_t)clamp(fx.line_lp[3] - a, -32768, 32767);
+                }
+                if (++fx.line_i[0] >= L0) fx.line_i[0] = 0;
+                if (++fx.line_i[1] >= REV_LINE[1]) fx.line_i[1] = 0;
+                if (++fx.line_i[2] >= REV_LINE[2]) fx.line_i[2] = 0;
+                if (++fx.line_i[3] >= REV_LINE[3]) fx.line_i[3] = 0;
+            }
+            FXB_LOUD(lr, o0);
+            FXB_LOUD(lr, o1);
+            FXB_LOUD(lr, o2);
+            FXB_LOUD(lr, o3);
         }
         wet_l[i] = yl + o0 + o2;
         wet_r[i] = yr + o1 - o3;
         rev_l[i] = o0 + o2;
         rev_r[i] = o1 - o3;
     }
+#if SMK_VOC_LEAN
+    fxb_done(0, rc, lc, n);
+    fxb_done(1, rd, ld, n);
+    fxb_done(2, rr, lr, n);
+#endif
 }
 
 /* one block of the whole mix (shared with tests/hostsim.c): events -> each part
