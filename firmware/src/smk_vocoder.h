@@ -145,6 +145,8 @@ static struct {                          /* the synthesis (track 3's core): the 
     int32_t peak_out;
     int32_t cenv, uvg;                   /* the carrier's rectified level (the noise's), the noise's share (Q15) */
     int32_t agc_env, agc_g;              /* the carrier AGC: its level (mean |x|), its gain (Q15, 1.0 = 32767) */
+    int32_t bk[VOC_NB], cf;              /* BRIDGE TONE as the last block ended: each band's bridge, COLOUR's factor (the
+                                          * next block ramps from them: no zipper) */
     int32_t pk0, pk1, pk2;               /* the pink filter */
     uint32_t rnd;
 } voc;
@@ -183,6 +185,7 @@ static void voc_reset(void)              /* the synthesis afresh (the state chan
     memset(&voc, 0, sizeof voc);
     voc.rnd = 0x2545F491u;
     voc.agc_g = 32767;
+    voc.cf = 32767;
 }
 static int32_t voc_log2_q8(uint32_t x)   /* log2 x, Q8 (x > 0); once a block: a loop, no clz */
 {
@@ -301,24 +304,36 @@ static void voc_process(int32_t *b, uint32_t n)
     uint32_t vm = voc_vmode % VV_N, br = voc_bridge % VOC_BR_N != 0u;
     int32_t badd = br ? (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * voc_br_q15(voc_bridge % VOC_BR_N) >> 15) *
                                   VOC_BR_Q15 >> 15) : 0;
-    int32_t bk[VOC_NB], cf, ag, dag;
+    int32_t bk[VOC_NB], dbk[VOC_NB], cf, dcf, ag, dag, m = (int32_t)(n / 2u);
     uint32_t fill = voc_blend & 1u;
     int32_t uvt = vm == VV_UNVOICED ? 32767 : vm == VV_VOICED ? 0 :                 /* the noise's share wanted */
                   voc_ab[voc_aw ^ 1u].unvoiced && (!br || voc_ab[voc_aw ^ 1u].speech) ? 32767 : 0;
     voc.blocks++;
-    {   /* BRIDGE TONE: the bridge per band (TILT), the envelopes' share in a pause (COLOUR: full in speech) */
+    {   /* BRIDGE TONE: the bridge per band (TILT), the envelopes' share in a pause (COLOUR: full in speech), each
+         * ramped over the block from where the last one ended (the pause value moves block by block: a step there is a
+         * click, loudest where the carrier is strongest, the low bands a negative TILT lifts) */
         const uint16_t *tq = VOC_TILT_Q12[voc_tilt % VOC_TILT_N];
-        int32_t col = voc_colour >= VOC_COLOUR_N - 1u ? 32767 : (int32_t)voc_colour * 3277;
-        for (j = 0; j < VOC_NB; j++)
-            bk[j] = (badd * (int32_t)tq[j]) >> 12;
-        cf = 32767 - (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * (32767 - col)) >> 15);
+        int32_t col = voc_colour >= VOC_COLOUR_N - 1u ? 32767 : (int32_t)voc_colour * 3277, to;
+        if (m < 1)
+            m = 1;
+        for (j = 0; j < VOC_NB; j++) {
+            to = (badd * (int32_t)tq[j]) >> 12;
+            bk[j] = voc.bk[j];
+            dbk[j] = (to - bk[j]) / m;
+            voc.bk[j] = to;
+        }
+        to = 32767 - (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * (32767 - col)) >> 15);
+        cf = voc.cf;
+        dcf = (to - cf) / m;
+        voc.cf = to;
     }
     {   /* the carrier AGC (the VSM201's, no control): the gain that keeps the summed carrier's level (agc_env, its mean
          * |x|) at most VOC_AGC_T, 1.0 under it; the gain follows it down in ~5 ms, back up in ~150 ms, ramped over the
          * block (no step) */
         int32_t g = voc.agc_env > VOC_AGC_T ? (int32_t)(((int64_t)VOC_AGC_T * 32767) / voc.agc_env) : 32767;
         ag = voc.agc_g;
-        g = ag + (int32_t)(((int64_t)(g - ag) * (g < ag ? VOC_AGC_DN : VOC_AGC_UP)) >> 16);
+        g = ag + (int32_t)(((int64_t)(g - ag) * (g < ag ? VOC_AGC_DN : VOC_AGC_UP) + (g > ag ? 65535 : 0)) >> 16);   /* (up:
+                                                                 * rounded up, so it gets back to 1.0) */
         if (g > 32767)
             g = 32767;
         dag = n >= 2u ? (g - ag) / (int32_t)(n / 2u) : 0;
@@ -351,6 +366,9 @@ static void voc_process(int32_t *b, uint32_t n)
                 c = br && vm == VV_AUTO ? c + (int32_t)(((int64_t)nz * voc.uvg) >> 15)
                                         : c + (int32_t)(((int64_t)(nz - c) * voc.uvg) >> 15);
             }
+            for (j = 0; j < VOC_NB; j++)
+                bk[j] += dbk[j];
+            cf += dcf;
             d = voc_tick(c, i >> 1, bk, cf, fill);
         }
         voc.oh[voc.ow++ & (VOC_ON - 1u)] = d;

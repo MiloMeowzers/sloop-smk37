@@ -17,6 +17,8 @@
  *              and SUM; TILT +3 dB an octave lifts the bridge's top and drops its bottom
  *   NORMAL     the VSM201's weights (B11 / B12): ch1 10.6 dB over ch20, folded into the synthesis bank
  *   AGC        one note at a voice's level untouched; a three-note chord levelled to the ceiling (VOC_AGC_T)
+ *   zipper     a voice gated as speech goes, BRIDGE 0 dB, TILT -3: the output above 9 kHz (the bank stops at 6.78) > 60 dB
+ *              under it (the bridge and COLOUR ramped over a block: 62.7 dB; stepped block by block they made 54.5)
  *   the track  MODE AUDIO: the voice itself, at a voice's full scale; a change of state (engine -> dry -> engine) fades out
  *              and in: no step over 200 a sample, settled within 15 blocks
  * 44.1 kHz, blocks of 32 as the mix. */
@@ -114,6 +116,32 @@ static double hiss(uint32_t n)
             s += y * y, m++;
     }
     return db(sqrt(s / m));
+}
+
+/* the output's rms above ~9 kHz over the last 0.5 s: two 2nd-order high-passes (RBJ, 9 kHz, Q 0.707), linear */
+static double above9k(uint32_t n)
+{
+    double w = 2.0 * M_PI * 9000.0 / FS, al = sin(w) / (2.0 * 0.7071), a0 = 1.0 + al;
+    double b0 = (1.0 + cos(w)) / 2.0 / a0, b1 = -(1.0 + cos(w)) / a0, a1 = -2.0 * cos(w) / a0, a2 = (1.0 - al) / a0;
+    double x[2][2] = {{0}}, y[2][2] = {{0}}, s = 0;
+    uint32_t i, k, m = 0;
+    for (i = 0; i < n; i++) {
+        double v = outbuf[i];
+        for (k = 0; k < 2u; k++) {
+            double o = b0 * v + b1 * x[k][0] + b0 * x[k][1] - a1 * y[k][0] - a2 * y[k][1];
+            x[k][1] = x[k][0], x[k][0] = v, y[k][1] = y[k][0], y[k][0] = o;
+            v = o;
+        }
+        if (i >= n - (uint32_t)(FS * 0.5))
+            s += v * v, m++;
+    }
+    return sqrt(s / m);
+}
+/* a 1 kHz voice as speech goes: -20 dBFS for 70 ms, then silent for 80 ms (the pause value swings every block) */
+static double vwobble(uint32_t i)
+{
+    double t = (double)i / FS;
+    return fmod(t, 0.15) < 0.07 ? 3277.0 * sin(2.0 * M_PI * 1000.0 * t) : 0.0;
 }
 
 static double saw110(uint32_t i) { double p = fmod(110.0 * i / FS, 1.0); return 8000.0 * (2.0 * p - 1.0); }
@@ -344,6 +372,21 @@ int main(void)
                up_hi - fl_hi, up_lo - fl_lo);
         check("TILT +3 dB an octave: the bridge's top up (> 4 dB above 4 kHz), its bottom down (> 5 dB at 110 Hz)",
               up_hi - fl_hi > 4.0 && fl_lo - up_lo > 5.0);
+    }
+    {   /* no zipper: a voice rising and falling through THRESHOLD (the pause value moving every block), BRIDGE 0 dB, TILT
+         * -3 dB an octave (the most bridge where the saw is strongest): what the output has above 9 kHz (the bank stops
+         * at 6.78 kHz: there only the steps of a gain changed block by block) against its level */
+        double z, r;
+        voc_bridge = VOC_BR_N - 1u;
+        voc_tilt = 0;
+        reset();
+        n = run(1.0, vwobble, saw110);
+        z = above9k(n), r = rms_last(n, 0.5);
+        voc_tilt = VOC_TILT_FLAT + 2u;
+        voc_bridge = 0;
+        printf("   a voice through THRESHOLD, BRIDGE 0 dB, TILT -3: above 9 kHz %.1f dB under the output\n", db(r / z));
+        check("BRIDGE TONE: no zipper (the bridge and COLOUR ramped over a block): above 9 kHz > 60 dB under the output",
+              db(r / z) > 60.0);
     }
     {   /* NORMAL (the VSM201's B11 / B12 weights, rms 1) and the carrier AGC */
         double d = 20.0 * log10((double)VOC_NORM_Q12[0] / VOC_NORM_Q12[VOC_NB - 1u]), worst = 0;
