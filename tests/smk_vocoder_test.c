@@ -377,17 +377,24 @@ int main(void)
     {   /* no zipper: a voice rising and falling through THRESHOLD (the pause value moving every block), BRIDGE 0 dB, TILT
          * -3 dB an octave (the most bridge where the saw is strongest): what the output has above 9 kHz (the bank stops
          * at 6.78 kHz: there only the steps of a gain changed block by block) against its level */
-        double z, r;
+        double z, r, z0, r0;
         voc_bridge = VOC_BR_N - 1u;
         voc_tilt = 0;
+        voc_norm = 1;                                   /* (as measured for the ramp: 62.7 dB, stepped 54.5) */
         reset();
         n = run(1.0, vwobble, saw110);
         z = above9k(n), r = rms_last(n, 0.5);
+        voc_norm = 0;                                   /* NORMAL OFF: the top band 6 dB up, the ramp's corners with it */
+        reset();
+        n = run(1.0, vwobble, saw110);
+        z0 = above9k(n), r0 = rms_last(n, 0.5);
         voc_tilt = VOC_TILT_FLAT + 2u;
         voc_bridge = 0;
-        printf("   a voice through THRESHOLD, BRIDGE 0 dB, TILT -3: above 9 kHz %.1f dB under the output\n", db(r / z));
+        printf("   a voice through THRESHOLD, BRIDGE 0 dB, TILT -3: above 9 kHz %.1f dB under the output (NORMAL OFF %.1f)\n",
+               db(r / z), db(r0 / z0));
         check("BRIDGE TONE: no zipper (the bridge and COLOUR ramped over a block): above 9 kHz > 60 dB under the output",
               db(r / z) > 60.0);
+        check("BRIDGE TONE, NORMAL OFF: above 9 kHz > 50 dB under the output (measured 52.4)", db(r0 / z0) > 50.0);
     }
     {   /* NORMAL (the VSM201's B11 / B12 weights, rms 1) and the carrier AGC */
         double d = 20.0 * log10((double)VOC_NORM_Q12[0] / VOC_NORM_Q12[VOC_NB - 1u]), worst = 0;
@@ -400,6 +407,22 @@ int main(void)
         printf("   NORMAL: ch1 over ch20 %.2f dB (9.53k / 2.94k against 9.53k / 10.0k: 10.63)\n", d);
         check("NORMAL: ch1 10.6 dB over ch20 (+-0.1), each folded into the synthesis bank's first section",
               fabs(d - 10.63) < 0.1 && worst < 0.001);
+        {   /* the switch: the bridge alone (no voice) on a saw, NORMAL ON against OFF (the default) */
+            double lo0, hi0, lo1, hi1;
+            uint32_t tl = voc_tilt;
+            voc_bridge = VOC_BR_N - 1u, voc_tilt = VOC_TILT_FLAT;
+            reset();
+            n = run(1.0, vzero, saw110);
+            lo0 = tone(n, 220.0), hi0 = tone(n, 5500.0);
+            voc_norm = 1;
+            reset();
+            n = run(1.0, vzero, saw110);
+            lo1 = tone(n, 220.0), hi1 = tone(n, 5500.0);
+            voc_norm = 0, voc_tilt = (uint8_t)tl;
+            printf("   NORMAL ON against OFF, the bridge on a saw: 220 Hz %+.1f dB, 5500 Hz %+.1f dB\n", lo1 - lo0, hi1 - hi0);
+            check("NORMAL: OFF the default (flat); ON lifts the bottom (220 Hz > +2 dB) and drops the top (5.5 kHz < -4 dB)",
+                  lo1 - lo0 > 2.0 && hi1 - hi0 < -4.0);
+        }
         voc_bridge = 0;
         reset();
         run(1.0, v1k, chord3);

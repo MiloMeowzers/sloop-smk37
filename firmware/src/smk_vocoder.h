@@ -86,6 +86,9 @@ static const int8_t VOC_THR_DB[VOC_THR_N] = {-54, -48, -42, -36, -30, -24};
 static uint8_t voc_tilt = VOC_TILT_FLAT + 2u;   /* TILT: VOC_TILT_Q12[], -3 .. +3 dB an octave (default +1.0) */
 static uint8_t voc_colour = 10;          /* COLOUR: 0 .. 10 (x 10 %): the envelopes in a pause; 0: the bands rest */
 static uint8_t voc_blend;                /* BLEND: 0 SUM, 1 FILL */
+static uint8_t voc_norm;                 /* NORMAL: 0 OFF (the default: the bands summed flat, as b0dde1c), 1 ON (the
+                                          * VSM201's NORMAL weights, VOC_B0S: lows +4.7 dB, top -6 dB; vocoder-ui-spec.md
+                                          * §7a: it took the presence the owner missed) */
 #define VOC_COLOUR_N 11u
 #define VOC_REST_N 2205u                 /* COLOUR 0: the bands rest after 50 ms below THRESHOLD (44.1 kHz samples): ~6 of
                                           * the envelopes' release (~8 ms), each band then ~50 dB under where it began */
@@ -291,16 +294,17 @@ static int64_t voc_bands(int32_t c, uint32_t k, uint32_t k1, const int32_t *env,
 {
     int64_t sum = 0;
     voc_bq *s = &voc.b[k];
+    const int32_t *ba = voc_norm ? VOC_B0S : VOC_B0;     /* (the first section's gain: NORMAL's weight, or none) */
     if (mode == VT_PLAIN) {
         for (; k < k1; k++, s++)
-            sum += (int64_t)voc_band(c, VOC_B0S[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], s) * env[k];   /* Q15 */
+            sum += (int64_t)voc_band(c, ba[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], s) * env[k];   /* Q15 */
     } else if (mode == VT_SUM) {
         for (; k < k1; k++, s++)
-            sum += (int64_t)voc_band(c, VOC_B0S[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], s) * (env[k] + bk[k]);
+            sum += (int64_t)voc_band(c, ba[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], s) * (env[k] + bk[k]);
     } else {
         for (; k < k1; k++, s++) {
             int32_t e = (env[k] * cf) >> 15;
-            sum += (int64_t)voc_band(c, VOC_B0S[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], s) *
+            sum += (int64_t)voc_band(c, ba[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], s) *
                    (fill ? (e > bk[k] ? e : bk[k]) : e + bk[k]);
         }
     }

@@ -45,7 +45,8 @@ enum { MI_COLOR, MI_ZOOM,
                                                     * VSM201's voice mode, its pink filter); live, not kept */
        MI_VBR, MI_VTHR, MI_VAGC,                   /* SILENCE > BRIDGE, THRESHOLD (the VSM201's silence bridging), AGC (the
                                                     * carrier's; kept, project.c) */
-       MI_VTILT, MI_VCOL, MI_VBLEND,               /* BRIDGE TONE > TILT, COLOUR, BLEND (smk_vocoder.h; kept, project.c) */
+       MI_VTILT, MI_VCOL, MI_VBLEND, MI_VNORM,     /* BRIDGE TONE > TILT, COLOUR, BLEND, NORMAL (the whole output's: the
+                                                    * VSM201's weights; smk_vocoder.h; kept, project.c) */
 #endif
 #endif
        MI_ADV, MI_DPREV,
@@ -81,7 +82,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "STEM FX", "FADE", "XFADE", "CURVE",
 #if SMK_UAC_IN_PROBE
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
-                                              "BRIDGE", "THRESHOLD", "AGC", "TILT", "COLOUR", "BLEND",
+                                              "BRIDGE", "THRESHOLD", "AGC", "TILT", "COLOUR", "BLEND", "NORMAL",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -352,6 +353,9 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_VBLEND:                                   /* SUM, FILL (dim: COLOUR 0 or no bridging: the same) */
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && voc_bridge && voc_colour ? C_HI : C_DIM;
         return voc_blend ? "FILL" : "SUM";
+    case MI_VNORM:                                    /* OFF (flat), ON (the VSM201's weights) */
+        *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
+        return voc_norm ? "ON" : "OFF";
     case MI_VLVL: {                                   /* make-up gain, -12 .. +18 dB in 3 dB steps */
         static char b[10];
         int32_t db = 3 * (int32_t)(voc_level % VOC_LEVEL_N) - 12;
@@ -427,7 +431,8 @@ UI_SMALL static void draw_menu(void)
     sig += voc_mode * 1000033u + voc_level * 1000037u + voc_dry * 1000039u + voc_hf * 1000081u + uin.alt * 1000099u +
            (uint32_t)UIN_TEST * 1000117u + voc_cut * 1000121u + voc_res * 1000133u + (uint32_t)VOC_AUDIO_ON * 1000151u +
            voc_vmode * 1000159u + voc_pink * 1000171u + voc_bridge * 1000183u + voc_thr * 1000187u +
-           voc_tilt * 1000193u + voc_colour * 1000199u + voc_blend * 1000211u + voc_agc * 1000213u;
+           voc_tilt * 1000193u + voc_colour * 1000199u + voc_blend * 1000211u + voc_agc * 1000213u +
+           voc_norm * 1000231u;
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
@@ -732,6 +737,9 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         break;
     case MI_VBLEND:                                    /* right FILL, left SUM; OCT+ toggles */
         voc_blend = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_blend);
+        break;
+    case MI_VNORM:                                     /* right ON, left OFF; OCT+ toggles */
+        voc_norm = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_norm);
         break;
     case MI_VMODE:                                     /* AUDIO, VOCODER (stops at the ends); OCT+ round; faded */
         voc_mode = (uint8_t)(s > 0 ? (voc_mode + 1u < VM_N ? voc_mode + 1u : voc_mode) : s < 0 ? (voc_mode ? voc_mode - 1u : 0u)
