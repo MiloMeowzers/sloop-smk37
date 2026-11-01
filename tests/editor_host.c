@@ -22,6 +22,15 @@ static uint8_t nor[0x100000] __attribute__((aligned(4096)));
 #include "hostsim.c"
 #undef main
 #include <assert.h>
+/* SLOOP's words on the screens (felucca.c; the SMK-37 port's UI takes them from there, as ui_pages_test.c) */
+#define BRAND_NAME "SLOOP"
+#define BRAND_SAIL_X 96
+#define BRAND_BASED "BASED ON FELUCCA"
+#define BRAND_CRASH "FELUCCA CRASH"
+#define BRAND_RESCUE "SLOOP USB RESCUE"
+#define VIS_STYLES 12u
+#define VIS_LAST_NAMES "SLOOP"
+#define VIS_N_STR "/12"
 static uint16_t screen[240*240];
 static void lcd_sync(void) {}
 static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint16_t *p)
@@ -36,6 +45,8 @@ static int32_t fm1_enc_take(uint32_t e) { int32_t s = encs[e]; encs[e] = 0; retu
 static uint8_t fm1_led[16], fm1_led_dim[16], fm1_led_bg[16];
 static volatile uint16_t fm1_led_bg_ns;
 #define FM1_NCOL 16u
+#define FM1_NBTN 14u                           /* (the SMK-37 port's ui_input.c: as ui_pages_test.c) */
+#define FM1_NENC 7u
 static const int8_t FM1_KEYMAP[5][16];
 static void fm1_led_key(uint32_t id, int on) { (void)id; (void)on; }
 static uint32_t edges_btn, notes_seen;
@@ -77,6 +88,7 @@ static uint32_t scope_w;
 static uint32_t fl_erases, fl_progs, fl_bad;          /* counters; fl_bad: a refused (out of range) access */
 static int fl_fail_at = -1;                           /* > 0: the n-th program from now fails (a torn write) */
 static uint32_t fl_jedec_ram(void) { return 0x856014u; }
+#define FL_JEDEC_OK(id) ((id) == 0x856014u)   /* (the SMK-37 port's project.c: as tests/recovery_test.c) */
 static void fl_plain_window_init(void) {}
 static uint32_t irq_save(void) { return 0; }
 static void irq_restore(uint32_t f) { (void)f; }
