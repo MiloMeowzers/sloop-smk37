@@ -220,12 +220,13 @@ def build_app():
         ld.write_text(txt.replace("LENGTH = 0x8DFBC", f"LENGTH = {APP_SLOT:#X}".replace("0X", "0x")))
     tc("pi32v2/bin/ld", "-T", ld, OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
        OUT / "fm1_cpu1.o", OUT / "felucca.o", "-o", elf)
-    for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin"):
+    for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin", "ramhot.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
                                ("common/bin/objcopy", "-O", "binary", "-j", ".data", elf, OUT / "data.bin"),
                                ("common/bin/objcopy", "-O", "binary", "-j", ".ram_text", elf, OUT / "ramtext.bin"),
                                ("common/bin/objcopy", "-O", "binary", "-j", ".c1_text", elf, OUT / "c1text.bin"),
+                               ("common/bin/objcopy", "-O", "binary", "-j", ".ram_hot", elf, OUT / "ramhot.bin"),
                                ("common/bin/objdump", "-t", elf),
                                ("common/bin/objdump", "-d", elf),
                                ("common/bin/objdump", "-d", "-j", ".ram_text", elf))
@@ -234,9 +235,10 @@ def build_app():
     def symv(name):
         return int(re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M).group(1), 16)
     img = bytearray((OUT / "text.bin").read_bytes())
-    # .ram_text, .c1_text (the second core's loop) and .data follow .text at their load addresses, in
-    # that order; main.c copies them by words at boot
-    for sect, lname in (("ramtext.bin", "_rt_load"), ("c1text.bin", "_c1_load"), ("data.bin", "_data_load")):
+    # .ram_text, .c1_text (the second core's loop), .ram_hot (the vocoder build's hot code; empty elsewhere) and
+    # .data follow .text at their load addresses, in that order; main.c copies them by words at boot
+    for sect, lname in (("ramtext.bin", "_rt_load"), ("c1text.bin", "_c1_load"), ("ramhot.bin", "_rh_load"),
+                        ("data.bin", "_data_load")):
         load = symv(lname)
         if load % 4:
             raise SystemExit(f"{lname} {load:#x} is not word aligned")
@@ -263,6 +265,24 @@ def check(img, syms, dis, rt):
         errors.append(f".ram_text contains calls: {rt_calls[:3]}")
     else:
         notes.append(f".ram_text: {len([ln for ln in rt.splitlines() if LINE.match(ln)])} insns, no calls")
+    mrh = [re.search(r"^([0-9a-f]+) .*\s" + n + r"$", syms, re.M) for n in ("_rh_start", "_rh_end")]
+    if all(mrh):                    # .ram_hot (the vocoder build's hot code, fx.c RAMHOT): RAM and the XIP are
+        rh0, rh1 = int(mrh[0].group(1), 16), int(mrh[1].group(1), 16)   # beyond a call's reach: only calls to itself
+        if rh1 > rh0:
+            n_rh, out = 0, []
+            for ln in dis.splitlines():
+                mm = LINE.match(ln)
+                if not mm or not rh0 <= int(mm.group(1), 16) < rh1:
+                    continue
+                n_rh += 1
+                if re.search(r"\b(call|goto)\b", mm.group(3)) and "<" in mm.group(3):   # (a direct call or jump,
+                    mt = re.search(r":\s*([0-9a-f]+)\s*>", mm.group(3))   # a tail call too; through a register: any)
+                    if not mt or not rh0 <= int(mt.group(1), 16) < rh1:
+                        out.append(ln.strip())
+            if out:
+                errors.append(f".ram_hot calls out of itself: {out[:3]}")
+            else:
+                notes.append(f".ram_hot: {rh1 - rh0} B, {n_rh} insns, calls only within itself")
     mc1 = [re.search(r"^([0-9a-f]+) .*\s" + n + r"$", syms, re.M) for n in ("_c1_start", "_c1_end")]
     if all(mc1):
         notes.append(f".c1_text: {int(mc1[1].group(1), 16) - int(mc1[0].group(1), 16)} B, the second core's loop in RAM")

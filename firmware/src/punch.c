@@ -76,7 +76,7 @@ static uint32_t beat_samples(void) { return (uint32_t)FS * 60u / (uint32_t)song.
 
 static int32_t ring_raw(uint32_t i) { return punch_ring[i & PUNCH_M]; }   /* the stored 16 bits (mix / 8) */
 static int32_t ring_at(uint32_t i) { return ring_raw(i) << 3; }
-static int32_t ring_q16(uint32_t p)                 /* read at Q16 position, linear (on the stored values: no overflow) */
+static TAILINL int32_t ring_q16(uint32_t p)                 /* read at Q16 position, linear (on the stored values: no overflow) */
 {
     int32_t a = ring_raw(p >> 16), b = ring_raw((p >> 16) + 1u);
     return (a + (((b - a) * (int32_t)((p >> 1) & 0x7FFFu)) >> 15)) << 3;
@@ -181,7 +181,7 @@ static int punch_owns(int32_t fx, uint32_t w)
         LP = v2_;                                                                               \
     } while (0)
 #define PX_HPOUT(H, IN) (H = (IN) - ((v1_ * 5799) >> 12) - v2_)
-static void px_kill_run(int32_t fx, const tsvf_t *lo, const tsvf_t *hi, const int32_t *in, int32_t *out, uint32_t n,
+static TAILINL void px_kill_run(int32_t fx, const tsvf_t *lo, const tsvf_t *hi, const int32_t *in, int32_t *out, uint32_t n,
                         int32_t (*z)[2])
 {
     uint32_t i;
@@ -218,7 +218,7 @@ static void px_kill_run(int32_t fx, const tsvf_t *lo, const tsvf_t *hi, const in
 }
 #undef PX_HPOUT
 #undef PX_SVF
-static int32_t ring_raw_q16(uint32_t p)             /* ring_q16 without the x 8 (the stored scale) */
+static TAILINL int32_t ring_raw_q16(uint32_t p)             /* ring_q16 without the x 8 (the stored scale) */
 {
     int32_t a = ring_raw(p >> 16), b = ring_raw((p >> 16) + 1u);
     return a + (((b - a) * (int32_t)((p >> 1) & 0x7FFFu)) >> 15);
@@ -227,7 +227,7 @@ static int32_t ring_raw_q16(uint32_t p)             /* ring_q16 without the x 8 
 /* FREEZE, before the buses (fx.c mix_block): while it plays the reverb holds (no loss); for its first
  * PX_FRZ_CAP samples the dry mix pours into it, then nothing does (the sends too: a held reverb fed
  * for ever would only get louder). rev: the reverb send; l, r: the dry mix */
-static void punch_freeze_feed(int32_t *rev, const int32_t *l, const int32_t *r, uint32_t n)
+static TAILINL void punch_freeze_feed(int32_t *rev, const int32_t *l, const int32_t *r, uint32_t n)
 {
     uint32_t i;
     int frz = punch.cur == PX_FREEZE;
@@ -249,7 +249,7 @@ static void punch_freeze_feed(int32_t *rev, const int32_t *l, const int32_t *r, 
 }
 
 /* l, r: the mix before the master (fx.c mix_block), n samples, in place */
-static void punch_process(int32_t *l, int32_t *r, uint32_t n)
+static TAILINL void punch_process(int32_t *l, int32_t *r, uint32_t n)
 {
     uint32_t i;
     int32_t want = PUNCH_REQ, pstep;

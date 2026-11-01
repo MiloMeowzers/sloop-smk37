@@ -2,6 +2,25 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Effects: per-track DIST insert, then sends into three shared buses (chorus, tempo delay, reverb).
  * Stereo dry mix; the chorus and the reverb come back in stereo, the delay in the middle. */
+#ifndef MIX_PIPE                                /* the block's tail on core 1 while the next block starts (mix_block); the
+                                                 * vocoder build (tests/mix_split_test.c: on the host, one core or two) */
+#define MIX_PIPE (BOARD_SMK37 && SMK_UAC_IN_PROBE)
+#endif
+#if MIX_PIPE
+/* the tail's code in RAM (smk37-devtools vocoder-ui-spec.md §7e): mix_tail and its whole call tree in .ram_hot
+ * (app.ld; copied at boot, main.c), out of the flash and of the cache the cores share. RAM and the flash are beyond a
+ * call's reach of each other: the calls in go through tail_far, the helpers it calls are inlined into it (TAILINL:
+ * their flash callers keep their own copies), and build.py checks every call in .ram_hot stays in .ram_hot. The
+ * reverb's lines go to the pool (67 KB free) for the room */
+#define RAMHOT __attribute__((section(".ram_hot"), noinline, used))
+#define TAILINL inline __attribute__((always_inline))
+#define REV_LINE_SEC __attribute__((section(".pool")))
+static inline void *tail_far(void *p) { void *volatile q = p; return q; }   /* (as fm1_flash.h FL_FAR) */
+#define TAIL_FAR(fn) ((__typeof__(&fn))tail_far((void *)&fn))
+#else
+#define TAILINL
+#define REV_LINE_SEC __attribute__((section(".lowram")))
+#endif
 #define DLY_LEN 65536u           /* 1.49 s: 1/4 down to 41 BPM, 1/8 dotted down to 31, 1/4 dotted down to 61 (clamped below) */
 #define CHO_LEN 2048u
 #if SMK_VOC_LEAN
@@ -19,8 +38,9 @@ static int16_t cho_buf[CHO_LEN] __attribute__((section(".pool")));
 #define REV_MOD 12               /* samples the modulated line moves (+-) */
 static const uint16_t REV_LINE[4] = {1559, 1931, 2389, 2791};   /* 35..63 ms, coprime */
 static const uint16_t REV_AP[2] = {556, 441};
-static int16_t rev_line[1559 + 1931 + 2389 + 2791 + REV_MOD + 2] __attribute__((section(".lowram")));   /* (the pool is
-                                                                      * full; .lowram: the SRAM below the RAM region, app.ld) */
+static int16_t rev_line[1559 + 1931 + 2389 + 2791 + REV_MOD + 2] REV_LINE_SEC;   /* (the pool was full; .lowram: the
+                                                                      * SRAM below the RAM region, app.ld; the vocoder build:
+                                                                      * the pool again, the room for .ram_hot) */
 static int16_t rev_ap[556 + 441] __attribute__((section(".pool")));
 static struct {
     uint32_t dly_w, cho_w, cho_ph, rev_ph;
@@ -73,10 +93,6 @@ static void track_dist(track_t *t, int32_t *b, uint32_t n)
  * needs, so a hot kick or bass is already turned down when it comes. Before, the gain caught up in ~4 samples and the
  * first ones went through the tanh knee at up to 4x: a crackle on the beats with the MASTER up (in headphones most) */
 #define LIM_T 18000
-#ifndef MIX_PIPE                                /* the block's tail on core 1 while the next block starts (mix_block); the
-                                                 * vocoder build (tests/mix_split_test.c: on the host, one core or two) */
-#define MIX_PIPE (BOARD_SMK37 && SMK_UAC_IN_PROBE)
-#endif
 #if MIX_PIPE
 static struct {                                 /* the block's tail in flight (mix_block, mix_tail) */
     int32_t *out;
@@ -131,7 +147,7 @@ typedef struct {
 #define LIM_REL 11                      /* the release after the hold: ~46 ms (12 before the hold: ~93 ms; the same loudness) */
 static lim_t lim_dac = {.env = LIM_T, .g = 32768}, lim_usb = {.env = LIM_T, .g = 32768};
 /* l, r: n (<= CTL) samples in; out: the n samples of CTL before, limited (before the knee) */
-static void lim_block(lim_t *s, int32_t *l, int32_t *r, uint32_t n)
+static TAILINL void lim_block(lim_t *s, int32_t *l, int32_t *r, uint32_t n)
 {
     uint32_t i, w = s->w;
     int32_t pk = 0, a, g0 = s->g, g1, dg, e = s->env;
@@ -275,7 +291,7 @@ static void stem_balance(uint32_t t0, uint32_t t1, uint32_t tch)   /* a block's 
  * picture does not follow the volume knob, even at 0 (2.4). The same soft knee as the output, no limiter state */
 static int16_t vis_tap[2u * CTL];
 static struct { int32_t dc[2], dce[2], lc[4], lce[4]; } uo;
-static void master_pre_usb(int32_t *l, int32_t *r)      /* (USB AUDIO = FULL: its own state) */
+static TAILINL void master_pre_usb(int32_t *l, int32_t *r)      /* (USB AUDIO = FULL: its own state) */
 {
     *l = dc_block(*l, &uo.dc[0], &uo.dce[0]);
     *r = dc_block(*r, &uo.dc[1], &uo.dce[1]);
@@ -317,7 +333,7 @@ static uint32_t delay_samples(void)
  * in it to hear. Anything sent to it starts it again in that block, from what is left (inaudible); FREEZE keeps the
  * reverb running. Its CPU goes to the voices (the sends at 0: dry stems) */
 static const uint32_t FXB_LEN[3] = {CHO_LEN, DLY_LEN, sizeof rev_line / 2u + sizeof rev_ap / 2u};
-static uint32_t fxb_run(uint32_t b, const int32_t *in, uint32_t n, uint32_t *loud)   /* 1: bus b runs this block */
+static TAILINL uint32_t fxb_run(uint32_t b, const int32_t *in, uint32_t n, uint32_t *loud)   /* 1: bus b runs this block */
 {
     uint32_t i;
     int32_t o = 0;
@@ -335,7 +351,7 @@ static void fxb_done(uint32_t b, uint32_t run, uint32_t loud, uint32_t n)
 #else
 #define FXB_LOUD(l, x) ((void)0)
 #endif
-static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet_l,
+static TAILINL void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet_l,
                      int32_t *wet_r, uint32_t n)
 {
     uint32_t i, k, dl = delay_samples();
@@ -549,7 +565,7 @@ static djf_t djf, tflt[NTRK];
  * DJ filter (G_FILT) and the tape TONE keep the fixed 40. */
 static int32_t tflt_reso(void) { return 40 + (int32_t)(flt_reso > 10u ? 10u : flt_reso) * 7; }
 /* the knob v -> this block's coefficients in *c; 0 = bypassed (nothing to do). reso: tsvf_coef's resonance */
-static int djf_block(djf_t *f, int32_t v, tsvf_t *c, int32_t reso)
+static TAILINL int djf_block(djf_t *f, int32_t v, tsvf_t *c, int32_t reso)
 {
     int32_t to;
     if (v < 0 && f->mode >= 0) {                        /* (switching side: from open) */
@@ -575,7 +591,7 @@ static int djf_block(djf_t *f, int32_t v, tsvf_t *c, int32_t reso)
     return 1;
 }
 /* n samples of channel ch through the filter (x within +-140000) */
-static void djf_run(djf_t *f, const tsvf_t *c, int32_t *b, uint32_t n, uint32_t ch)
+static TAILINL void djf_run(djf_t *f, const tsvf_t *c, int32_t *b, uint32_t n, uint32_t ch)
 {
     uint32_t i;
     int32_t *z = f->z[ch];
@@ -955,7 +971,7 @@ static int32_t crush_bits(int32_t v, int32_t shift)    /* fewer bits, rounded to
     return v >= 0 ? (v >> shift) << shift : -((-v >> shift) << shift);
 }
 
-static void dust_process(int32_t *l, int32_t *r, uint32_t n)
+static TAILINL void dust_process(int32_t *l, int32_t *r, uint32_t n)
 {
     int32_t d = song.g[G_DUST], hold, shift, a, drive, hiss, i, bed0, bed1;
     uint32_t pc;
@@ -996,7 +1012,7 @@ static void dust_process(int32_t *l, int32_t *r, uint32_t n)
     }
 }
 
-static void djf_process(int32_t *l, int32_t *r, uint32_t n)
+static TAILINL void djf_process(int32_t *l, int32_t *r, uint32_t n)
 {
     tsvf_t c;
     if (!djf_block(&djf, song.g[G_FILT], &c, 40))
@@ -1529,13 +1545,13 @@ static void texture_mix(int32_t *l, int32_t *r, uint32_t n)
  * for it before it clears the sums, sets the throws (the ECHO THROW's feedback: the buses read it) and hands core 1 the
  * next block's units; a half's last block is waited for at the half's end (audio.c), so the output is as late as
  * before. The tail of a block always before the next block's sums, as on one core: the same output, one core or two */
-static void mix_tail(int32_t *out, uint32_t n);
+static void mix_tail(int32_t *out, uint32_t n) RAMHOT;
 static void mix_done(int32_t *out, uint32_t n);        /* audio.c: the block's output finished (the USB tap, the scope) */
 static void cpu1_tail_job(uint32_t arg)                 /* core 1's job: the block's tail */
 {
     uint32_t t0 = cpu1_ticks();
     (void)arg;
-    mix_tail(tail.out, tail.n);
+    TAIL_FAR(mix_tail)(tail.out, tail.n);
     cpu1_job_ticks += cpu1_ticks() - t0;
 }
 static void mix_tail_wait(void)                         /* the tail in flight done (late: here, once), its output finished */
@@ -1547,7 +1563,7 @@ static void mix_tail_wait(void)                         /* the tail in flight do
         uint32_t w0 = cpu1_ticks();
         if (cpu1_wait())                                /* core 1 did not finish in time: held from now on (cpu1.h); the
                                                          * tail here (what it half did is this block's glitch) */
-            mix_tail(tail.out, tail.n);
+            TAIL_FAR(mix_tail)(tail.out, tail.n);
         cpu1_wait_ticks += cpu1_ticks() - w0;
     }
     mix_done(tail.out, tail.n);
@@ -1558,7 +1574,7 @@ static void mix_tail_go(int32_t *out, uint32_t n)
     tail.playing = (uint8_t)song.playing, tail.req = punch.req, tail.bpm = song.g[G_BPM], tail.clk = clk_pos;
     tail.c1 = (uint8_t)(cpu1_on() && cpu1_units != 0 && cpu1_run(cpu1_tail_job, 0));   /* (2ND CORE OFF: here) */
     if (!tail.c1)
-        mix_tail(out, n);
+        TAIL_FAR(mix_tail)(out, n);
 }
 #endif
 
@@ -1743,7 +1759,7 @@ static void mix_block(int32_t *out, uint32_t n)
     mix_tail_go(out, n);                                /* the rest on core 1, while the next block starts */
     TIM_MARK(TS_TAIL);
 }
-static void mix_tail(int32_t *out, uint32_t n)
+static RAMHOT void mix_tail(int32_t *out, uint32_t n)
 {
     uint32_t i;
     int32_t m0, m1, *mix_l = acc[0].l, *mix_r = acc[0].r;
@@ -1782,7 +1798,12 @@ static void mix_tail(int32_t *out, uint32_t n)
             src[5] = ZERO;
         }
         for (c = 0; c < 6u; c++)
+#if MIX_PIPE
+            for (i = 0; i < n; i++)
+                stem_stage[c][i] = src[c][i];           /* (.ram_hot: no call out to the flash's memcpy) */
+#else
             memcpy(stem_stage[c], src[c], n * sizeof(int32_t));
+#endif
         if (stem_layout == 3u && dg_ran)
             for (i = 0; i < n; i++)
                 stem_stage[5][i] = drum_buf[2][i] + drum_buf[3][i];
@@ -1828,7 +1849,15 @@ static void mix_tail(int32_t *out, uint32_t n)
             out[2u * i + 1u] = knee(orr[i]);
         }
         if (usb_full_now && !usb_was) {                 /* (a new recording: no old block in its delay) */
+#if MIX_PIPE
+            {
+                uint32_t *w = (uint32_t *)&lim_usb, k;
+                for (k = 0; k < sizeof lim_usb / 4u; k++)
+                    w[k] = 0;                           /* (.ram_hot: no call out to the flash's memset) */
+            }
+#else
             memset(&lim_usb, 0, sizeof lim_usb);
+#endif
             lim_usb.env = LIM_TH, lim_usb.g = 32768, lim_usb.hold = 0;
         }
         usb_was = usb_full_now;

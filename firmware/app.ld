@@ -26,7 +26,10 @@ SECTIONS
     _rt_load = LOADADDR(.ram_text);
     .c1_text : { _c1_start = .; KEEP(*(.c1_text*)) . = ALIGN(4); _c1_end = .; } > RAMTEXT AT > XIP
     _c1_load = LOADADDR(.c1_text);
-    _rt_end = _c1_end;                  /* the guard's RAM code window covers both (fm1_cpu1.h) */
+    /* the vocoder build's hot code in RAM (fx.c MIX_PIPE, RAMHOT; may call only itself, build.py); empty elsewhere */
+    .ram_hot : { _rh_start = .; KEEP(*(.ram_hot*)) . = ALIGN(4); _rh_end = .; } > RAMTEXT AT > XIP
+    _rh_load = LOADADDR(.ram_hot);
+    _rt_end = _rh_end;                  /* the guard's RAM code window covers all three (fm1_cpu1.h, fm1_guard.h) */
     /* the SRAM left below the RAM region: section(".lowram") buffers and the second core's stacks (fm1_cpu1.S
      * .bss.c1stack), outside the guard's RAM code window; zeroed at boot as .pool is (main.c lowram_test) */
     .lowram (NOLOAD) : { . = ALIGN(8); _lr_start = .; *(.bss.c1stack) *(.lowram*) . = ALIGN(4); _lr_end = .; } > RAMTEXT
