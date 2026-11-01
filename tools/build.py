@@ -189,6 +189,20 @@ def build_loader():
 
 # ---- app
 
+# the SMK-37 vocoder build's hot code (smk37-devtools vocoder-ui-spec.md §7f): what runs every audio block, placed
+# together at the start of .text in the order it runs (the audio interrupt with the mix inlined in it, the events, the
+# units and the engines they render, the drums, the stems, core 1's jobs, the USB audio's timer). The cores share the
+# cache: scattered among the UI's code, each block's hot code evicted itself and the cold code it sat beside (a build
+# that only moved code, b053d01, shed 3.5 a second against 4.7). Names the compiler inlined are not functions: skipped,
+# reported. Only with SMK_VOC_LEAN=1: the other builds keep their layout (FM-1 byte-identical)
+HOT_TEXT = ["fm1_alnk0_irq", "events_block", "trk_note_on", "trk_note_off", "voice_victim", "lock_step",
+            "drum_synth_on", "roll_hit", "mix_units", "mix_part_run", "analog_render", "analog_render_f",
+            "fm6_render", "fm6_op_run", "fm6_block", "fm6_sync", "fm6_note_on", "fm6_done", "phase_render",
+            "sample_render", "slice_render", "drawbar_render", "grain_render", "phys_render", "slicer_track",
+            "drums_mix", "slicer_drums", "tp_x", "cpu1_units_job", "cpu1_stems_job", "cpu1_tail_job", "uac6_tap_ch",
+            "uac_tap48", "uac_render_start", "fm1_timer5_irq", "uac_service", "uin_rx"]
+
+
 def build_app():
     flags = [*CFLAGS, *BOARD_DEFS[BOARD], "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_CDC", "FELUCCA_UART",
@@ -218,6 +232,14 @@ def build_app():
             raise SystemExit("app.ld: the XIP LENGTH line was not found")
         ld = OUT / "app.ld"
         ld.write_text(txt.replace("LENGTH = 0x8DFBC", f"LENGTH = {APP_SLOT:#X}".replace("0X", "0x")))
+    if os.environ.get("SMK_VOC_LEAN") == "1":     # the vocoder build: its hot code together, in the order it runs
+        txt = ld.read_text()
+        rule = "KEEP(*(.text.crt0)) *(.text*)"
+        if txt.count(rule) != 1:
+            raise SystemExit("app.ld: the .text rule was not found")
+        ld = OUT / "app.ld"
+        ld.write_text(txt.replace(rule, "KEEP(*(.text.crt0)) " + " ".join(f"*(.text.{f})" for f in HOT_TEXT) +
+                                  " *(.text*)"))
     tc("pi32v2/bin/ld", "-T", ld, OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
        OUT / "fm1_cpu1.o", OUT / "felucca.o", "-o", elf)
     for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin", "ramhot.bin"):
@@ -265,6 +287,22 @@ def check(img, syms, dis, rt):
         errors.append(f".ram_text contains calls: {rt_calls[:3]}")
     else:
         notes.append(f".ram_text: {len([ln for ln in rt.splitlines() if LINE.match(ln)])} insns, no calls")
+    if os.environ.get("SMK_VOC_LEAN") == "1":     # the hot code together (HOT_TEXT): its span its own size
+        fn = {m.group(3): (int(m.group(1), 16), int(m.group(2), 16))
+              for m in re.finditer(r"^([0-9a-f]+) \S*\s+F \.text\s+([0-9a-f]+) (\S+)$", syms, re.M)}
+        found = {f: fn[f] for f in HOT_TEXT if f in fn}
+        gone = [f for f in HOT_TEXT if f not in fn]
+        if not found:
+            errors.append(".text hot: none of HOT_TEXT is a function")
+        else:
+            lo = min(a for a, _ in found.values())
+            hi = max(a + n for a, n in found.values())
+            tot = sum(n for _, n in found.values())
+            if hi - lo > tot + 2048:                 # (alignment between them: a little)
+                errors.append(f".text hot: {len(found)} functions ({tot} B) spread over {hi - lo} B, not together")
+            else:
+                notes.append(f".text hot: {len(found)} functions, {tot} B together at {lo:#x}"
+                             + (f" (inlined, not functions: {', '.join(gone)})" if gone else ""))
     mrh = [re.search(r"^([0-9a-f]+) .*\s" + n + r"$", syms, re.M) for n in ("_rh_start", "_rh_end")]
     if all(mrh):                    # .ram_hot (the vocoder build's hot code, fx.c RAMHOT): RAM and the XIP are
         rh0, rh1 = int(mrh[0].group(1), 16), int(mrh[1].group(1), 16)   # beyond a call's reach: only calls to itself
