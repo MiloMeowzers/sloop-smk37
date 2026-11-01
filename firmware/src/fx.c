@@ -1797,7 +1797,14 @@ static RAMHOT void mix_tail(int32_t *out, uint32_t n)
     if (stem_feed && n <= CTL) {                        /* the stems' block set aside, with its level (the next block
                                                          * resamples it, both cores done with the last) */
         static const int32_t ZERO[CTL];
+#if RAM_HOT
+        const int32_t *src[6];                          /* SYNTHS+RET (one at a time: an initialiser is a memcpy, out of
+                                                         * .ram_hot's reach) */
+        src[0] = stem_syn[0], src[1] = stem_syn[1], src[2] = stem_syn[2];
+        src[3] = stem_drum, src[4] = wet_l, src[5] = wet_r;
+#else
         const int32_t *src[6] = {stem_syn[0], stem_syn[1], stem_syn[2], stem_drum, wet_l, wet_r};   /* SYNTHS+RET */
+#endif
         uint32_t c, i;
         if (stem_layout == 2u && dg_ran)                /* SYNTHS+RET with STEM FX: the kit, punched, in the groups' */
             src[3] = drum_buf[0];
