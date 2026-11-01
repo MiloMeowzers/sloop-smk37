@@ -77,6 +77,26 @@ static void track_dist(track_t *t, int32_t *b, uint32_t n)
                                                  * vocoder build (tests/mix_split_test.c: on the host, one core or two) */
 #define MIX_PIPE (BOARD_SMK37 && SMK_UAC_IN_PROBE)
 #endif
+#if MIX_PIPE
+static struct {                                 /* the block's tail in flight (mix_block, mix_tail) */
+    int32_t *out;
+    uint32_t n;
+    uint8_t busy, c1;                           /* a tail not yet waited for; on core 1 */
+    uint8_t playing;                            /* what the tail reads of what the next block's events change, as the
+                                                 * tail's block left it: the transport, the tempo, the punch-in asked */
+    int8_t req;
+    int16_t bpm;
+    uint32_t clk;
+} tail;
+#define TAIL_PLAYING tail.playing
+#define PUNCH_NOW 1
+#define PUNCH_BEAT() ((uint32_t)FS * 60u / (uint32_t)tail.bpm)
+#define PUNCH_CLK() (tail.clk / (uint32_t)tail.bpm)
+#define PUNCH_PLAYING tail.playing
+#define PUNCH_REQ tail.req
+#else
+#define TAIL_PLAYING song.playing
+#endif
 #ifndef SMK_MIX
 #define SMK_MIX BOARD_SMK37                     /* (tests/smk_mix_test.c: on the host) */
 #endif
@@ -950,7 +970,7 @@ static void dust_process(int32_t *l, int32_t *r, uint32_t n)
     hiss = d * 2;
     pc = (uint32_t)d * 7u;                              /* crackle: chance per sample, x 2^-22 */
     bed0 = dust.bed;                                    /* ~0.1 s from 0 to full (238 a block of 32) */
-    bed1 = dust.bed = clamp(dust.bed + (song.playing ? 238 : -238), 0, 32767);
+    bed1 = dust.bed = clamp(dust.bed + (TAIL_PLAYING ? 238 : -238), 0, 32767);
     for (i = 0; i < (int32_t)n; i++) {
         int32_t x = l[i], y = r[i];
         int32_t bed = bed0 + (((bed1 - bed0) * i) >> CTL_LOG2);
@@ -1511,11 +1531,6 @@ static void texture_mix(int32_t *l, int32_t *r, uint32_t n)
  * before. The tail of a block always before the next block's sums, as on one core: the same output, one core or two */
 static void mix_tail(int32_t *out, uint32_t n);
 static void mix_done(int32_t *out, uint32_t n);        /* audio.c: the block's output finished (the USB tap, the scope) */
-static struct {
-    int32_t *out;
-    uint32_t n;
-    uint8_t busy, c1;                                   /* a tail not yet waited for; on core 1 */
-} tail;
 static void cpu1_tail_job(uint32_t arg)                 /* core 1's job: the block's tail */
 {
     uint32_t t0 = cpu1_ticks();
@@ -1540,6 +1555,7 @@ static void mix_tail_wait(void)                         /* the tail in flight do
 static void mix_tail_go(int32_t *out, uint32_t n)
 {
     tail.out = out, tail.n = n, tail.busy = 1;
+    tail.playing = (uint8_t)song.playing, tail.req = punch.req, tail.bpm = song.g[G_BPM], tail.clk = clk_pos;
     tail.c1 = (uint8_t)(cpu1_on() && cpu1_units != 0 && cpu1_run(cpu1_tail_job, 0));   /* (2ND CORE OFF: here) */
     if (!tail.c1)
         mix_tail(out, n);

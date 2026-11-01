@@ -63,10 +63,10 @@ if $TSAN -o "$OUT/mix_split_tsan" tests/mix_split_test.c -lm 2>/dev/null; then
         echo "   under ThreadSanitizer: FAIL"; grep -A 12 "WARNING: ThreadSanitizer" "$OUT/split_tsan.log" | head -40; grep -v " same$" "$OUT/split_tsan.log" | head; fail=1
     fi
     if $TSAN -DMIX_PIPE=1 -o "$OUT/mix_split_pipe_tsan" tests/mix_split_test.c -lm 2>/dev/null &&
-       env CORES=2 CHAOS=3 TSAN_OPTIONS="halt_on_error=1" "$OUT/mix_split_pipe_tsan" QUICK > "$OUT/split_pipe_tsan.log" 2>&1; then
+       env CORES=2 CHAOS=3 TSAN_OPTIONS="halt_on_error=0 exitcode=66" "$OUT/mix_split_pipe_tsan" QUICK > "$OUT/split_pipe_tsan.log" 2>&1; then
         echo "   MIX_PIPE under ThreadSanitizer (CORES=2 CHAOS=3, the splits 0, 15, -1): $(tail -n 1 "$OUT/split_pipe_tsan.log" | sed 's/.*: //'), no race"
     else
-        echo "   MIX_PIPE under ThreadSanitizer: FAIL"; grep -A 12 "WARNING: ThreadSanitizer" "$OUT/split_pipe_tsan.log" | head -40; grep -v " same$" "$OUT/split_pipe_tsan.log" | head; fail=1
+        echo "   MIX_PIPE under ThreadSanitizer: FAIL (every race)"; grep -A 12 "WARNING: ThreadSanitizer" "$OUT/split_pipe_tsan.log" | head -400; grep -v " same$" "$OUT/split_pipe_tsan.log" | head; fail=1
     fi
 else
     echo "   (under ThreadSanitizer: this compiler has none, skipped)"

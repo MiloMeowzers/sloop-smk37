@@ -66,6 +66,13 @@ static int px_loop(int32_t fx) { return fx <= PX_STUT || fx == PX_LOOP8T; }   /*
 static int px_replay(int32_t fx) { return fx <= PX_HALF || fx == PX_LOOP8T; } /* replays a span of the ring */
 
 static uint32_t beat_samples(void) { return (uint32_t)FS * 60u / (uint32_t)song.g[G_BPM]; }
+#ifndef PUNCH_NOW                         /* what the punch-in reads of the transport and the keys (fx.c MIX_PIPE: as
+                                           * its block was handed over, the next block's events running alongside) */
+#define PUNCH_BEAT() beat_samples()
+#define PUNCH_CLK() clk_samples()
+#define PUNCH_PLAYING song.playing
+#define PUNCH_REQ punch.req
+#endif
 
 static int32_t ring_raw(uint32_t i) { return punch_ring[i & PUNCH_M]; }   /* the stored 16 bits (mix / 8) */
 static int32_t ring_at(uint32_t i) { return ring_raw(i) << 3; }
@@ -77,7 +84,7 @@ static int32_t ring_q16(uint32_t p)                 /* read at Q16 position, lin
 
 static void punch_start(int32_t fx)
 {
-    uint32_t beat = beat_samples(), len, ph = clk_samples();
+    uint32_t beat = PUNCH_BEAT(), len, ph = PUNCH_CLK();
     static const uint8_t DIV[8] = {1, 2, 4, 8, 6, 1, 1, 2};   /* loops: beat / DIV */
     punch.cur = (int8_t)fx;
     punch.t = 0;
@@ -89,7 +96,7 @@ static void punch_start(int32_t fx)
     punch.len = len;
     punch.pre = 0;
     punch.start = punch.w;
-    if (px_loop(fx) && song.playing) {                /* on the grid: */
+    if (px_loop(fx) && PUNCH_PLAYING) {               /* on the grid: */
         uint32_t back = ph % len;
         if (len - back <= 1536u) {                      /* just before a division: from that one */
             punch.pre = len - back;
@@ -110,7 +117,7 @@ static void punch_start(int32_t fx)
     memset(punch.z, 0, sizeof punch.z);
     punch.v = 65536;
     punch.fv = 32767u << 8;
-    if (fx == PX_PAN && song.playing)                   /* AUTO-PAN: a turn a beat, on the grid */
+    if (fx == PX_PAN && PUNCH_PLAYING)                  /* AUTO-PAN: a turn a beat, on the grid */
         punch.lfo = ph * (0xFFFFFFFFu / beat);
     if (fx == PX_FLANGE)                                /* FLANGER: the sweep starts at its shortest delay */
         punch.lfo = 0xC0000000u;
@@ -245,7 +252,7 @@ static void punch_freeze_feed(int32_t *rev, const int32_t *l, const int32_t *r, 
 static void punch_process(int32_t *l, int32_t *r, uint32_t n)
 {
     uint32_t i;
-    int32_t want = punch.req, pstep;
+    int32_t want = PUNCH_REQ, pstep;
     uint32_t beat, step, echo_d, binc, fdec;
 #if BOARD_SMK37
     if (tp_on && tp_fx(want))
@@ -280,14 +287,14 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
     }
     if (punch.cur < 0 && want >= 0)
         punch_start(want);
-    beat = beat_samples();                              /* per block: no divide per sample */
+    beat = PUNCH_BEAT();                                /* per block: no divide per sample */
     step = beat / 4u ? beat / 4u : 1u;
     echo_d = beat * 3u / 4u;
     if (echo_d > PUNCH_CAP - 64u) echo_d = PUNCH_CAP - 64u;
     binc = 0xFFFFFFFFu / beat;                          /* a turn a beat */
     fdec = (32767u << 8) / (2u * beat);                 /* FADE OUT: to nothing in two beats */
     if (punch.cur == PX_GATE)
-        punch.gp = (song.playing ? clk_samples() : punch.t) % step;
+        punch.gp = (PUNCH_PLAYING ? PUNCH_CLK() : punch.t) % step;
     {   /* filter sweeps: per block */
         int32_t fx = punch.cur;
         if (fx == PX_LPF && punch.g > 0)
