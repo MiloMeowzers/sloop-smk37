@@ -3343,6 +3343,7 @@ static void clkout_block(uint32_t n)
 static void events_block(uint32_t n)
 {
     uint32_t i, pr, adv;
+    TIM_VOC_T(te);                                  /* (the SMK-37 vocoder console's timing: this in sections) */
     if (mo_any && !song.g[G_MIDI]) {            /* MIDI = KEYS again: end what the sequencer had sent */
         seq_out_all_off();
         mo_any = 0;
@@ -3501,9 +3502,11 @@ static void events_block(uint32_t n)
     }
     if (pr)
         arp_keep_req = 0;
+    TIM_LAP(TS_EVH, te);
     keyboard_block();
     drum_audition_poll();                             /* (the editor's DRUM SYNTH page) */
     strum_block(n);                                   /* (voice.c: the strummed notes due) */
+    TIM_LAP(TS_EVK, te);
     while (mi_r != mi_w) {                            /* USB-MIDI (and TRS) in */
         uint32_t pkt = midi_in_q[mi_r % MQ], st = (pkt >> 8) & 0xF0u, ch = (pkt >> 8) & 0x0Fu;
         uint32_t d1 = (pkt >> 16) & 0x7Fu, d2 = (pkt >> 24) & 0x7Fu;
@@ -3618,8 +3621,10 @@ static void events_block(uint32_t n)
             input_off(t, d1);
         }
     }
+    TIM_LAP(TS_EVM, te);
     for (i = 0; i < NTRK; i++)
         seq_tick(&trk[i], adv);
+    TIM_LAP(TS_EVS, te);
     click_tick();
     roll_block(adv);
     for (i = 0; i < NPART; i++)
@@ -3635,4 +3640,5 @@ static void events_block(uint32_t n)
         arr_elapse(&arrangement_clock, adv, 1u);   /* (units: n x BPM, or the MIDI clock) */
 #endif
     }
+    TIM_LAP(TS_EVA, te);
 }
