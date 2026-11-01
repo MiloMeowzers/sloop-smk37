@@ -16,7 +16,8 @@
  * call's reach of each other: the calls in go through tail_far, the helpers it calls are inlined into it (TAILINL:
  * their flash callers keep their own copies), and build.py checks every call in .ram_hot stays in .ram_hot. The
  * reverb's lines go to the pool (67 KB free) for the room */
-#define RAMHOT __attribute__((section(".ram_hot"), noinline, used))
+#define RAMHOT __attribute__((section(".ram_hot"), noinline, used, flatten))   /* (flatten: every call in it inlined,
+                                                 * whatever the compiler would choose: the chip's left master_pre out) */
 #define TAILINL inline __attribute__((always_inline))
 #define REV_LINE_SEC __attribute__((section(".pool")))
 static inline void *tail_far(void *p) { void *volatile q = p; return q; }   /* (as fm1_flash.h FL_FAR) */
