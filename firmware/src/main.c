@@ -8,7 +8,7 @@
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
 extern uint32_t _c1_start[], _c1_end[], _c1_load[];
-#if MIX_PIPE
+#if RAM_HOT
 extern uint32_t _rh_start[], _rh_end[], _rh_load[];
 #endif
 extern uint32_t _lr_start[], _lr_end[];
@@ -598,7 +598,7 @@ UI_SMALL void fm1_cstart(void)
         *d = *s;                                /* flash driver code that must run from RAM */
     for (s = _c1_load, d = _c1_start; d < _c1_end; s++, d++)
         *d = *s;                                /* the second core's waiting loop (fm1_cpu1.h) */
-#if MIX_PIPE
+#if RAM_HOT
     for (s = _rh_load, d = _rh_start; d < _rh_end; s++, d++)
         *d = *s;                                /* the vocoder build's hot code (fx.c RAMHOT: the tail) */
 #endif

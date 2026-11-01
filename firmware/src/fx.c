@@ -6,7 +6,11 @@
                                                  * vocoder build (tests/mix_split_test.c: on the host, one core or two) */
 #define MIX_PIPE (BOARD_SMK37 && SMK_UAC_IN_PROBE)
 #endif
-#if MIX_PIPE
+#ifndef RAM_HOT                                 /* the tail's code in RAM: the lean vocoder build (the probes' full builds
+                                                 * have neither the pool nor the flash to spare) */
+#define RAM_HOT (MIX_PIPE && SMK_VOC_LEAN)
+#endif
+#if RAM_HOT
 /* the tail's code in RAM (smk37-devtools vocoder-ui-spec.md §7e): mix_tail and its whole call tree in .ram_hot
  * (app.ld; copied at boot, main.c), out of the flash and of the cache the cores share. RAM and the flash are beyond a
  * call's reach of each other: the calls in go through tail_far, the helpers it calls are inlined into it (TAILINL:
@@ -18,8 +22,10 @@
 static inline void *tail_far(void *p) { void *volatile q = p; return q; }   /* (as fm1_flash.h FL_FAR) */
 #define TAIL_FAR(fn) ((__typeof__(&fn))tail_far((void *)&fn))
 #else
+#define RAMHOT
 #define TAILINL
 #define REV_LINE_SEC __attribute__((section(".lowram")))
+#define TAIL_FAR(fn) (fn)
 #endif
 #define DLY_LEN 65536u           /* 1.49 s: 1/4 down to 41 BPM, 1/8 dotted down to 31, 1/4 dotted down to 61 (clamped below) */
 #define CHO_LEN 2048u
@@ -1803,7 +1809,7 @@ static RAMHOT void mix_tail(int32_t *out, uint32_t n)
             src[5] = ZERO;
         }
         for (c = 0; c < 6u; c++)
-#if MIX_PIPE
+#if RAM_HOT
             for (i = 0; i < n; i++)
                 stem_stage[c][i] = src[c][i];           /* (.ram_hot: no call out to the flash's memcpy) */
 #else
@@ -1854,7 +1860,7 @@ static RAMHOT void mix_tail(int32_t *out, uint32_t n)
             out[2u * i + 1u] = knee(orr[i]);
         }
         if (usb_full_now && !usb_was) {                 /* (a new recording: no old block in its delay) */
-#if MIX_PIPE
+#if RAM_HOT
             {
                 uint32_t *w = (uint32_t *)&lim_usb, k;
                 for (k = 0; k < sizeof lim_usb / 4u; k++)
