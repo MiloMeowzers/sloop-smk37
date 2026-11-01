@@ -43,8 +43,8 @@ enum { MI_COLOR, MI_ZOOM,
                                                     * the audio track, track 3; live, not kept) */
        MI_VCUT, MI_VRES, MI_VVM, MI_VPINK,         /* CARRIER > CUTOFF, RESO (the saws' low-pass), VOICE, NOISE (the
                                                     * VSM201's voice mode, its pink filter); live, not kept */
-       MI_VBR, MI_VTHR, MI_VAPS,                   /* SILENCE > BRIDGE, THRESHOLD (the VSM201's silence bridging),
-                                                    * ANALYSIS (the bands resting in a pause: smk_vocoder.h voc_apause) */
+       MI_VBR, MI_VTHR,                            /* SILENCE > BRIDGE, THRESHOLD (the VSM201's silence bridging) */
+       MI_VTILT, MI_VCOL, MI_VBLEND,               /* BRIDGE TONE > TILT, COLOUR, BLEND (smk_vocoder.h; kept, project.c) */
 #endif
 #endif
        MI_ADV, MI_DPREV,
@@ -80,7 +80,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "STEM FX", "FADE", "XFADE", "CURVE",
 #if SMK_UAC_IN_PROBE
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
-                                              "BRIDGE", "THRESHOLD", "ANALYSIS",
+                                              "BRIDGE", "THRESHOLD", "TILT", "COLOUR", "BLEND",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -92,12 +92,12 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
 #if SMK_UAC_IN_PROBE
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_VOC, MS_CARR, MS_SIL, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW,
-       MS_SYSTEM, MS_COUNT };
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_SEQ, MS_PLAY, MS_MIDI,
+       MS_DAW, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "VOCODER", "CARRIER",
-                                              "SILENCE", "SEQ", "PLAY", "MIDI", "DAW", "SYSTEM"};
+                                              "SILENCE", "BRIDGE TONE", "SEQ", "PLAY", "MIDI", "DAW", "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VMODE, MI_VCUT, MI_VBR,
-                                               MI_ADV, MI_VEL, MI_TRS, MI_DMAP, MI_SYS0, MI_COUNT};
+                                               MI_VTILT, MI_ADV, MI_VEL, MI_TRS, MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VMODE
 #else
 enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
@@ -109,7 +109,7 @@ static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, M
 #endif
 _Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_VOC0 - MI_SFX <= 4 &&
 #if SMK_UAC_IN_PROBE
-               MI_VCUT - MI_VOC0 <= 4 && MI_VBR - MI_VCUT <= 4 && MI_ADV - MI_VBR <= 4 &&
+               MI_VCUT - MI_VOC0 <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_ADV - MI_VTILT <= 4 &&
 #else
                MI_ADV - MI_VOC0 <= 4 &&
 #endif
@@ -325,9 +325,27 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         str_cpy(b + str_len(b), " DB", 4);
         return b;
     }
-    case MI_VAPS:                                     /* REST: the bands rest in a pause (CPU); ALWAYS (an A/B) */
+    case MI_VTILT: {                                  /* the bridge's tilt, -3 .. +3 dB an octave (dim: no bridging) */
+        static char b[12];
+        int32_t h = (int32_t)(voc_tilt % VOC_TILT_N) - (int32_t)VOC_TILT_FLAT;   /* half dB */
+        *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && voc_bridge ? C_HI : C_DIM;
+        if (!h)
+            return "FLAT";
+        b[0] = h < 0 ? '-' : '+';
+        fmt_int(b + 1, (h < 0 ? -h : h) / 2);
+        str_cpy(b + str_len(b), h & 1 ? ".5 DB/OCT" : ".0 DB/OCT", 10);
+        return b;
+    }
+    case MI_VCOL: {                                   /* the input's envelopes in a pause, 0 .. 100 % */
+        static char b[6];
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
-        return voc_apause ? "REST" : "ALWAYS";
+        fmt_int(b, (int32_t)(voc_colour % VOC_COLOUR_N) * 10);
+        str_cpy(b + str_len(b), " %", 3);
+        return b;
+    }
+    case MI_VBLEND:                                   /* SUM, FILL (dim: COLOUR 0 or no bridging: the same) */
+        *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && voc_bridge && voc_colour ? C_HI : C_DIM;
+        return voc_blend ? "FILL" : "SUM";
     case MI_VLVL: {                                   /* make-up gain, -12 .. +18 dB in 3 dB steps */
         static char b[10];
         int32_t db = 3 * (int32_t)(voc_level % VOC_LEVEL_N) - 12;
@@ -403,7 +421,7 @@ UI_SMALL static void draw_menu(void)
     sig += voc_mode * 1000033u + voc_level * 1000037u + voc_dry * 1000039u + voc_hf * 1000081u + uin.alt * 1000099u +
            (uint32_t)UIN_TEST * 1000117u + voc_cut * 1000121u + voc_res * 1000133u + (uint32_t)VOC_AUDIO_ON * 1000151u +
            voc_vmode * 1000159u + voc_pink * 1000171u + voc_bridge * 1000183u + voc_thr * 1000187u +
-           voc_apause * 1000193u;
+           voc_tilt * 1000193u + voc_colour * 1000199u + voc_blend * 1000211u;
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
@@ -694,8 +712,16 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         voc_thr = (uint8_t)(s > 0 ? (voc_thr + 1u < VOC_THR_N ? voc_thr + 1u : voc_thr)
                                   : s < 0 ? (voc_thr ? voc_thr - 1u : 0u) : 2u);
         break;
-    case MI_VAPS:                                      /* right REST, left ALWAYS; OCT+ toggles */
-        voc_apause = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_apause);
+    case MI_VTILT:                                     /* -3 .. +3 dB an octave (stops at the ends); OCT+ +1.0 */
+        voc_tilt = (uint8_t)(s > 0 ? (voc_tilt + 1u < VOC_TILT_N ? voc_tilt + 1u : voc_tilt)
+                                   : s < 0 ? (voc_tilt ? voc_tilt - 1u : 0u) : VOC_TILT_FLAT + 2u);
+        break;
+    case MI_VCOL:                                      /* 0 .. 100 % (stops at the ends); OCT+ 100 % */
+        voc_colour = (uint8_t)(s > 0 ? (voc_colour + 1u < VOC_COLOUR_N ? voc_colour + 1u : voc_colour)
+                                     : s < 0 ? (voc_colour ? voc_colour - 1u : 0u) : VOC_COLOUR_N - 1u);
+        break;
+    case MI_VBLEND:                                    /* right FILL, left SUM; OCT+ toggles */
+        voc_blend = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_blend);
         break;
     case MI_VMODE:                                     /* AUDIO, VOCODER (stops at the ends); OCT+ round; faded */
         voc_mode = (uint8_t)(s > 0 ? (voc_mode + 1u < VM_N ? voc_mode + 1u : voc_mode) : s < 0 ? (voc_mode ? voc_mode - 1u : 0u)

@@ -12,8 +12,11 @@
  *              the carrier's level-matched: no carrier, no output (UNVOICED, white and pink)
  *   BRIDGE     no voice, a saw: BRIDGE 0 dB plays the saw on (within 6 dB of it), OFF nothing; a loud voice
  *              (-10 dBFS, THRESHOLD -42) leaves no bridging (the same output +-0.1 dB)
- *   ANALYSIS   SILENCE > ANALYSIS REST: the bands rest in a pause and run again with the voice; the voice after it,
- *              and a bridged pause, as ALWAYS (+-0.5 dB); BRIDGE OFF, a resting pause silent
+ *   TONE       BRIDGE TONE: COLOUR 0, the bands rest in a pause and run again with the voice (the voice after it as at
+ *              100 %); COLOUR 100 % puts a voice under THRESHOLD on the bridge, 0 does not; FILL between the bridge alone
+ *              and SUM; TILT +3 dB an octave lifts the bridge's top and drops its bottom
+ *   NORMAL     the VSM201's weights (B11 / B12): ch1 10.6 dB over ch20, folded into the synthesis bank
+ *   AGC        one note at a voice's level untouched; a three-note chord levelled to the ceiling (VOC_AGC_T)
  *   the track  MODE AUDIO: the voice itself, at a voice's full scale; a change of state (engine -> dry -> engine) fades out
  *              and in: no step over 200 a sample, settled within 15 blocks
  * 44.1 kHz, blocks of 32 as the mix. */
@@ -46,8 +49,8 @@ static double band_gain(uint32_t k, double f)
     uint32_t i, n = VOC_FS;
     for (i = 0; i < n; i++) {
         int32_t x = (int32_t)lrint(16.0 * 16000.0 * sin(2.0 * M_PI * f * i / VOC_FS)), y;
-        y = voc_sec(x, &x1, &x2, &y1, &y2, k);
-        y = voc_sec(y, &u1, &u2, &v1, &v2, k);
+        y = voc_sec(x, VOC_B0[k], &x1, &x2, &y1, &y2, k);
+        y = voc_sec(y, VOC_B0[k], &u1, &u2, &v1, &v2, k);
         if (i > n - VOC_FS / 10u && (y < 0 ? -y : y) > pk)
             pk = y < 0 ? -y : y;
     }
@@ -117,6 +120,12 @@ static double saw110(uint32_t i) { double p = fmod(110.0 * i / FS, 1.0); return 
 static double sine220(uint32_t i) { return 8000.0 * sin(2.0 * M_PI * 220.0 * i / FS); }
 static double v1k(uint32_t i) { return 16000.0 * sin(2.0 * M_PI * 1000.0 * i / FS); }
 static double vzero(uint32_t i) { (void)i; return 0.0; }
+static double vquiet(uint32_t i) { return 184.0 * sin(2.0 * M_PI * 1000.0 * i / FS); }   /* -45 dBFS */
+/* a carrier voice as voice.c voc_saw makes it: peak VOICE_FS x 2 (mean |x| VOICE_FS / 2... x 2: 24000), at velocity
+ * ~85 two thirds of that; one, and three (a major chord) */
+static double sawv(double f, uint32_t i) { double p = fmod(f * i / FS, 1.0); return 32000.0 * (2.0 * p - 1.0); }
+static double saw24k(uint32_t i) { return sawv(110.0, i); }
+static double chord3(uint32_t i) { return sawv(110.0, i) + sawv(138.6, i) + sawv(164.8, i); }
 static uint32_t nrnd = 12345u;
 static double vowel(uint32_t i)                   /* harmonics of 150 Hz, -12 dB an octave, to 4 kHz */
 {
@@ -167,8 +176,10 @@ int main(void)
     {
         double near = tone(n, 990.0), lo = tone(n, 110.0), hi = tone(n, 5610.0);
         printf("   1 kHz voice on a 110 Hz saw: 990 Hz %.1f dB, 110 Hz %.1f dB, 5610 Hz %.1f dB\n", near, lo, hi);
-        check("vocoding: the harmonic where the voice is (990 Hz) > 15 dB over the fundamental, > 40 dB over 5610 Hz",
-              near - lo > 15.0 && near - hi > 40.0);    /* (the fundamental: band 1 is broad, as the VSM201's K1: a 1 kHz
+        double nw = 20.0 * log10((double)VOC_NORM_Q12[0] / VOC_NORM_Q12[7]);   /* (NORMAL: band 1 over band 8, 980 Hz) */
+        check("vocoding: the harmonic where the voice is (990 Hz) > 15 dB over the fundamental (NORMAL's lift on band 1"
+              " aside), > 40 dB over 5610 Hz",
+              near - lo + nw > 15.0 && near - hi > 40.0);   /* (the fundamental: band 1 is broad, as the VSM201's K1: a 1 kHz
                                                          * tone opens it ~35 dB down, and a saw's 110 Hz is 19 dB over its
                                                          * 9th harmonic; speech spreads over every band) */
         voc_level = 5;
@@ -261,11 +272,11 @@ int main(void)
         check("BRIDGE: a loud voice (-10 dBFS, THRESHOLD -42 dB) is not bridged (the same output, +-0.1 dB)",
               fabs(db(on / off)) < 0.1);
     }
-    {   /* SILENCE > ANALYSIS: REST (the bands rest in a pause) against ALWAYS: a voice, a pause, the voice again */
+    {   /* BRIDGE TONE > COLOUR 0 (the bands rest in a long pause) against 100 %: a voice, a pause, the voice again */
         double t_rest = 0, t_all = 0, b_rest = 0, b_all = 0;
         uint32_t rest_gap, rest_voice, k;
         for (k = 0; k < 2u; k++) {
-            voc_apause = (uint8_t)(k == 0u);
+            voc_colour = (uint8_t)(k == 0u ? 0u : 10u);
             voc_bridge = VOC_BR_N - 1u;                 /* (0 dB: the pause is heard, bridged) */
             reset();
             run(0.3, v1k, saw110);
@@ -276,20 +287,86 @@ int main(void)
             rest_voice = voa.rest;
             *(k ? &t_all : &t_rest) = tone(n, 990.0);
             if (!k)
-                check("ANALYSIS REST: the bands rest in a pause (0.2 s), run again with the voice", rest_gap && !rest_voice);
+                check("COLOUR 0: the bands rest in a pause (0.2 s), run again with the voice", rest_gap && !rest_voice);
             else
-                check("ANALYSIS ALWAYS: the bands never rest", !rest_gap && !rest_voice);
+                check("COLOUR 100 %: the bands never rest", !rest_gap && !rest_voice);
         }
-        printf("   after a pause, 990 Hz: REST %.2f dB, ALWAYS %.2f dB; the bridged pause: REST %.1f, ALWAYS %.1f\n",
+        printf("   after a pause, 990 Hz: COLOUR 0 %.2f dB, 100 %% %.2f dB; a silent bridged pause: %.1f, %.1f\n",
                t_rest, t_all, b_rest, b_all);
-        check("ANALYSIS REST: the voice after a pause vocoded as ALWAYS (990 Hz, +-0.5 dB)", fabs(t_rest - t_all) < 0.5);
-        check("ANALYSIS REST: a bridged pause as ALWAYS (+-0.5 dB)", fabs(db(b_rest / b_all)) < 0.5);
-        voc_apause = 1;
+        check("COLOUR 0: the voice after a pause vocoded as at 100 % (990 Hz, +-0.5 dB)", fabs(t_rest - t_all) < 0.5);
+        check("COLOUR 0: a silent bridged pause as at 100 % (nothing to colour it, +-0.5 dB)", fabs(db(b_rest / b_all)) < 0.5);
         voc_bridge = 0;
+        voc_colour = 0;
         reset();
         run(0.3, v1k, saw110);
         n = run(0.2, vzero, saw110);
-        check("ANALYSIS REST, BRIDGE OFF: a pause silent (< 1)", voa.rest && rms_last(n, 0.1) < 1.0);
+        voc_colour = 10;
+        check("COLOUR 0, BRIDGE OFF: a resting pause silent (< 1)", voa.rest && rms_last(n, 0.1) < 1.0);
+    }
+    {   /* BRIDGE TONE in a pause with something under THRESHOLD (a 1 kHz voice at -45 dBFS; THRESHOLD -42): COLOUR puts
+         * its band on the bridge, 0 leaves the bridge alone; FILL the larger of the two, SUM both */
+        double c0, c100, cf, r0;
+        voc_bridge = VOC_BR_N - 13u;                    /* -36 dB (the voice's band over it, the others under) */
+        voc_tilt = VOC_TILT_FLAT;
+        voc_colour = 0;
+        reset();
+        n = run(1.0, vquiet, saw110);
+        c0 = tone(n, 990.0), r0 = rms_last(n, 0.5);
+        voc_colour = 10;
+        reset();
+        n = run(1.0, vquiet, saw110);
+        c100 = tone(n, 990.0);
+        voc_blend = 1;
+        reset();
+        n = run(1.0, vquiet, saw110);
+        cf = tone(n, 990.0);
+        voc_blend = 0;
+        printf("   a -45 dBFS voice in a pause, BRIDGE -36 dB, at 990 Hz: COLOUR 0 %.1f dB; 100 %% SUM %.1f dB, FILL %.1f dB\n",
+               c0, c100, cf);
+        check("COLOUR 100 %: the input under THRESHOLD colours the bridge (990 Hz > 3 dB over COLOUR 0)", c100 - c0 > 3.0);
+        check("BLEND: FILL the larger of the two a band, not both (the voice's band: over the bridge alone, under SUM)",
+              cf > c0 + 3.0 && cf < c100 - 0.5 && r0 > 0.0);
+    }
+    {   /* TILT: the bridge alone (no voice, BRIDGE 0 dB) at +3 dB an octave against FLAT: more top, less bottom */
+        double fl_hi, fl_lo, up_hi, up_lo;
+        voc_bridge = VOC_BR_N - 1u;
+        voc_tilt = VOC_TILT_FLAT;
+        reset();
+        n = run(1.0, vzero, saw110);
+        fl_hi = hiss(n), fl_lo = tone(n, 110.0);
+        voc_tilt = VOC_TILT_N - 1u;
+        reset();
+        n = run(1.0, vzero, saw110);
+        up_hi = hiss(n), up_lo = tone(n, 110.0);
+        voc_tilt = VOC_TILT_FLAT + 2u;
+        voc_bridge = 0;
+        printf("   the bridge alone, TILT +3 dB/oct against FLAT: above 4 kHz %+.1f dB, 110 Hz %+.1f dB\n",
+               up_hi - fl_hi, up_lo - fl_lo);
+        check("TILT +3 dB an octave: the bridge's top up (> 4 dB above 4 kHz), its bottom down (> 5 dB at 110 Hz)",
+              up_hi - fl_hi > 4.0 && fl_lo - up_lo > 5.0);
+    }
+    {   /* NORMAL (the VSM201's B11 / B12 weights, rms 1) and the carrier AGC */
+        double d = 20.0 * log10((double)VOC_NORM_Q12[0] / VOC_NORM_Q12[VOC_NB - 1u]), worst = 0;
+        uint32_t k;
+        for (k = 0; k < VOC_NB; k++) {
+            double r = (double)VOC_B0S[k] / VOC_B0[k] - VOC_NORM_Q12[k] / 4096.0;
+            if (fabs(r) > worst)
+                worst = fabs(r);
+        }
+        printf("   NORMAL: ch1 over ch20 %.2f dB (9.53k / 2.94k against 9.53k / 10.0k: 10.63)\n", d);
+        check("NORMAL: ch1 10.6 dB over ch20 (+-0.1), each folded into the synthesis bank's first section",
+              fabs(d - 10.63) < 0.1 && worst < 0.001);
+        voc_bridge = 0;
+        reset();
+        run(1.0, v1k, saw24k);
+        check("AGC: one note at a voice's level untouched (gain 1.0)", voc.agc_g == 32767);
+        reset();
+        run(1.0, v1k, chord3);
+        printf("   AGC on a three-note chord (3 x a voice): gain %.2f dB, the carrier's level after it %.0f (ceiling %d)\n",
+               db(voc.agc_g / 32767.0), (double)voc.agc_env * voc.agc_g / 32767.0, VOC_AGC_T);
+        check("AGC: a chord levelled to the ceiling (down to -10 %: the gain drops fast, recovers slowly), never above it",
+              voc.agc_g < 32767 && (double)voc.agc_env * voc.agc_g / 32767.0 <= VOC_AGC_T * 1.01 &&
+              (double)voc.agc_env * voc.agc_g / 32767.0 > VOC_AGC_T * 0.9);
     }
     {   /* the audio track: engine (a DC 30000) -> AUDIO IN on, MODE OFF (the voice: DC 10000) -> off again */
         int32_t b[VOC_MAXN], prev = 30000, step = 0;

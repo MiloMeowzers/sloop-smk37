@@ -283,8 +283,12 @@ static void con_status(void)
     con_kv("voc_ana_blocks", (int32_t)voa.blocks);       /* the analysis's blocks since the last status (core 0) .. */
     con_kv("voc_unvoiced", (int32_t)voa.uv_blocks);       /* .. of them unvoiced (the VSM201's detector) .. */
     con_kv("voc_pause", (int32_t)voa.pause_blocks);       /* .. and a pause (the speech / pause detector, THRESHOLD) */
-    con_kv("voc_rest", (int32_t)voa.rest_blocks);         /* .. and the bands at rest (SILENCE > ANALYSIS REST) */
-    con_kv("voc_apause", voc_apause);
+    con_kv("voc_rest", (int32_t)voa.rest_blocks);         /* .. and the bands at rest (BRIDGE TONE > COLOUR 0) */
+    con_kv("voc_tilt", (int32_t)voc_tilt - (int32_t)VOC_TILT_FLAT);   /* BRIDGE TONE: TILT, half dB an octave */
+    con_kv("voc_colour", voc_colour * 10);               /* .. COLOUR % */
+    con_kv("voc_blend", voc_blend);                      /* .. BLEND: 0 SUM, 1 FILL */
+    con_kv("voc_agc_env", voc.agc_env);                  /* the carrier AGC: the summed carrier's level (mean |x|) */
+    con_kv("voc_agc_g", voc.agc_g);                      /* .. its gain now, Q15 (32767: 1.0) */
     con_kv("voc_vmode", voc_vmode);                      /* CARRIER > VOICE: 0 AUTO, 1 VOICED, 2 UNVOICED */
     con_kv("voc_bridge", voc_bridge);                    /* SILENCE > BRIDGE: 0 OFF, 1..17 -48 .. 0 dB */
     voa.blocks = voa.uv_blocks = voa.pause_blocks = voa.rest_blocks = 0;
@@ -309,6 +313,32 @@ static void con_dbg(void)
     for (i = 0; i < sizeof NAMES / sizeof NAMES[0] && i < sizeof felucca_dbg / 4u; i++)
         con_kx(NAMES[i], w[i]);
 }
+
+#if SMK_TIMING
+/* where an audio half's time goes (smk_timing.h), in us: each figure's worst, the worst half's split, and the mean over
+ * the halves past the shed line (85 %); then cleared */
+static void con_timing(void)
+{
+    uint32_t i, n = tim.n_over;
+    con_kv("halves", (int32_t)tim.halves);
+    con_kv("over_85", (int32_t)n);
+    con_puts("what max worst_half over_mean (us)\r\n");
+    for (i = 0; i < TS_N; i++) {
+        con_puts(TS_NAME[i]);
+        con_putc(' ');
+        con_dec((int32_t)(tim.max[i] / FM1_TICKS_PER_US));
+        con_putc(' ');
+        con_dec((int32_t)(tim.worst[i] / FM1_TICKS_PER_US));
+        con_putc(' ');
+        con_dec(n ? (int32_t)(tim.over[i] / n / FM1_TICKS_PER_US) : 0);
+        con_puts("\r\n");
+    }
+    fm1_irq_off();
+    memset(tim.max, 0, sizeof tim.max), memset(tim.worst, 0, sizeof tim.worst), memset(tim.over, 0, sizeof tim.over);
+    tim.halves = tim.n_over = 0;
+    fm1_irq_on();
+}
+#endif
 
 static void con_crash(void)
 {
@@ -428,6 +458,10 @@ static void con_exec(const char *p)
         con_crash();
     else if (con_word(&p, "params"))
         con_params();
+#if SMK_TIMING
+    else if (con_word(&p, "timing"))
+        con_timing();
+#endif
 #if BOARD_SMK37
     else if (con_word(&p, "smk"))
         con_smk();

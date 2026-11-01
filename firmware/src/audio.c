@@ -91,6 +91,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             uint32_t all = fm1_ticks() - t0;
             us = (all - t5_nested_ticks) / FM1_TICKS_PER_US;
             shed_over = (uint8_t)(shed_over << 1 | (all / FM1_TICKS_PER_US * 100u > (HALF_FRAMES * 1000000u / FS) * 85u));
+#if SMK_TIMING
+            tim_half(all, t5_nested_ticks, shed_over & 1u);   /* (the console's "timing", smk_timing.h) */
+#endif
         }
         if (us > audio_max_us)
             audio_max_us = us;

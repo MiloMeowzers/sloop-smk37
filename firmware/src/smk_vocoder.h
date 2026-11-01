@@ -81,10 +81,17 @@ static int32_t voc_br_q15(uint32_t k)    /* BRIDGE k's gain, Q15: 0 dB, 3 dB les
 static uint8_t voc_thr = 2;              /* SILENCE > THRESHOLD: VOC_THR_DB[]; the speech / pause detector's */
 #define VOC_THR_N 6u
 static const int8_t VOC_THR_DB[VOC_THR_N] = {-54, -48, -42, -36, -30, -24};
-static uint8_t voc_apause = 1;           /* SILENCE > ANALYSIS: REST (1), the bands rest in a pause; ALWAYS (0) (an A/B of
-                                          * the CPU it saves; live, not kept) */
-#define VOC_REST_N 2205u                 /* .. after 50 ms below THRESHOLD (44.1 kHz samples): ~6 of the envelopes' release
-                                          * (~8 ms), each band then ~50 dB under where the pause began */
+/* BRIDGE TONE (the owner's, beyond the VSM201; smk37-devtools vocoder-ui-spec.md §7a): in a pause each band carries
+ * the input's own envelope (COLOUR) and the bridge (BRIDGE, tilted per band: TILT), added (SUM) or the larger (FILL) */
+static uint8_t voc_tilt = VOC_TILT_FLAT + 2u;   /* TILT: VOC_TILT_Q12[], -3 .. +3 dB an octave (default +1.0) */
+static uint8_t voc_colour = 10;          /* COLOUR: 0 .. 10 (x 10 %): the envelopes in a pause; 0: the bands rest */
+static uint8_t voc_blend;                /* BLEND: 0 SUM, 1 FILL */
+#define VOC_COLOUR_N 11u
+#define VOC_REST_N 2205u                 /* COLOUR 0: the bands rest after 50 ms below THRESHOLD (44.1 kHz samples): ~6 of
+                                          * the envelopes' release (~8 ms), each band then ~50 dB under where it began */
+#define VOC_AGC_T 18000                  /* the carrier AGC's ceiling (mean |x|, the track's scale): a saw voice at
+                                          * velocity ~85 passes (mean ~16000: a voice peaks at VOICE_FS x 2 at full, its
+                                          * mean half that), one at full comes down ~2.5 dB, a chord to this; to tune */
 #define VOC_BR_Q15 6300                  /* the bridging at full: the saws out at their own level (LEVEL 0 dB; every band
                                           * open at once: + 14.3 dB, measured, tests/smk_vocoder_test.c) */
 #define VOC_PINK_Q15 11105               /* the pink filter's rms over white: 2.95 (Kellet's, at 22050 Hz): back to 1 */
@@ -137,6 +144,7 @@ static struct {                          /* the synthesis (track 3's core): the 
     uint32_t blocks;                     /* (the console) */
     int32_t peak_out;
     int32_t cenv, uvg;                   /* the carrier's rectified level (the noise's), the noise's share (Q15) */
+    int32_t agc_env, agc_g;              /* the carrier AGC: its level (mean |x|), its gain (Q15, 1.0 = 32767) */
     int32_t pk0, pk1, pk2;               /* the pink filter */
     uint32_t rnd;
 } voc;
@@ -144,10 +152,10 @@ static struct {                          /* the synthesis (track 3's core): the 
 static uint8_t voc_cur;
 static int32_t voc_xg = 32767;
 
-/* one band-pass section of band k, rounded */
-static inline int32_t voc_sec(int32_t x, int32_t *x1, int32_t *x2, int32_t *y1, int32_t *y2, uint32_t k)
+/* one band-pass section of band k, rounded; b0 its input gain (VOC_B0[k], or VOC_B0S[k]: with the NORMAL weight) */
+static inline int32_t voc_sec(int32_t x, int32_t b0, int32_t *x1, int32_t *x2, int32_t *y1, int32_t *y2, uint32_t k)
 {
-    int64_t a = (int64_t)VOC_B0[k] * (x - *x2) + (int64_t)VOC_C1[k] * *y1 - (int64_t)VOC_A2[k] * *y2 + (1 << 29);
+    int64_t a = (int64_t)b0 * (x - *x2) + (int64_t)VOC_C1[k] * *y1 - (int64_t)VOC_A2[k] * *y2 + (1 << 29);
     int32_t y = (int32_t)(a >> 30);
     *x2 = *x1, *x1 = x, *y2 = *y1, *y1 = y;
     return y;
@@ -174,6 +182,7 @@ static void voc_reset(void)              /* the synthesis afresh (the state chan
 {
     memset(&voc, 0, sizeof voc);
     voc.rnd = 0x2545F491u;
+    voc.agc_g = 32767;
 }
 static int32_t voc_log2_q8(uint32_t x)   /* log2 x, Q8 (x > 0); once a block: a loop, no clz */
 {
@@ -213,8 +222,8 @@ static void voc_analyse(uint32_t n)
         if (voa.rest)
             continue;                                    /* (a pause: the bands at rest, voc_ab cleared below) */
         for (k = 0; k < VOC_NB; k++) {
-            int32_t ya = voc_sec(v, &voa.ax1[k], &voa.ax2[k], &voa.ay1[k], &voa.ay2[k], k);
-            ya = voc_sec(ya, &voa.bx1[k], &voa.bx2[k], &voa.by1[k], &voa.by2[k], k);
+            int32_t ya = voc_sec(v, VOC_B0[k], &voa.ax1[k], &voa.ax2[k], &voa.ay1[k], &voa.ay2[k], k);
+            ya = voc_sec(ya, VOC_B0[k], &voa.bx1[k], &voa.bx2[k], &voa.by1[k], &voa.by2[k], k);
             voa.env[k] = voc_env(voa.env[k], ya);        /* (ya: Q19) */
             voc_ab[voc_aw].env[j][k] = voa.env[k] >> 4;  /* (Q15) */
             if (k >= VOC_HF0)
@@ -241,9 +250,9 @@ static void voc_analyse(uint32_t n)
         voa.rest_zero--;
     }
     voa.rest_blocks += voa.rest;
-    voa.quiet = voc_ab[voc_aw].speech || !voc_apause ? 0u : voa.quiet + n > VOC_REST_N ? VOC_REST_N : voa.quiet + n;
+    voa.quiet = voc_ab[voc_aw].speech || voc_colour ? 0u : voa.quiet + n > VOC_REST_N ? VOC_REST_N : voa.quiet + n;
     if (voa.rest && !voa.quiet) {
-        voa.rest = 0;                                    /* speech (or ALWAYS): the bands run from the next block, from rest */
+        voa.rest = 0;                                    /* speech (or COLOUR up): the bands run from the next block, from rest */
     } else if (!voa.rest && voa.quiet >= VOC_REST_N) {   /* a pause long enough: the bands rest, their state cleared */
         memset(voa.ax1, 0, sizeof voa.ax1), memset(voa.ax2, 0, sizeof voa.ax2);
         memset(voa.ay1, 0, sizeof voa.ay1), memset(voa.ay2, 0, sizeof voa.ay2);
@@ -260,8 +269,9 @@ static void voc_analyse(uint32_t n)
 }
 
 /* one vocoded sample at 22.05 kHz from the carrier c (the track's scale), j the sample's place in the block: the
- * analysis's envelopes of the block before */
-static int32_t voc_tick(int32_t c, uint32_t j, int32_t badd)
+ * analysis's envelopes of the block before, each times cf (COLOUR in a pause, Q15), with the band's bridge bk[k] (TILT)
+ * added (SUM) or the larger of the two (FILL); the bank's first section carries the VSM201's NORMAL weights */
+static int32_t voc_tick(int32_t c, uint32_t j, const int32_t *bk, int32_t cf, uint32_t fill)
 {
     const int32_t *env = voc_ab[voc_aw ^ 1u].env[j];
     int64_t sum = 0;
@@ -269,9 +279,12 @@ static int32_t voc_tick(int32_t c, uint32_t j, int32_t badd)
     uint32_t k;
     c <<= 4;
     for (k = 0; k < VOC_NB; k++) {
-        int32_t ys = voc_sec(c, &voc.sx1[k], &voc.sx2[k], &voc.sy1[k], &voc.sy2[k], k);
-        ys = voc_sec(ys, &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
-        sum += (int64_t)ys * (env[k] + badd);            /* x the envelope (+ the bridging), Q15 (ys: the carrier's
+        int32_t ys = voc_sec(c, VOC_B0S[k], &voc.sx1[k], &voc.sx2[k], &voc.sy1[k], &voc.sy2[k], k), e = env[k];
+        ys = voc_sec(ys, VOC_B0[k], &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
+        if (cf < 32767)
+            e = (e * cf) >> 15;                          /* (COLOUR under 100 %, in a pause) */
+        e = fill ? (e > bk[k] ? e : bk[k]) : e + bk[k];
+        sum += (int64_t)ys * e;                          /* x the envelope and the bridging, Q15 (ys: the carrier's
                                                           * scale << 4) */
     }
     o = (int32_t)(((sum >> 19) * VOC_LV_Q8[voc_level % VOC_LEVEL_N]) >> 8);
@@ -288,9 +301,29 @@ static void voc_process(int32_t *b, uint32_t n)
     uint32_t vm = voc_vmode % VV_N, br = voc_bridge % VOC_BR_N != 0u;
     int32_t badd = br ? (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * voc_br_q15(voc_bridge % VOC_BR_N) >> 15) *
                                   VOC_BR_Q15 >> 15) : 0;
+    int32_t bk[VOC_NB], cf, ag, dag;
+    uint32_t fill = voc_blend & 1u;
     int32_t uvt = vm == VV_UNVOICED ? 32767 : vm == VV_VOICED ? 0 :                 /* the noise's share wanted */
                   voc_ab[voc_aw ^ 1u].unvoiced && (!br || voc_ab[voc_aw ^ 1u].speech) ? 32767 : 0;
     voc.blocks++;
+    {   /* BRIDGE TONE: the bridge per band (TILT), the envelopes' share in a pause (COLOUR: full in speech) */
+        const uint16_t *tq = VOC_TILT_Q12[voc_tilt % VOC_TILT_N];
+        int32_t col = voc_colour >= VOC_COLOUR_N - 1u ? 32767 : (int32_t)voc_colour * 3277;
+        for (j = 0; j < VOC_NB; j++)
+            bk[j] = (badd * (int32_t)tq[j]) >> 12;
+        cf = 32767 - (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * (32767 - col)) >> 15);
+    }
+    {   /* the carrier AGC (the VSM201's, no control): the gain that keeps the summed carrier's level (agc_env, its mean
+         * |x|) at most VOC_AGC_T, 1.0 under it; the gain follows it down in ~5 ms, back up in ~150 ms, ramped over the
+         * block (no step) */
+        int32_t g = voc.agc_env > VOC_AGC_T ? (int32_t)(((int64_t)VOC_AGC_T * 32767) / voc.agc_env) : 32767;
+        ag = voc.agc_g;
+        g = ag + (int32_t)(((int64_t)(g - ag) * (g < ag ? VOC_AGC_DN : VOC_AGC_UP)) >> 16);
+        if (g > 32767)
+            g = 32767;
+        dag = n >= 2u ? (g - ag) / (int32_t)(n / 2u) : 0;
+        voc.agc_g = g;
+    }
     for (i = 0; i + 1u < n && i + 1u < VOC_MAXN; i += 2u) {
         int32_t o[2], d, k;
         int64_t a = 0;
@@ -298,6 +331,10 @@ static void voc_process(int32_t *b, uint32_t n)
             voc.ch[voc.hw++ & (VOC_HN - 1u)] = b[i + (uint32_t)k];
         {   /* the replacement: the saws, the noise level-matched to them, switched (or, bridging, added) */
             int32_t c = voc_dec(voc.ch, voc.hw), ac = c < 0 ? -c : c, w, nz;
+            voc.agc_env += (int32_t)(((int64_t)(ac - voc.agc_env) * VOC_AGC_LVL) >> 16);
+            c = (int32_t)(((int64_t)c * ag) >> 15);              /* (the AGC, before the noise matched to it) */
+            ag += dag;
+            ac = c < 0 ? -c : c;
             voc.cenv += (int32_t)(((int64_t)(ac - voc.cenv) * VOC_CENV_K) >> 16);
             voc.uvg = voc.uvg < uvt ? (voc.uvg + 512 > uvt ? uvt : voc.uvg + 512)
                                     : (voc.uvg - 512 < uvt ? uvt : voc.uvg - 512);   /* ~3 ms */
@@ -314,7 +351,7 @@ static void voc_process(int32_t *b, uint32_t n)
                 c = br && vm == VV_AUTO ? c + (int32_t)(((int64_t)nz * voc.uvg) >> 15)
                                         : c + (int32_t)(((int64_t)(nz - c) * voc.uvg) >> 15);
             }
-            d = voc_tick(c, i >> 1, badd);
+            d = voc_tick(c, i >> 1, bk, cf, fill);
         }
         voc.oh[voc.ow++ & (VOC_ON - 1u)] = d;
         /* 2:1 up: the even sample the one VOC_HB back, the odd one the half-band between it and the next */

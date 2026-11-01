@@ -13,6 +13,11 @@ The bank runs at 22050 Hz (the VSM201's range is 100 Hz - 8 kHz): the voice and 
 up 2:1 through a half-band FIR (HB taps, Q15, its zero taps left out). Coefficients Q30. Also the envelopes' and the
 voiced / unvoiced detector's one-pole coefficients (Q16), at 22050 Hz.
 
+Also (2026-11-01, smk37-devtools vocoder-ui-spec.md §7): the VSM201's NORMAL weights (its schematic B11/B12, the fixed
+resistor of each channel into the NORMAL summing amplifier, 9.53k feedback: ch1 2.94k .. ch20 10.0k), folded into the
+synthesis bank's first section (VOC_B0S: no cost a sample); the bridge's TILT (the owner's addition, beyond the
+VSM201) as per band gains for each step; the carrier AGC's detector.
+
     python3 tools/gen_vocoder.py > firmware/src/smk_vocoder_tab.h
 """
 import math
@@ -20,6 +25,12 @@ import math
 FS = 22050.0
 F = [145, 250, 350, 465, 580, 705, 840, 980, 1120, 1290,
      1490, 1710, 2030, 2370, 2740, 3260, 3840, 4560, 5570, 6780]
+# the NORMAL resistors (kOhm), ch1 .. ch20, read off the VSM201 schematic (JL11025 page 0, Kanalpegelung B11 / B12):
+# R11, R21, R31 .. R201; the channel's gain into the NORMAL bus 9.53k / R
+NORMAL_R = [2.94, 3.48, 3.74, 3.92, 4.12, 4.42, 4.64, 4.87, 5.23, 5.49,
+            5.76, 6.19, 6.49, 6.98, 7.32, 7.87, 8.25, 8.66, 9.31, 10.0]
+TILT_STEPS = 13                   # the bridge's TILT: -3 .. +3 dB an octave in 0.5 dB steps (index 6: flat)
+TILT_PIVOT = 1000.0               # Hz: the band gains 1 there
 HB_HALF = 7                       # the half-band's taps: h[0] and h[+-1], h[+-3] .. h[+-(2 HB_HALF - 1)]
 HB_BETA = 7.0
 
@@ -89,6 +100,32 @@ def main():
     print("#define VOC_ENV_REL %du        /* release ~20 Hz (~8 ms): the VSM201's 20 - 50 Hz smoothing */" % onepole_q16(20.0))
     print("#define VOC_LF_K %du          /* the voiced / unvoiced detector's channel 0: a low-pass at 1 kHz */" % onepole_q16(1000.0))
     print("#define VOC_CENV_K %du        /* the carrier's level (for the noise that replaces it): ~50 Hz */" % onepole_q16(50.0))
+    # NORMAL: each channel's gain 1 / R, scaled so the 20 have an rms of 1 (a flat spectrum keeps its level)
+    g = [1.0 / r for r in NORMAL_R]
+    rms = math.sqrt(sum(x * x for x in g) / n)
+    g = [x / rms for x in g]
+    print("/* the VSM201's NORMAL weights (B11 / B12: 9.53k / R, R = %s kOhm), rms 1 over the 20: ch1 %+.1f dB, ch20 %+.1f dB;"
+          % (", ".join("%.2f" % r for r in NORMAL_R), 20 * math.log10(g[0]), 20 * math.log10(g[-1])))
+    print(" * VOC_B0S = VOC_B0 x the weight: the synthesis bank's first section (the analysis keeps VOC_B0) */")
+    print("static const int32_t VOC_NORM_Q12[VOC_NB] = {" + ", ".join(str(round(x * 4096)) for x in g) + "};")
+    print("static const int32_t VOC_B0S[VOC_NB] = {" + ", ".join(str(round(r[2] * x)) for r, x in zip(rows, g)) + "};")
+    # the bridge's TILT: band k's gain 2^(slope x octaves from the pivot / 6.02), slope -3 .. +3 dB an octave
+    print("/* the bridge's TILT (the owner's, beyond the VSM201): %d steps, -3 .. +3 dB an octave (0.5 dB), about %.0f Hz;"
+          % (TILT_STEPS, TILT_PIVOT))
+    print(" * a band's gain, Q12 */")
+    print("#define VOC_TILT_N %du" % TILT_STEPS)
+    print("#define VOC_TILT_FLAT %du" % (TILT_STEPS // 2))
+    print("static const uint16_t VOC_TILT_Q12[VOC_TILT_N][VOC_NB] = {")
+    for t in range(TILT_STEPS):
+        slope = (t - TILT_STEPS // 2) * 0.5
+        row = [round(4096 * 10 ** (slope * math.log2(f / TILT_PIVOT) / 20.0)) for f in F]
+        print("    {" + ", ".join(str(x) for x in row) + "},   /* %+.1f dB an octave */" % slope)
+    print("};")
+    print("#define VOC_AGC_LVL %du       /* the carrier AGC's level: mean |x|, a one-pole of ~20 ms, Q16 a 22.05 kHz sample */"
+          % round((1.0 - math.exp(-1.0 / (0.020 * FS))) * 65536.0))
+    print("#define VOC_AGC_DN %du       /* .. its gain down ~5 ms, Q16 a block of 16 samples (CTL 32 at 44.1 kHz) */"
+          % round((1.0 - math.exp(-16.0 / (0.005 * FS))) * 65536.0))
+    print("#define VOC_AGC_UP %du         /* .. and back up ~150 ms */" % round((1.0 - math.exp(-16.0 / (0.150 * FS))) * 65536.0))
 
 
 if __name__ == "__main__":

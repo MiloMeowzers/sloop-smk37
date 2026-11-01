@@ -4,6 +4,7 @@
  * Stereo dry mix; the chorus and the reverb come back in stereo, the delay in the middle. */
 #define DLY_LEN 65536u           /* 1.49 s: 1/4 down to 41 BPM, 1/8 dotted down to 31, 1/4 dotted down to 61 (clamped below) */
 #define CHO_LEN 2048u
+#include "smk_timing.h"      /* SMK-37, the vocoder build's console: where an audio half's time goes (TIM_*) */
 #if SMK_VOC_LEAN
 /* the vocoder build: the line stored at 22.05 kHz, half the RAM for the same 1.49 s (the repeats are low-passed by
  * COLOR anyway): two samples averaged into one, a sample read between two (fx_buses) */
@@ -1175,11 +1176,16 @@ static void mix_drums(uint32_t n, mixacc_t *mx)
 static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
 {
     uint32_t k;
+    TIM_U0(mx);
     for (k = 0; k < NPART; k++)
-        if (mask & (1u << k))
+        if (mask & (1u << k)) {
             mix_part(&trk[k], n, mx, scratch);
-    if (mask & U_DRUMS)
+            TIM_UNIT(mx, k);
+        }
+    if (mask & U_DRUMS) {
         mix_drums(n, mx);
+        TIM_UNIT(mx, 3u);
+    }
 }
 
 /* the load figures: core 1's time in its job and core 0's time waiting for it, in ticks over a half (cpu1.h
@@ -1493,6 +1499,7 @@ static void mix_block(int32_t *out, uint32_t n)
 {
     uint32_t i, c1;
     int32_t m0, m1, *mix_l = acc[0].l, *mix_r = acc[0].r;
+    TIM_START();
     for (i = 0; i < n; i++)
         acc[0].l[i] = acc[0].r[i] = acc[0].sc[i] = acc[0].sd[i] = acc[0].sr[i] = 0;
 #if BOARD_SMK37
@@ -1552,19 +1559,25 @@ static void mix_block(int32_t *out, uint32_t n)
             if (!cpu1_run(cpu1_stems_job, c1 | n << 8 | sk << 16))
                 c1 = 0, sk = 0;
         }
+        TIM_MARK(TS_PRE);
 #if SMK_UAC_IN_PROBE
         if (VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && n <= CTL)
             voc_analyse(n);                             /* the vocoder's analysis, while core 1 renders track 3 */
 #endif
+        TIM_MARK(TS_ANA);
         mix_units(U_ALL & ~c1, n, &acc[0], part_buf[0]);   /* this core's units, meanwhile */
+        TIM_MARK(TS_UNITS);
         tu = cpu1_ticks();
         if (sdo && sk < 6u)
             stem_tap_ch(STEM_STAGE, stem_sn, stem_sm0, stem_sm1, sk, 6);   /* .. and the rest of the stems */
         tc = cpu1_ticks();
+        TIM_MARK(TS_STEM);
         if (c1 || sk) {
             uint32_t w0 = cpu1_ticks();
             late = cpu1_wait();
             cpu1_wait_ticks += cpu1_ticks() - w0;
+            if (!late)
+                TIM_C1(stem_c1_ticks);
             if (late) {                                 /* core 1 did not finish in time: held from now on (cpu1.h);
                                                          * its units and channels here, once (what it half did is this
                                                          * block's glitch) */
@@ -1596,6 +1609,7 @@ static void mix_block(int32_t *out, uint32_t n)
             stem_balance(tc - tw, (c1 || sk) ? stem_c1_ticks : 0u, sk < 6u ? (tc - tu) / (6u - sk) : 0u);
         if (sdo)
             stem_commit(stem_sn);                       /* (both cores' channels written) */
+        TIM_MARK(TS_WAIT);
     }
 #else
     if (c1) {
@@ -1634,6 +1648,7 @@ static void mix_block(int32_t *out, uint32_t n)
         mix_l[i] += wet_l[i];
         mix_r[i] += wet_r[i];
     }
+    TIM_MARK(TS_FX);
     dust_process(mix_l, mix_r, n);
     punch_process(mix_l, mix_r, n);
     djf_process(mix_l, mix_r, n);
@@ -1714,4 +1729,5 @@ static void mix_block(int32_t *out, uint32_t n)
             }
         }
     }
+    TIM_MARK(TS_POST);
 }
