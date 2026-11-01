@@ -11,3 +11,10 @@
 #define FM1_XIP(off) (0x02000000u + (uint32_t)(off) - 0x4000u)
 
 FM1_INLINE const uint8_t *fm1_xip_ptr(uint32_t off) { return (const uint8_t *)FM1_XIP(off); }
+/* p, which the compiler can no longer see through (an empty asm: no code): reads through it stay loads, never folded
+ * from what the array it points to holds (eng_sample.c, the SMK-37 vocoder build's one-byte SMP_DATA) */
+FM1_INLINE const uint8_t *fm1_opaque_ptr(const uint8_t *p)
+{
+    __asm__("" : "+r"(p));
+    return p;
+}

@@ -19,18 +19,6 @@ typedef struct {
     uint16_t z0, nz;
 } smp_set_t;
 #include "felucca_samples.h"
-#if SMK_VOC_LEAN
-/* the vocoder build: SMP_DATA is one zero byte (no built-in sets), and the compiler folds every read of an all-zero
- * constant array to 0: the user slots, read through it (smp_user_scan's rebased offsets), played silence (99b5250).
- * Its address through an empty asm: the reads stay loads (no code, no cost) */
-static inline const uint8_t *smp_data_at(void)
-{
-    const uint8_t *p = SMP_DATA;
-    __asm__("" : "+r"(p));
-    return p;
-}
-#define SMP_DATA (smp_data_at())
-#endif
 
 static const int16_t IMA_STEP[89] = {
     7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97,
@@ -52,6 +40,13 @@ static uint32_t pow2_q16(int32_t d16)
  * window. Slot = header (magic, count, name, data length, CRC32) + up to 16 zones in the
  * smp_zone_t layout (off relative to the slot's data at +512) + IMA ADPCM data. */
 #include "../hal/fm1_xip.h"   /* relative: hostsim includes this file too */
+#if SMK_VOC_LEAN
+/* the vocoder build: SMP_DATA is one zero byte (no built-in sets), and the compiler folds every read of an all-zero
+ * constant array to 0: the user slots, read through it (smp_user_scan's rebased offsets), played silence (99b5250).
+ * Its address made opaque (fm1_opaque_ptr: no code): the reads stay loads */
+FM1_INLINE const uint8_t *smp_data_at(void) { return fm1_opaque_ptr(SMP_DATA); }
+#define SMP_DATA (smp_data_at())
+#endif
 #define SMP_USER_SLOTS 4
 #if BOARD_SMK37
 /* SMK-37 Pro: USR1..USR4 as on the FM-1, at half the size: USRFLASH 0xC2000..0xE9FFF (FL_SMP, fm1_flash_map.h)
