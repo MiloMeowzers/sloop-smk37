@@ -12,6 +12,7 @@
  * declicks it); one of the part's own is restarted in place. Extra UNISON
  * voices only start when there is room. The drum track has its own voices (drums.c). */
 static uint32_t vage;                                   /* voice ages: one clock for every part */
+#include "smk_timing.h"       /* SMK-37, the vocoder build's console: where an audio half's time goes (TIM_*) */
 #if SMK_UAC_IN_PROBE
 #include "smk_vocoder.h"      /* SMK-37: the audio track (track 3) and the vocoder (the vocoder build) */
 /* the carrier: a plain band-limited saw for one of track 3's voices, at its pitch, through a resonant low-pass
@@ -915,7 +916,9 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
 #if SMK_UAC_IN_PROBE
     if (vst) {                                          /* VOCODER: the carrier vocoded (silence without notes: the
                                                          * chain runs on) */
+        TIM_VOC_T(tv);
         voc_process(out, n);
+        TIM_VOC(tv);
         nr = 1u;
     }
     if (t == &trk[VOC_TRK])

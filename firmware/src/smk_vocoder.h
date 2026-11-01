@@ -273,22 +273,36 @@ static void voc_analyse(uint32_t n)
 
 /* one vocoded sample at 22.05 kHz from the carrier c (the track's scale), j the sample's place in the block: the
  * analysis's envelopes of the block before, each times cf (COLOUR in a pause, Q15), with the band's bridge bk[k] (TILT)
- * added (SUM) or the larger of the two (FILL); the bank's first section carries the VSM201's NORMAL weights */
-static int32_t voc_tick(int32_t c, uint32_t j, const int32_t *bk, int32_t cf, uint32_t fill)
+ * added (SUM) or the larger of the two (FILL); the bank's first section carries the VSM201's NORMAL weights. mode (chosen
+ * a block, voc_process): VT_PLAIN no bridge and COLOUR full (speech: the loop as it was before BRIDGE TONE), VT_SUM the
+ * bridge added, VT_ALL COLOUR and FILL too: the bridge costs only where it is heard */
+enum { VT_PLAIN, VT_SUM, VT_ALL };
+static int32_t voc_tick(int32_t c, uint32_t j, const int32_t *bk, int32_t cf, uint32_t mode, uint32_t fill)
 {
     const int32_t *env = voc_ab[voc_aw ^ 1u].env[j];
     int64_t sum = 0;
     int32_t o;
     uint32_t k;
     c <<= 4;
-    for (k = 0; k < VOC_NB; k++) {
-        int32_t ys = voc_sec(c, VOC_B0S[k], &voc.sx1[k], &voc.sx2[k], &voc.sy1[k], &voc.sy2[k], k), e = env[k];
-        ys = voc_sec(ys, VOC_B0[k], &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
-        if (cf < 32767)
-            e = (e * cf) >> 15;                          /* (COLOUR under 100 %, in a pause) */
-        e = fill ? (e > bk[k] ? e : bk[k]) : e + bk[k];
-        sum += (int64_t)ys * e;                          /* x the envelope and the bridging, Q15 (ys: the carrier's
-                                                          * scale << 4) */
+    if (mode == VT_PLAIN) {
+        for (k = 0; k < VOC_NB; k++) {
+            int32_t ys = voc_sec(c, VOC_B0S[k], &voc.sx1[k], &voc.sx2[k], &voc.sy1[k], &voc.sy2[k], k);
+            ys = voc_sec(ys, VOC_B0[k], &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
+            sum += (int64_t)ys * env[k];                 /* x the envelope, Q15 (ys: the carrier's scale << 4) */
+        }
+    } else if (mode == VT_SUM) {
+        for (k = 0; k < VOC_NB; k++) {
+            int32_t ys = voc_sec(c, VOC_B0S[k], &voc.sx1[k], &voc.sx2[k], &voc.sy1[k], &voc.sy2[k], k);
+            ys = voc_sec(ys, VOC_B0[k], &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
+            sum += (int64_t)ys * (env[k] + bk[k]);       /* (+ the band's bridge) */
+        }
+    } else {
+        for (k = 0; k < VOC_NB; k++) {
+            int32_t ys = voc_sec(c, VOC_B0S[k], &voc.sx1[k], &voc.sx2[k], &voc.sy1[k], &voc.sy2[k], k);
+            int32_t e = (env[k] * cf) >> 15;             /* (COLOUR, in a pause) */
+            ys = voc_sec(ys, VOC_B0[k], &voc.tx1[k], &voc.tx2[k], &voc.ty1[k], &voc.ty2[k], k);
+            sum += (int64_t)ys * (fill ? (e > bk[k] ? e : bk[k]) : e + bk[k]);
+        }
     }
     o = (int32_t)(((sum >> 19) * VOC_LV_Q8[voc_level % VOC_LEVEL_N]) >> 8);
     if (voc_hf)
@@ -305,7 +319,7 @@ static void voc_process(int32_t *b, uint32_t n)
     int32_t badd = br ? (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * voc_br_q15(voc_bridge % VOC_BR_N) >> 15) *
                                   VOC_BR_Q15 >> 15) : 0;
     int32_t bk[VOC_NB], dbk[VOC_NB], cf, dcf, ag, dag, m = (int32_t)(n / 2u);
-    uint32_t fill = voc_blend & 1u;
+    uint32_t fill = voc_blend & 1u, mode, ramp = 0, any = 0;
     int32_t uvt = vm == VV_UNVOICED ? 32767 : vm == VV_VOICED ? 0 :                 /* the noise's share wanted */
                   voc_ab[voc_aw ^ 1u].unvoiced && (!br || voc_ab[voc_aw ^ 1u].speech) ? 32767 : 0;
     voc.blocks++;
@@ -320,11 +334,15 @@ static void voc_process(int32_t *b, uint32_t n)
             to = (badd * (int32_t)tq[j]) >> 12;
             bk[j] = voc.bk[j];
             dbk[j] = (to - bk[j]) / m;
+            ramp |= (uint32_t)(dbk[j] != 0);
+            any |= (uint32_t)(to | bk[j]);
             voc.bk[j] = to;
         }
         to = 32767 - (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * (32767 - col)) >> 15);
         cf = voc.cf;
         dcf = (to - cf) / m;
+        ramp |= (uint32_t)(dcf != 0);
+        mode = cf < 32767 || to < 32767 || (fill && any) ? VT_ALL : any ? VT_SUM : VT_PLAIN;
         voc.cf = to;
     }
     {   /* the carrier AGC (the VSM201's, no control): the gain that keeps the summed carrier's level (agc_env, its mean
@@ -366,10 +384,12 @@ static void voc_process(int32_t *b, uint32_t n)
                 c = br && vm == VV_AUTO ? c + (int32_t)(((int64_t)nz * voc.uvg) >> 15)
                                         : c + (int32_t)(((int64_t)(nz - c) * voc.uvg) >> 15);
             }
-            for (j = 0; j < VOC_NB; j++)
-                bk[j] += dbk[j];
-            cf += dcf;
-            d = voc_tick(c, i >> 1, bk, cf, fill);
+            if (ramp) {                                  /* (only while the bridge or COLOUR moves) */
+                for (j = 0; j < VOC_NB; j++)
+                    bk[j] += dbk[j];
+                cf += dcf;
+            }
+            d = voc_tick(c, i >> 1, bk, cf, mode, fill);
         }
         voc.oh[voc.ow++ & (VOC_ON - 1u)] = d;
         /* 2:1 up: the even sample the one VOC_HB back, the odd one the half-band between it and the next */

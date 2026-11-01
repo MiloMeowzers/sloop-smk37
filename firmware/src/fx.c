@@ -4,7 +4,6 @@
  * Stereo dry mix; the chorus and the reverb come back in stereo, the delay in the middle. */
 #define DLY_LEN 65536u           /* 1.49 s: 1/4 down to 41 BPM, 1/8 dotted down to 31, 1/4 dotted down to 61 (clamped below) */
 #define CHO_LEN 2048u
-#include "smk_timing.h"      /* SMK-37, the vocoder build's console: where an audio half's time goes (TIM_*) */
 #if SMK_VOC_LEAN
 /* the vocoder build: the line stored at 22.05 kHz, half the RAM for the same 1.49 s (the repeats are low-passed by
  * COLOR anyway): two samples averaged into one, a sample read between two (fx_buses) */
@@ -1214,8 +1213,12 @@ static void cpu1_stems_job(uint32_t arg)                /* SMK-37, core 1: the u
 {
     uint32_t t0 = cpu1_ticks(), k = arg >> 16;
     mix_units(arg & 0xFFu, (arg >> 8) & 0xFFu, &acc[1], part_buf[1]);
-    if (k)
-        stem_tap_ch(STEM_STAGE, stem_sn, stem_sm0, stem_sm1, 0, k);
+    {
+        TIM_VOC_T(t1);                                  /* (the console's timing: core 1's stems) */
+        if (k)
+            stem_tap_ch(STEM_STAGE, stem_sn, stem_sm0, stem_sm1, 0, k);
+        TIM_ADD(TS_C1ST, fm1_ticks() - t1);
+    }
     stem_c1_ticks = cpu1_ticks() - t0;
     cpu1_job_ticks += stem_c1_ticks;
 }
@@ -1516,10 +1519,12 @@ static void mix_block(int32_t *out, uint32_t n)
     }
     events_block(n);
     duck_block(n * (uint32_t)song.g[G_BPM]);
+    TIM_MARK(TS_PEV);
 #if SMK_UAC_IN_PROBE
     if (VOC_AUDIO_ON && n <= CTL)
         uin_block(voc_in, n);                           /* the audio track's input, before either core's units run */
 #endif
+    TIM_MARK(TS_PIN);
 #if BOARD_SMK37
     {   /* STEM FX: the memory shared out again when the mode changes (the menu's STEM FX, live), the stems' punch-ins'
          * timeline for this block */
@@ -1533,6 +1538,7 @@ static void mix_block(int32_t *out, uint32_t n)
             tp_block(n, punch.req);
     }
 #endif
+    TIM_MARK(TS_PTP);
 #if SMK_UAC_IN_PROBE
     {   /* the vocoder's analysis (smk_vocoder.h): on this core, into the buffer track 3's synthesis reads next block */
         static uint8_t ana_on;
@@ -1559,7 +1565,7 @@ static void mix_block(int32_t *out, uint32_t n)
             if (!cpu1_run(cpu1_stems_job, c1 | n << 8 | sk << 16))
                 c1 = 0, sk = 0;
         }
-        TIM_MARK(TS_PRE);
+        TIM_MARK(TS_PGO);
 #if SMK_UAC_IN_PROBE
         if (VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && n <= CTL)
             voc_analyse(n);                             /* the vocoder's analysis, while core 1 renders track 3 */
@@ -1577,7 +1583,7 @@ static void mix_block(int32_t *out, uint32_t n)
             late = cpu1_wait();
             cpu1_wait_ticks += cpu1_ticks() - w0;
             if (!late)
-                TIM_C1(stem_c1_ticks);
+                TIM_ADD(TS_C1, stem_c1_ticks);
             if (late) {                                 /* core 1 did not finish in time: held from now on (cpu1.h);
                                                          * its units and channels here, once (what it half did is this
                                                          * block's glitch) */
