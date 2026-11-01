@@ -28,6 +28,8 @@ static inline void fm1_time_init(void)
 }
 
 static inline uint32_t fm1_ticks(void) { return FM1_T4_CNT; }
+/* the same read, always inlined: code that runs from RAM (fx.c RAMHOT) cannot call fm1_ticks in the flash */
+static inline __attribute__((always_inline)) uint32_t fm1_ticks_inl(void) { return FM1_T4_CNT; }
 
 /* Microseconds, wrapping every ~178.9 s. */
 static inline uint32_t fm1_micros(void) { return FM1_T4_CNT / FM1_TICKS_PER_US; }

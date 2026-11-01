@@ -50,9 +50,9 @@ static struct {
     uint32_t max[TS_N], worst[TS_N], over[TS_N];        /* each worst; the worst half's; the shedding halves' summed */
     uint32_t halves, n_over;
 } tim;
-/* TIMER4 read in place (FM1_T4_CNT, as fm1_ticks): the tail's code runs from RAM (fx.c RAMHOT), where a call to
- * fm1_ticks in the flash is out of reach */
-#define TIM_NOW() FM1_T4_CNT
+/* TIMER4 read in place (hal/fm1_time.h fm1_ticks_inl, as fm1_ticks): the tail's code runs from RAM (fx.c RAMHOT),
+ * where a call to fm1_ticks in the flash is out of reach */
+#define TIM_NOW() fm1_ticks_inl()
 #define TIM_START() (tim.t = TIM_NOW())
 #define TIM_MARK(s) do { uint32_t tm_ = TIM_NOW(); tim.cur[s] += tm_ - tim.t; tim.t = tm_; } while (0)
 #define TIM_ADD(s, t) (tim.cur[s] += (t))
