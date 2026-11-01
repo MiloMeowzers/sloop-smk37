@@ -20,26 +20,26 @@ static uint32_t pick_total(void)
 {
     uint32_t total;
     if (is_drum(TSEL))
-        return DRUM_KITS;
+        return DRUM_KITS - DRUM_KIT_MIN;            /* (entry n: kit DRUM_KIT_MIN + n) */
     preset_pos(&total);
     return total;
 }
 static uint32_t pick_cur(void)
 {
     uint32_t total;
-    return is_drum(TSEL) ? drum_kit() : preset_pos(&total);
+    return is_drum(TSEL) ? drum_kit() - DRUM_KIT_MIN : preset_pos(&total);
 }
 static uint32_t pick_kind_of(uint32_t n)
 {
     if (is_drum(TSEL))
-        return n >= DRUM_USR ? PK_USER : PK_KITS;
+        return n + DRUM_KIT_MIN >= DRUM_USR ? PK_USER : PK_KITS;
     return n < NBANK ? BANK[n].kind : PK_USER;
 }
 static void pick_name(uint32_t n, char *b)        /* 13 bytes */
 {
     uint32_t k, e;
     if (is_drum(TSEL)) {
-        str_cpy(b, DRUM_KIT_NAMES[n % DRUM_KITS], 13);
+        str_cpy(b, DRUM_KIT_NAMES[(n + DRUM_KIT_MIN) % DRUM_KITS], 13);
         return;
     }
     e = preset_at(n, &k);
@@ -152,7 +152,7 @@ static void pick_select(uint32_t w)                /* white key / cell w (0..15)
         return;
     n = pg.first + w;
     if (is_drum(TSEL)) {
-        TDRUM->p[P_E0] = (int16_t)n;
+        TDRUM->p[P_E0] = (int16_t)(n + DRUM_KIT_MIN);
         audition_req(1u << 0 | 1u << 4, 0u);      /* kick + closed hat */
     } else {
         preset_go(n);

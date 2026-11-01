@@ -19,6 +19,18 @@ typedef struct {
     uint16_t z0, nz;
 } smp_set_t;
 #include "felucca_samples.h"
+#if SMK_VOC_LEAN
+/* the vocoder build: SMP_DATA is one zero byte (no built-in sets), and the compiler folds every read of an all-zero
+ * constant array to 0: the user slots, read through it (smp_user_scan's rebased offsets), played silence (99b5250).
+ * Its address through an empty asm: the reads stay loads (no code, no cost) */
+static inline const uint8_t *smp_data_at(void)
+{
+    const uint8_t *p = SMP_DATA;
+    __asm__("" : "+r"(p));
+    return p;
+}
+#define SMP_DATA (smp_data_at())
+#endif
 
 static const int16_t IMA_STEP[89] = {
     7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97,

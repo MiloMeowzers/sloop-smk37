@@ -1032,7 +1032,7 @@ UI_SMALL static void pc_poll(void)
         pc_req[i] = 0;
         n = r - 1u;
         if (is_drum(&trk[i])) {
-            if (n >= DRUM_KITS)
+            if (n >= DRUM_KITS || (int32_t)n < (int32_t)DRUM_KIT_MIN)
                 continue;
             trk[i].p[P_E0] = (int16_t)n;
             if (&trk[i] == TSEL)

@@ -24,7 +24,12 @@ static const char *const DRUM_KIT_STYLES[] = {"STUDIO", "SOFT", "PUNCHY", "BRIGH
                                               "YOUR KIT", "YOUR KIT", "YOUR KIT", "YOUR KIT", "BIG KIT",
                                               "YOUR SYNTH", "YOUR SYNTH", "YOUR SYNTH", "YOUR SYNTH"};
 _Static_assert(sizeof(DRUM_KIT_NAMES) / sizeof(DRUM_KIT_NAMES[0]) == DRUM_KITS, "a name per kit");
-static uint32_t drum_kit(void) { return (uint32_t)clamp(TDRUM->p[P_E0], 0, DRUM_KITS - 1); }
+#if SMK_VOC_LEAN
+#define DRUM_KIT_MIN DRUM_SAMPLED   /* the vocoder build: the GM sample kits (no samples) never chosen, from the 808 on */
+#else
+#define DRUM_KIT_MIN 0
+#endif
+static uint32_t drum_kit(void) { return (uint32_t)clamp(TDRUM->p[P_E0], DRUM_KIT_MIN, DRUM_KITS - 1); }
 #define DRUM_DEFAULT_KIT DRUM_SAMPLED   /* power-on: 808 */
 
 static struct {

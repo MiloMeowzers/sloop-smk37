@@ -250,6 +250,8 @@ mkdir -p build/gen_lean
 SMK_VOC_LEAN=1 FELUCCA_SLICE=1 python3 tools/gen_samples.py build/gen_lean/felucca_samples.h >/dev/null
 $CC -O2 -w -DSMK_VOC_LEAN=1 -DFELUCCA_SLICE=1 -Ibuild/gen_lean -Ibuild/gen -Ifirmware/src -Ifirmware/hal     -o "$OUT/smk_lean_test" tests/smk_lean_test.c -lm
 run "SMK-37 vocoder build lean: PRESETS, the engines left out, user sources only, the delay at 22.05 kHz"     "$OUT/smk_lean_test"
+$CC -O2 -w -DSMK_VOC_LEAN=1 -DFELUCCA_SLICE=1 -Ibuild/gen_lean -Ibuild/gen -Ifirmware/src -Ifirmware/hal     -o "$OUT/userkit_lean_test" tests/userkit_test.c -lm
+run "SMK-37 vocoder build lean: the user drum kits sound (SMP_DATA one zero byte)" "$OUT/userkit_lean_test"
 python3 tools/fm1pkg_make.py --board smk37 build/felucca.bin build/loader/ota.bin "$OUT/smk_new.fwsc" >/dev/null
 python3 tools/fm1pkg_make.py --board smk37 "$OUT/old_app.bin" build/loader/ota.bin "$OUT/smk_old.fwsc" >/dev/null
 run "SMK-37 Pro package layout (fm1pkg_make --board smk37): PRCT 0x9D000, stock region table"     python3 tests/smk_pkg_test.py "$OUT/smk_new.fwsc"

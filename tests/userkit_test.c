@@ -5,7 +5,9 @@
  *   a lane with a sound plays it (its zone, at its own pitch); a lane without one, and an empty slot, are silent
  *   a GM note plays its lane's sound (LANE_OF_GM: 35 -> KICK 2, 40 -> SNARE 2...), the click's wood block no lane
  *   the closed hat chokes the open one, as in the other kits
- *   the sequencer's drum steps play the kit; the built-in kits are as before */
+ *   the sequencer's drum steps play the kit; the built-in kits are as before
+ * Also built with -DSMK_VOC_LEAN=1 (run_tests.sh, the SMK-37 vocoder build's samples header: SMP_DATA one zero byte):
+ * the user kits sound there too (99b5250 played them silent: every SMP_DATA read folded to 0); no GM sample kit */
 #include <stdint.h>
 static uint32_t host_slots[4u * 0x14000u / 4u];          /* USR1..4 (a RAM image: the flash has USR4 elsewhere) */
 #define SMP_USER_XIP(k) ((const uint8_t *)host_slots + (k) * SMP_USER_SIZE)
@@ -172,6 +174,9 @@ int main(void)
         for (i = 0; i < NDRUM; i++) syn += drums.v[i].active && drums.synth[i];
         check(syn == 1u, "808 (a synthesised kit) as before");
     }
+#if SMK_VOC_LEAN
+    check(DRUM_KIT_MIN == DRUM_SAMPLED && SMP_SETS[0].nz == 0u, "the vocoder build: no GM sample set, the kits from the 808 on");
+#else
     TDRUM->p[P_E0] = 0;                                  /* ACOUSTIC: the GM sample set */
     quiet();
     drum_on(38, 110);
@@ -180,6 +185,7 @@ int main(void)
         for (i = 0; i < NDRUM; i++) gm += drums.v[i].active && !drums.synth[i] && drums.v[i].s[4] < DZ_USR;
         check(gm == 1u && run_peak(40) > 2000, "ACOUSTIC (the GM sample set) as before");
     }
+#endif
     {   /* 2.4.1: the click (GLO > GLOBAL > CLICK = ON) is its own voice: heard with a user kit (it has no wood
          * block: in 2.4 it was silent), with the drum track muted, at the level of GLO > DRUMS > LVL */
         uint32_t j, k;
