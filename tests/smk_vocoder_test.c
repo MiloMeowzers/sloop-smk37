@@ -12,6 +12,8 @@
  *              the carrier's level-matched: no carrier, no output (UNVOICED, white and pink)
  *   BRIDGE     no voice, a saw: BRIDGE 0 dB plays the saw on (within 6 dB of it), OFF nothing; a loud voice
  *              (-10 dBFS, THRESHOLD -42) leaves no bridging (the same output +-0.1 dB)
+ *   ANALYSIS   SILENCE > ANALYSIS REST: the bands rest in a pause and run again with the voice; the voice after it,
+ *              and a bridged pause, as ALWAYS (+-0.5 dB); BRIDGE OFF, a resting pause silent
  *   the track  MODE AUDIO: the voice itself, at a voice's full scale; a change of state (engine -> dry -> engine) fades out
  *              and in: no step over 200 a sample, settled within 15 blocks
  * 44.1 kHz, blocks of 32 as the mix. */
@@ -258,6 +260,36 @@ int main(void)
         off = rms_last(n, 0.5);
         check("BRIDGE: a loud voice (-10 dBFS, THRESHOLD -42 dB) is not bridged (the same output, +-0.1 dB)",
               fabs(db(on / off)) < 0.1);
+    }
+    {   /* SILENCE > ANALYSIS: REST (the bands rest in a pause) against ALWAYS: a voice, a pause, the voice again */
+        double t_rest = 0, t_all = 0, b_rest = 0, b_all = 0;
+        uint32_t rest_gap, rest_voice, k;
+        for (k = 0; k < 2u; k++) {
+            voc_apause = (uint8_t)(k == 0u);
+            voc_bridge = VOC_BR_N - 1u;                 /* (0 dB: the pause is heard, bridged) */
+            reset();
+            run(0.3, v1k, saw110);
+            n = run(0.2, vzero, saw110);
+            rest_gap = voa.rest;
+            *(k ? &b_all : &b_rest) = rms_last(n, 0.1);
+            n = run(0.6, v1k, saw110);                  /* (tone: the last 0.5 s) */
+            rest_voice = voa.rest;
+            *(k ? &t_all : &t_rest) = tone(n, 990.0);
+            if (!k)
+                check("ANALYSIS REST: the bands rest in a pause (0.2 s), run again with the voice", rest_gap && !rest_voice);
+            else
+                check("ANALYSIS ALWAYS: the bands never rest", !rest_gap && !rest_voice);
+        }
+        printf("   after a pause, 990 Hz: REST %.2f dB, ALWAYS %.2f dB; the bridged pause: REST %.1f, ALWAYS %.1f\n",
+               t_rest, t_all, b_rest, b_all);
+        check("ANALYSIS REST: the voice after a pause vocoded as ALWAYS (990 Hz, +-0.5 dB)", fabs(t_rest - t_all) < 0.5);
+        check("ANALYSIS REST: a bridged pause as ALWAYS (+-0.5 dB)", fabs(db(b_rest / b_all)) < 0.5);
+        voc_apause = 1;
+        voc_bridge = 0;
+        reset();
+        run(0.3, v1k, saw110);
+        n = run(0.2, vzero, saw110);
+        check("ANALYSIS REST, BRIDGE OFF: a pause silent (< 1)", voa.rest && rms_last(n, 0.1) < 1.0);
     }
     {   /* the audio track: engine (a DC 30000) -> AUDIO IN on, MODE OFF (the voice: DC 10000) -> off again */
         int32_t b[VOC_MAXN], prev = 30000, step = 0;

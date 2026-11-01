@@ -283,9 +283,11 @@ static void con_status(void)
     con_kv("voc_ana_blocks", (int32_t)voa.blocks);       /* the analysis's blocks since the last status (core 0) .. */
     con_kv("voc_unvoiced", (int32_t)voa.uv_blocks);       /* .. of them unvoiced (the VSM201's detector) .. */
     con_kv("voc_pause", (int32_t)voa.pause_blocks);       /* .. and a pause (the speech / pause detector, THRESHOLD) */
+    con_kv("voc_rest", (int32_t)voa.rest_blocks);         /* .. and the bands at rest (SILENCE > ANALYSIS REST) */
+    con_kv("voc_apause", voc_apause);
     con_kv("voc_vmode", voc_vmode);                      /* CARRIER > VOICE: 0 AUTO, 1 VOICED, 2 UNVOICED */
     con_kv("voc_bridge", voc_bridge);                    /* SILENCE > BRIDGE: 0 OFF, 1..17 -48 .. 0 dB */
-    voa.blocks = voa.uv_blocks = voa.pause_blocks = 0;
+    voa.blocks = voa.uv_blocks = voa.pause_blocks = voa.rest_blocks = 0;
     voa.peak_in = voc.peak_out = 0;
     con_kv("uin_peak_l", uin.peak_l);                    /* |sample| since the last status */
     con_kv("uin_peak_r", uin.peak_r);

@@ -43,7 +43,8 @@ enum { MI_COLOR, MI_ZOOM,
                                                     * the audio track, track 3; live, not kept) */
        MI_VCUT, MI_VRES, MI_VVM, MI_VPINK,         /* CARRIER > CUTOFF, RESO (the saws' low-pass), VOICE, NOISE (the
                                                     * VSM201's voice mode, its pink filter); live, not kept */
-       MI_VBR, MI_VTHR,                            /* SILENCE > BRIDGE, THRESHOLD (the VSM201's silence bridging) */
+       MI_VBR, MI_VTHR, MI_VAPS,                   /* SILENCE > BRIDGE, THRESHOLD (the VSM201's silence bridging),
+                                                    * ANALYSIS (the bands resting in a pause: smk_vocoder.h voc_apause) */
 #endif
 #endif
        MI_ADV, MI_DPREV,
@@ -79,7 +80,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "STEM FX", "FADE", "XFADE", "CURVE",
 #if SMK_UAC_IN_PROBE
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
-                                              "BRIDGE", "THRESHOLD",
+                                              "BRIDGE", "THRESHOLD", "ANALYSIS",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -324,6 +325,9 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         str_cpy(b + str_len(b), " DB", 4);
         return b;
     }
+    case MI_VAPS:                                     /* REST: the bands rest in a pause (CPU); ALWAYS (an A/B) */
+        *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
+        return voc_apause ? "REST" : "ALWAYS";
     case MI_VLVL: {                                   /* make-up gain, -12 .. +18 dB in 3 dB steps */
         static char b[10];
         int32_t db = 3 * (int32_t)(voc_level % VOC_LEVEL_N) - 12;
@@ -398,7 +402,8 @@ UI_SMALL static void draw_menu(void)
 #if SMK_UAC_IN_PROBE
     sig += voc_mode * 1000033u + voc_level * 1000037u + voc_dry * 1000039u + voc_hf * 1000081u + uin.alt * 1000099u +
            (uint32_t)UIN_TEST * 1000117u + voc_cut * 1000121u + voc_res * 1000133u + (uint32_t)VOC_AUDIO_ON * 1000151u +
-           voc_vmode * 1000159u + voc_pink * 1000171u + voc_bridge * 1000183u + voc_thr * 1000187u;
+           voc_vmode * 1000159u + voc_pink * 1000171u + voc_bridge * 1000183u + voc_thr * 1000187u +
+           voc_apause * 1000193u;
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
@@ -688,6 +693,9 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_VTHR:                                      /* -54 .. -24 dB in 6 dB steps (stops at the ends); OCT+ -42 */
         voc_thr = (uint8_t)(s > 0 ? (voc_thr + 1u < VOC_THR_N ? voc_thr + 1u : voc_thr)
                                   : s < 0 ? (voc_thr ? voc_thr - 1u : 0u) : 2u);
+        break;
+    case MI_VAPS:                                      /* right REST, left ALWAYS; OCT+ toggles */
+        voc_apause = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_apause);
         break;
     case MI_VMODE:                                     /* AUDIO, VOCODER (stops at the ends); OCT+ round; faded */
         voc_mode = (uint8_t)(s > 0 ? (voc_mode + 1u < VM_N ? voc_mode + 1u : voc_mode) : s < 0 ? (voc_mode ? voc_mode - 1u : 0u)

@@ -81,6 +81,10 @@ static int32_t voc_br_q15(uint32_t k)    /* BRIDGE k's gain, Q15: 0 dB, 3 dB les
 static uint8_t voc_thr = 2;              /* SILENCE > THRESHOLD: VOC_THR_DB[]; the speech / pause detector's */
 #define VOC_THR_N 6u
 static const int8_t VOC_THR_DB[VOC_THR_N] = {-54, -48, -42, -36, -30, -24};
+static uint8_t voc_apause = 1;           /* SILENCE > ANALYSIS: REST (1), the bands rest in a pause; ALWAYS (0) (an A/B of
+                                          * the CPU it saves; live, not kept) */
+#define VOC_REST_N 2205u                 /* .. after 50 ms below THRESHOLD (44.1 kHz samples): ~6 of the envelopes' release
+                                          * (~8 ms), each band then ~50 dB under where the pause began */
 #define VOC_BR_Q15 6300                  /* the bridging at full: the saws out at their own level (LEVEL 0 dB; every band
                                           * open at once: + 14.3 dB, measured, tests/smk_vocoder_test.c) */
 #define VOC_PINK_Q15 11105               /* the pink filter's rms over white: 2.95 (Kellet's, at 22050 Hz): back to 1 */
@@ -111,7 +115,9 @@ static struct {                          /* the analysis (core 0, fx.c mix_block
     int32_t peak_in;
     int32_t lp1, lp2, env0, envs;        /* channel 0 (two one-poles, its envelope), the voice's level (unfiltered) */
     uint8_t voiced;                      /* the detector's state (hysteresis) */
-    uint32_t blocks, uv_blocks, pause_blocks;   /* (the console) */
+    uint8_t rest, rest_zero;             /* the bands resting (SILENCE > ANALYSIS); voc_ab buffers still to clear */
+    uint32_t quiet;                      /* samples below THRESHOLD in a row */
+    uint32_t blocks, uv_blocks, pause_blocks, rest_blocks;   /* (the console) */
 } voa;
 /* what the analysis hands the synthesis: each 22.05 kHz sample's envelopes (Q15) and speech addition; two, a block
  * apart (voc_aw: the one core 0 writes this block, set before core 1's job starts; core 1 reads the other) */
@@ -204,6 +210,8 @@ static void voc_analyse(uint32_t n)
         voa.lp2 += (int32_t)(((int64_t)(voa.lp1 - voa.lp2) * VOC_LF_K) >> 16);
         voa.env0 = voc_env(voa.env0, voa.lp2);
         voa.envs = voc_env(voa.envs, v);                 /* the voice's level, unfiltered */
+        if (voa.rest)
+            continue;                                    /* (a pause: the bands at rest, voc_ab cleared below) */
         for (k = 0; k < VOC_NB; k++) {
             int32_t ya = voc_sec(v, &voa.ax1[k], &voa.ax2[k], &voa.ay1[k], &voa.ay2[k], k);
             ya = voc_sec(ya, &voa.bx1[k], &voa.bx2[k], &voa.by1[k], &voa.by2[k], k);
@@ -226,6 +234,25 @@ static void voc_analyse(uint32_t n)
         p = db <= thr ? 32767 : db >= thr + 24 * 256 ? 0 : (int32_t)(((int64_t)(thr + 24 * 256 - db) * 32767) / (24 * 256));
         voc_ab[voc_aw].pause = p;
         voc_ab[voc_aw].speech = (uint8_t)(db > thr);
+    }
+    if (voa.rest && voa.rest_zero) {                     /* resting: both hand-over buffers 0, one a block */
+        memset(voc_ab[voc_aw].env, 0, sizeof voc_ab[voc_aw].env);
+        memset(voc_ab[voc_aw].hf, 0, sizeof voc_ab[voc_aw].hf);
+        voa.rest_zero--;
+    }
+    voa.rest_blocks += voa.rest;
+    voa.quiet = voc_ab[voc_aw].speech || !voc_apause ? 0u : voa.quiet + n > VOC_REST_N ? VOC_REST_N : voa.quiet + n;
+    if (voa.rest && !voa.quiet) {
+        voa.rest = 0;                                    /* speech (or ALWAYS): the bands run from the next block, from rest */
+    } else if (!voa.rest && voa.quiet >= VOC_REST_N) {   /* a pause long enough: the bands rest, their state cleared */
+        memset(voa.ax1, 0, sizeof voa.ax1), memset(voa.ax2, 0, sizeof voa.ax2);
+        memset(voa.ay1, 0, sizeof voa.ay1), memset(voa.ay2, 0, sizeof voa.ay2);
+        memset(voa.bx1, 0, sizeof voa.bx1), memset(voa.bx2, 0, sizeof voa.bx2);
+        memset(voa.by1, 0, sizeof voa.by1), memset(voa.by2, 0, sizeof voa.by2);
+        memset(voa.env, 0, sizeof voa.env);
+        voa.lp1 = voa.lp2 = voa.env0 = 0;
+        voa.rest = 1;
+        voa.rest_zero = 2;
     }
     voa.blocks++;
     voa.uv_blocks += !voa.voiced;
