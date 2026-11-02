@@ -418,7 +418,7 @@ static uint8_t ed_bk_valid, ed_bk_put, ed_bk_id;
  * each project slot's (14), as LIST found them (project.c; the wheels' calibration is the unit's: not in a backup) */
 #define ED_BK_VOC (SMK_UAC_IN_PROBE && !SMK_UAC_PROBE)
 static smkset_t ed_bk_smk;
-static daw_store_t ed_bk_daw __attribute__((section(".pool")));
+static daw_store_t ed_bk_daw;
 #endif
 static uint32_t ed_bk_len, ed_bk_crc, ed_bk_pos, ed_bk_ms;
 UI_SMALL static void ed_bk_u32(uint32_t v) { uint32_t i; for (i = 0; i < 5u; i++) ed_b((v >> (7u * i)) & 127u); }
