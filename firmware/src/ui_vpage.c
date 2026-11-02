@@ -29,10 +29,11 @@ static const uint8_t VP_OPT[VO_N][4][3] = {
     {{40, 40, 40}, {210, 210, 210}, {255, 150, 30}, {255, 50, 90}},     /* VOCODER: OFF, FLAT, NORMAL, EMPHASIS */
     {{40, 40, 40}, {40, 190, 255}, {40, 220, 90}, {0, 0, 0}},           /* BYPASS: OFF, REPLACEMENT, SPEECH */
     {{40, 40, 40}, {180, 100, 255}, {255, 220, 0}, {0, 0, 0}},          /* BRIDGING: OFF, SUM, INDIVIDUAL */
-    {{40, 40, 40}, {40, 190, 255}, {255, 220, 0}, {0, 0, 0}},           /* ADDITION: OFF, SUM, INDIVIDUAL */
-    {{40, 220, 90}, {255, 150, 30}, {180, 100, 255}, {0, 0, 0}},        /* VOICE: AUTO, VOICED, UNVOICED */
-    {{210, 210, 210}, {255, 90, 160}, {0, 0, 0}, {0, 0, 0}},            /* NOISE: WHITE, PINK */
-    {{40, 40, 40}, {40, 220, 90}, {0, 0, 0}, {0, 0, 0}}};               /* AUTOCONTROL: OFF, ON */
+    {{40, 190, 255}, {0, 240, 170}, {255, 220, 0}, {0, 0, 0}},          /* ADDITION: OFF (its blue: which pad it is),
+                                                                         * SUM, INDIVIDUAL (the K8 column too) */
+    {{0, 200, 210}, {255, 220, 0}, {130, 130, 255}, {0, 0, 0}},         /* VOICE: AUTO, VOICED, UNVOICED */
+    {{255, 235, 140}, {255, 90, 160}, {0, 0, 0}, {0, 0, 0}},            /* NOISE: WHITE (cream: white is a mute pad's), PINK */
+    {{255, 60, 40}, {40, 220, 90}, {0, 0, 0}, {0, 0, 0}}};              /* AUTOCONTROL: OFF red, ON green */
 static uint32_t vp_opt(uint32_t sel)                /* the option each selector is on */
 {
     switch (sel) {
@@ -547,9 +548,9 @@ static void vp_paint(void)                          /* the whole page; the canva
     } else {
         static const char *const VM3[VV_N] = {"AUTO", "VOIC", "UNV"};
         vp_mcol(6, "THR", MI_VTHR, voc_thr % VOC_THR_N, VOC_THR_N, W);
-        vp_mcol(7, "ADD", MI_VHF, voc_hf % VOC_MIX_N, VOC_MIX_N, VP_COL_A);
+        vp_mcol(7, "ADD", MI_VHF, voc_hf % VOC_MIX_N, VOC_MIX_N, vp_optc(VO_ADD));   /* (in the ADDITION selector's colour) */
         vp_item(0, 1, 7, 0, W, "THRESH", mi_value(MI_VTHR, &c));
-        vp_item(1, 1, 8, 0, VP_COL_A, "ADD SUM", mi_value(MI_VHF, &c));
+        vp_item(1, 1, 8, 0, vp_optc(VO_ADD), "ADD SUM", mi_value(MI_VHF, &c));
         vp_item(3, 0, 7, 0, vp_optc(VO_VM), "VOICE", VM3[voc_vmode % VV_N]);
         vp_item(4, 0, 7, 1, vp_optc(VO_NOISE), "NOISE", voc_pink ? "PINK" : "WHITE");
         vp_item(5, 0, 8, 1, vp_optc(VO_ADD), "ADDITION", SEL3[vpg.addsel % VS_N]);
