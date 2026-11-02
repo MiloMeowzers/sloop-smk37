@@ -705,7 +705,11 @@ UI_SMALL static int ed_backup(uint32_t cmd, const uint8_t *a, uint32_t na)   /* 
 #endif
                                              )) {        /* begin: id, length (5), CRC-32 (5) */
             len = ed_bk_r32(a + 2);
+#if BOARD_SMK37
             if ((id >= 2u && id <= 11u) || len) {         /* (the working project, the settings, 12..14 never empty) */
+#else
+            if (id >= 2u || len) {                        /* (the working project and the settings are never empty) */
+#endif
                 if (len <= sizeof proj_tmp) {
                     ed_bk_put = 1;
                     ed_bk_valid = 0;                      /* (the staging RAM is the snapshot's) */
