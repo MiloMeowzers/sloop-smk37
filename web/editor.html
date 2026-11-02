@@ -546,6 +546,9 @@
   .dawmap td { padding: 1px 8px 1px 0; }
   .dawmap input[type=number] { width: 4.5em; }
   .dawmap tr.chg td:first-child { color: var(--trk); }
+  .obset { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0; }
+  .obset label.chg > span { color: var(--trk); }
+  .dawmap td.chg input, .dawmap td.chg select { outline: 1px solid var(--trk); }
   #sysinfo td { color: var(--fg); }
   .fm6ops { overflow-x: auto; }
   .fm6list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px; margin: 6px 0 10px; }
@@ -887,6 +890,8 @@
       <button role="tab" data-tab="settings" data-t="tabSettings" data-ic="symbol_cog"></button>
       <button role="tab" data-tab="theme" data-t="tabTheme" data-ic="ui_knob"></button>
       <button role="tab" data-tab="daw" data-t="tabDaw" data-ic="ui_slider_vertical" hidden></button>
+      <button role="tab" data-tab="smk" data-t="tabSmk" data-ic="symbol_cog" hidden></button>
+      <button role="tab" data-tab="vocoder" data-t="tabVoc" data-ic="symbol_audio" hidden></button>
     </nav>
     <div class="devcard">
       <div class="devline"><span class="led" id="led"></span><span data-t="fm1"></span></div>
@@ -963,6 +968,7 @@
           </div>
         </div>
         <p class="dim" id="drumnote" data-t="drumNote" hidden></p>
+        <p class="dim" id="vocnote" data-t="vocNote" hidden></p>
       </div>
       <!-- (2.7) the drum track's sound: what the FM-1's DRUMS screen sets (the kit page, the SOUND page) -->
       <div class="card" id="drumpanel" hidden></div>
@@ -1202,6 +1208,31 @@
       </div>
     </section>
 
+    <section class="panel" id="p-smk" data-tab="smk" data-dev hidden>
+      <div class="card">
+        <h2 data-t="smkTitle" data-ic="symbol_cog"></h2>
+        <p class="dim" data-t="smkHelp"></p>
+        <div class="obset" id="smkset"></div>
+        <p class="bar"><button type="button" id="smksend" class="pri" data-t="obSend" data-ic="symbol_upload"></button>
+          <button type="button" id="smkread" data-t="obRead"></button>
+          <button type="button" id="smkdef" data-t="obDefault"></button>
+          <span class="dim" id="smkstate"></span></p>
+      </div>
+    </section>
+    <section class="panel" id="p-vocoder" data-tab="vocoder" data-dev hidden>
+      <div class="card">
+        <h2 data-t="vocTitle" data-ic="symbol_audio"></h2>
+        <p class="dim" data-t="vocHelp"></p>
+        <div class="obset" id="vocset"></div>
+        <h3 data-t="vocPage"></h3>
+        <div class="obset" id="vocpgset"></div>
+        <div class="dawmap"><table id="vocch"></table></div>
+        <p class="bar"><button type="button" id="vocsend" class="pri" data-t="obSend" data-ic="symbol_upload"></button>
+          <button type="button" id="vocread" data-t="obRead"></button>
+          <button type="button" id="vocdef" data-t="obDefault"></button>
+          <span class="dim" id="vocstate"></span></p>
+      </div>
+    </section>
     <section class="panel" id="p-daw" data-tab="daw" data-dev hidden>
       <div class="card">
         <h2 data-t="dawTitle" data-ic="ui_slider_vertical"></h2>
@@ -1494,6 +1525,8 @@ const parse = {
     for (let i = 0; i < o.nengines; i++) o.engines.push(r.s());
     o.ntrk = r.i < a.length ? r.b() : 0;             /* v3: tracks (0 = older firmware, one instrument) */
     o.proto = r.i < a.length ? r.b() : 0;            /* v5: the protocol version (0 = older firmware) */
+    o.build = r.i < a.length ? r.b() : 0;            /* SMK-37: bit 0 SMK-37 (backup objects 12, 13), bit 1 the vocoder build
+                                                        (14; T3 is VOCODER / AUDIO); an FM-1 or older firmware: 0 */
     return o;
   },
   [CMD.GET](a) { const r = new Reader(a); return { scope: r.b(), id: r.b(), value: r.v() }; },
@@ -2625,7 +2658,9 @@ function b64dec(s) {
    6..7 the user preset banks, 32..35 the sample slots USR1..4 (35, USR4: SLOOP 2.4) */
 /* RESTORE: the objects in the order they are written back (banks first; 8 = the FM6 patch bank, firmware v9: a
    file without it restores fine, a v8 device gets no object 8 sent; 9 = the SYN drum kits, firmware v10, likewise) */
-const BK = { FORMAT: "sloop-backup", VERSION: 1, SAMPLES: [32, 33, 34, 35], RESTORE: [6, 7, 8, 9, 10, 11, 2, 3, 4, 5, 0, 1] };   /* 10: MIDI LEARN (2.6),
+const BK = { FORMAT: "sloop-backup", VERSION: 1, SAMPLES: [32, 33, 34, 35], RESTORE: [6, 7, 8, 9, 10, 11, 12, 13, 2, 3, 4, 5, 0, 1, 14] };   /* SMK-37:
+                                                       * 12 its settings, 13 DAW mode and map, 14 the vocoder build's (after the
+                                                       * projects: their restore drops a slot's vocoder settings) */   /* 10: MIDI LEARN (2.6),
                                                        * 11: your theme (2.7, before the settings: they say whether it is shown) */
 class BackupError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
 /* read everything; progress(done, total bytes) */
@@ -2712,7 +2747,7 @@ async function backupRestore(rq, file, progress = () => {}) {
     if (!m.has(id)) continue;
     const d = m.get(id);
     let r = parse[CMD.BK_PUT](await rq(req.bkBegin(id, d.length, crc32(d)), { timeout: 1500, retries: 1 }));
-    if ((r.rc === 1 || r.rc === 5) && (id === 8 || id === 9 || id === 10 || id === 11)) continue;   /* a device without the FM6 bank (v8) /
+    if ((r.rc === 1 || r.rc === 5) && id >= 8 && id <= 14) continue;   /* a device without the FM6 bank (v8) /
                                                        * the SYN kits (v9) / MIDI LEARN (2.6): skipped (its BK_PUT answers
                                                        * an unknown id's begin with 5) */
     if (r.rc) throw new BackupError("bkWrite", `begin ${id} rc ${r.rc}`);
@@ -3384,6 +3419,15 @@ function makeMockDevice(opt = {}) {
     dsyn: null, dsynStored: null, dsynPlayed: [],  /* v10: the SYN kits (RAM, flash), the auditions heard */
     ml: null,                                       /* 2.6: the MIDI LEARN map (seq.c ml_tab, 16 x 2 bytes), null: none */
     daw: { on: 0, ch: 1, local: 0, user: 0, rel: 0, map: DAW.defaults() },   /* SMK-37 (opt.daw): DAW mode */
+    smkset: Uint8Array.from([0x53, 0x4B, 0x53, 0x54, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),   /* project.c smkset_t */
+    vocset: (() => {                                   /* project.c vocset_t, the defaults (opt.voc) */
+      const v = new Uint8Array(472);
+      v.set([0x56, 0x4F, 0x43, 0x53, 0, 4, 0, 2, 127, 0, 0, 0, 0, 2, 1, 0], 0);
+      v.set([8, 10, 0, 0], 64);
+      v.fill(50, 76, 116);
+      v.set([2, 1, 1, 0, 1], 146);
+      return v;
+    })(),
     stockTag: true,                                 /* SMK-37: the stock firmware's marker still there */
     bkSnap: null, bkPut: null,
     watch: false, v4: false, lastReq: 0, playing: false,
@@ -3559,7 +3603,8 @@ function makeMockDevice(opt = {}) {
         s(opt.legacy ? "FELUCCA 0.4 BETA (MOCK)" : opt.v3 ? "FELUCCA 0.8 (MOCK)" : "FELUCCA SLOOP 2.6 (MOCK)"); b(ENG.length); b(P_COUNT); b(G_COUNT); b(NSTEP); b(P_E0);
         ENG.forEach((e) => s(e.name));
         if (!opt.legacy) b(NTRK);
-        if (v5) b(mockProto);   /* v12: LIVE (2.7), v11: your theme (2.7) */   /* v10: SYN kits (v9: FM6 patches, v8: fill conditions, v7: nudges and locks, v6: backup) */
+        if (v5) b(mockProto);
+        if (v5 && opt.daw) b(opt.voc ? 3 : 1);   /* SMK-37: the build byte (editor.c ED_BUILD) */   /* v12: LIVE (2.7), v11: your theme (2.7) */   /* v10: SYN kits (v9: FM6 patches, v8: fill conditions, v7: nudges and locks, v6: backup) */
         break;
       case CMD.GET: case CMD.SET: {
         if (a.length < 2) return null;
@@ -3777,6 +3822,8 @@ function makeMockDevice(opt = {}) {
           ...(v10 && st.ml && !mlDefault(st.ml) ? [[10, st.ml.slice()]] : []),   /* MIDI LEARN (2.6): only when not the
                                                                                     * default (editor.c, project.c midi_part_default) */
           ...(v11 && st.theme ? [[11, st.theme.slice()]] : []),   /* your theme (2.7): only when there is one */
+          ...(opt.daw ? [[12, st.smkset.slice()], [13, new Uint8Array(8)]] : []),   /* SMK-37 (13: not modelled here) */
+          ...(opt.voc ? [[14, st.vocset.slice()]] : []),
           ...st.smp.map((_, k) => [32 + k, st.smp[k].zones ? st.smp[k].flash.slice(0, SMP.DATA_OFF + st.smp[k].len) : new Uint8Array(0)])]);
         st.bkPut = null;
         b(0); b(st.bkSnap.size);
@@ -3796,7 +3843,7 @@ function makeMockDevice(opt = {}) {
         if (opt.noBackup || a.length < 2) return null;
         const op = a[0], id = a[1], r = new Reader(a.slice(2));
         let rc = 1;
-        if (op === 0 && a.length === 12 && [0, 1, 2, 3, 4, 5, 6, 7, ...(v9 ? [8] : []), ...(v10 ? [9, 10] : []), ...(v11 ? [11] : [])].includes(id)) {
+        if (op === 0 && a.length === 12 && [0, 1, 2, 3, 4, 5, 6, 7, ...(v9 ? [8] : []), ...(v10 ? [9, 10] : []), ...(v11 ? [11] : []), ...(opt.daw ? [12, 13] : []), ...(opt.voc ? [14] : [])].includes(id)) {
           const len = u35dec(r), crc = u35dec(r);
           if ((id >= 2 || len) && len <= 1 << 20) { st.bkPut = { id, len, crc, pos: 0, buf: new Uint8Array(len) }; st.bkSnap = null; rc = 0; }
         } else if (!st.bkPut || st.bkPut.id !== id) rc = 5;
@@ -3815,6 +3862,12 @@ function makeMockDevice(opt = {}) {
               else st.settings = P.buf.slice();
             }
             else if (id === 0) { const o = js(); st.tracks = o.tracks; st.sel = o.sel; st.g = o.g; }
+            else if (id >= 12 && id <= 14) {                /* SMK-37 (editor.c: stopped only; 13 taken, not modelled) */
+              if (id !== 13 && P.len !== (id === 12 ? 20 : 472)) throw 0;
+              if (st.playing) rc = 3;
+              else if (id === 12) st.smkset = P.buf.slice();
+              else if (id === 14) st.vocset = P.buf.slice();
+            }
             else if (id <= 5) st.slots[id - 2] = P.len ? js() : null;
             else if (id === 11) {                           /* your theme (2.7; editor.c: stopped only; 0 bytes: none) */
               const th = P.len ? THEME.decode(P.buf) : null;
@@ -5470,6 +5523,13 @@ const TEXT = {
     stockBtn: "Prepare the return to M-Vave", stockDone: "Done: the M-Vave firmware will start with its factory mapping",
     stockNone: "Already prepared (no marker)", stockBusy: "Stop the song first",
     tabDaw: "DAW map", dawTitle: "DAW mode (SMK-37)",
+    tabSmk: "SMK-37", smkTitle: "SMK-37 settings",
+    smkHelp: "The HOME menu's SMK-37 settings (kept apart from SLOOP's). Send to the keyboard takes and saves them at once (stop the song first). A changed USB LAYOUT or STEM RATE re-plugs USB a few seconds later. The wheels' calibration is the unit's and is not here or in a backup.",
+    tabVoc: "Vocoder", vocTitle: "Vocoder (T3)",
+    vocHelp: "T3 on this build is the vocoder's own patch: VOCODER plays the built-in saw carrier (the VSM201 standard) from your voice on USB audio in, AUDIO plays the voice dry. These are the settings now (each project slot keeps its own and is left as it is here). Send to the keyboard takes and saves them at once (stop the song first). A coloured name: changed from the default.",
+    vocPage: "Vocoder page", vocNote: "T3 is the vocoder's patch on this build (VOCODER: the built-in saw carrier; AUDIO: the voice dry): no engine, presets or Program Change. Its settings: the Vocoder tab.",
+    obSend: "Send to the keyboard", obRead: "Read from the keyboard", obDefault: "Defaults", obUnsent: "not sent", obSent: "Sent and saved",
+    obCh: "Channel", obFn: "Knob", obEmph: "Emphasis %", obAdd: "Addition %", obBrg: "Bridging % (pair)", obMute: "Mute",
     dawHelp: "In DAW mode the keyboard is a MIDI controller (on the keyboard: < and > together, or HOME menu > MIDI > MODE). Set here what the knobs, faders, pads, buttons and wheels send (CC, note or MMC, and the channel); Send to the keyboard makes it the USER map (kept in flash once the keyboard is quiet). MAIN = the keyboard's CHANNEL.",
     dawSend: "Send to the keyboard", dawRead: "Read from the keyboard", dawDefault: "Back to DEFAULT", dawSave: "Save to a file", dawOpen: "Open a file",
     dawMode: "mode", dawCh: "channel", dawLocal: "local", dawMap: "CC map", dawKnobs: "knobs",
@@ -5542,7 +5602,7 @@ let lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : 
    7; smpMax) */
 const slotSecs = (n) => { const v = smpMax() * 2 * n / SMP.RATE; return String(v >= 5 ? Math.round(v) : Math.round(v * 10) / 10); };
 const t = (k) => {
-  const s = TEXT[lang][k] ?? k;
+  const s = TEXT[lang][k] ?? TEXT.en[k] ?? k;
   return s.includes("{one}") || s.includes("{two}") ? s.split("{one}").join(slotSecs(1)).split("{two}").join(slotSecs(2)) : s;
 };
 let lastKey = null, lastArg = "";
@@ -5572,7 +5632,7 @@ $("lang").addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; 
 
 /* ---------------------------------------------------------------- tabs --- */
 /* one panel at a time; the last one is remembered (localStorage) and in the URL hash (#sound ...) */
-const TABS = ["live", "sound", "sequencer", "tracks", "song", "library", "samples", "kits", "drumsynth", "projects", "settings", "theme", "daw"];
+const TABS = ["live", "sound", "sequencer", "tracks", "song", "library", "samples", "kits", "drumsynth", "projects", "settings", "theme", "daw", "smk", "vocoder"];
 const TAB_KEY = "felucca-editor-tab";
 const TRACK_TABS = new Set(["sound", "sequencer", "tracks"]);
 let tab = (() => {
@@ -5594,13 +5654,17 @@ function showTab(name) {
 function renderPanels() {
   /* the Tracks tab only with a four-track firmware */
   const tracksOk = !dev || hasTracks() || !dev.info;
-  const want = (tab === "tracks" && dev && dev.info && !hasTracks()) || (tab === "daw" && dev && dev.dump && !dev.daw) ? "sound" : tab;
+  const build = dev && dev.info ? dev.info.build || 0 : 0;
+  const want = (tab === "tracks" && dev && dev.info && !hasTracks()) || (tab === "daw" && dev && dev.dump && !dev.daw) ||
+    (tab === "smk" && dev && dev.info && !(build & 1)) || (tab === "vocoder" && dev && dev.info && !(build & 2)) ? "sound" : tab;
   for (const b of $("tabs").querySelectorAll("button[data-tab]")) {
     const on = b.dataset.tab === want;
     b.setAttribute("aria-selected", on ? "true" : "false");
     b.tabIndex = on ? 0 : -1;
     if (b.dataset.tab === "tracks") b.hidden = !tracksOk;
     if (b.dataset.tab === "daw") b.hidden = !(dev && dev.daw);   /* (SMK-37: a device that answers DAW_GET) */
+    if (b.dataset.tab === "smk") b.hidden = !(build & 1);        /* (SMK-37: INFO's build byte) */
+    if (b.dataset.tab === "vocoder") b.hidden = !(build & 2);    /* (the vocoder build) */
   }
   $("stockcard").hidden = !(dev && dev.daw);           /* (SMK-37: the way back to the M-Vave firmware) */
   const ready = !!dev && !!dev.dump;
@@ -5619,6 +5683,10 @@ function renderPanels() {
   $("pagetitle").textContent = nb ? t(nb.dataset.t) : "";
   if (want === "kits") renderKits();
   if (want === "daw" && ready) renderDaw();
+  if ((want === "smk" || want === "vocoder") && ready) {   /* (SMK-37: objects 12 / 14, read once per connection) */
+    const o = OB[want];
+    if (o.dev !== dev) { Object.assign(o, { dev, d: null, dirty: false }); op(() => obRead(want)); } else obRender(want);
+  }
   if (want === "drumsynth" && ready) {                 /* (2.5) the SYN kits, read once per connection */
     if (DS.dev !== dev) { Object.assign(DS, { dev, kit: null, list: null, k: 0, lane: 0 }); if (dsOk()) op(() => dsLoad(0)); renderDs(); } else renderDs();
   }
@@ -6253,7 +6321,7 @@ async function connect() {
   try {
     if (!access) {
       if (MOCK) { mock = makeMockDevice({ auto: false, legacy: QS.get("legacy") === "1", daw: QS.get("smk") === "1",
-        slotSize: QS.get("smk") === "1" ? 0xA000 : 0, onChange: previewChanged });   /* (smk=1: an SMK-37, 40 KiB user slots) */ access = mock.access; }
+        voc: QS.get("smk") === "1" && QS.get("voc") === "1", slotSize: QS.get("smk") === "1" ? 0xA000 : 0, onChange: previewChanged });   /* (smk=1: an SMK-37, 40 KiB user slots) */ access = mock.access; }
       else {
         try { access = await navigator.requestMIDIAccess({ sysex: true }); }
         catch (e) { sayK("denied"); return; }
@@ -6473,7 +6541,8 @@ function renderTrackbar() {
   for (const b of box.children) {
     const i = +b.dataset.i, x = dev.mix && dev.mix.tracks[i];
     b.setAttribute("aria-pressed", i === (dev.sel || 0) ? "true" : "false");
-    const nm = !x ? [i === ntrk - 1 ? "DRUMS" : "", ""] : x.engine >= dev.info.nengines ? [(dev.kitNames || [])[x.e0] || "", "drums"]
+    const nm = i === 2 && dev.info.build & 2 ? ["VOCODER", "audio in"]   /* (the vocoder build's T3: its own patch) */
+      : !x ? [i === ntrk - 1 ? "DRUMS" : "", ""] : x.engine >= dev.info.nengines ? [(dev.kitNames || [])[x.e0] || "", "drums"]
       : [(dev.names[x.engine] || [])[x.preset] || "", String(dev.info.engines[x.engine] || "").toLowerCase()];
     b.lastChild.replaceChildren(nm[0] + " ", el("span", { class: "dim", text: nm[1] }));
     b.title = `${t("track")} ${i + 1}`;
@@ -6507,12 +6576,16 @@ function updateBrowser() {
   const e = dev.dump.engine;
   const sel = $("engine");
   const drum = e >= dev.info.nengines;              /* the drum track: no engine, no presets */
+  const voc = !drum && !!(dev.info.build & 2) && dev.sel === 2;   /* the vocoder build's T3: VOCODER (the built-in saw
+                                                       carrier, the VSM201 standard) or AUDIO; the firmware takes no engine,
+                                                       preset or Program Change there (ui.c) */
   renderTrackbar();
-  sel.disabled = drum;
-  $("preset").disabled = drum;
-  $("init").disabled = drum;
-  $("factlib").disabled = drum;
+  sel.disabled = drum || voc;
+  $("preset").disabled = drum || voc;
+  $("init").disabled = drum || voc;
+  $("factlib").disabled = drum || voc;
   $("drumnote").hidden = !drum;
+  $("vocnote").hidden = !voc;
   $("browser").hidden = drum;
   $("groups").hidden = drum;
   $("ctlhelp").hidden = drum;
@@ -7758,6 +7831,141 @@ $("dawfile").addEventListener("change", async (e) => {
   renderDaw();
   sayK("dawOpened");
 });
+
+/* SMK-37: its settings (backup object 12, project.c smkset_t, 20 bytes) and the vocoder build's (14, vocset_t, 472
+   bytes), read with BK_LIST / BK_GET and written back whole with BK_PUT (the firmware checks them as at power-on, takes
+   them and saves). A field: [key, byte offset, label, options [[value, name]], default] */
+const OB_DB = (a, b, st, z) => Array.from({ length: (b - a) / st + 1 }, (_, i) => [i, `${a + i * st > 0 ? "+" : ""}${a + i * st}${z}`]);
+const OB_BEND = [0, 1, 2, 3, 4, 5, 7, 12].map((x) => [x, `${x} ST`]);
+const OB = {
+  smk: { id: 12, len: 20, magic: 0x54534B53, box: "smkset", dev: null, d: null, dirty: false, fields: [
+    ["vel", 4, "KEY VELOCITY", ["DYNAMIC", "SOFT", "HARD", "FIXED 64", "FIXED 100", "FIXED 127"], 0],
+    ["trs", 5, "TRS MIDI OUT", ["OFF", "ON"], 1],
+    ["bup", 6, "BEND UP", OB_BEND, 7], ["bdn", 7, "BEND DOWN", OB_BEND, -1],
+    ["lim", 8, "LIMITER", ["SOFT", "CLASSIC"], 0], ["klay", 9, "KNOB LAYOUT", ["FM-1", "SMK"], 0],
+    ["ulay", 10, "USB LAYOUT", ["STEREO", "DRUMS+RET", "SYNTHS+RET", "ALL DRY"], 0],
+    ["sfx", 11, "STEM FX", ["SLICER", "PUNCH", "PUNCH HQ"], 0], ["srate", 12, "STEM RATE", ["48 KHZ", "44.1 KHZ"], 0],
+    ["sfilt", 13, "STEM FILTER", ["FULL", "LIGHT"], 0], ["xfl", 14, "PUNCH XFADE", ["2.9 MS", "1.5 MS", "5.8 MS"], 0],
+    ["lin", 15, "PUNCH CURVE", ["EQUAL", "LINEAR"], 0], ["sqcarry", 16, "FLIP RETURN", ["SLIP", "CARRY"], 0],
+    ["sqlb", 17, "LOOP BACK", ["2 bars", "1 bar", "1/2 bar", "1/4", "1/8", "1/16"], 1],
+    ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0]] },
+  vocoder: { id: 14, len: 472, magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
+    ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0], ["mode", 4, "T3", ["AUDIO", "VOCODER"], 0],
+    ["lvl", 5, "LEVEL", OB_DB(-12, 18, 3, " DB"), 4],
+    ["resp", -1, "RESPONSE", ["FLAT", "NORMAL", "EMPHASIS"], 0],
+    ["dry", 6, "DRY", ["OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"], 0], ["hf", 7, "HF", ["OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"], 2],
+    ["cut", 8, "CARRIER CUTOFF", Array.from({ length: 128 }, (_, i) => [i, String(i)]), 127],
+    ["res", 9, "CARRIER RESO", Array.from({ length: 128 }, (_, i) => [i, String(i)]), 0],
+    ["vm", 10, "VOICE", ["AUTO", "VOICED", "UNVOICED"], 0], ["pink", 11, "NOISE", ["WHITE", "PINK"], 0],
+    ["agc", 67, "AGC", ["OFF", "PEAKS", "LIGHT", "FULL"], 0],
+    ["br", 12, "BRIDGE", [[0, "OFF"], ...OB_DB(-48, 0, 3, " DB").map(([i, n]) => [i + 1, n])], 0],
+    ["thr", 13, "THRESHOLD", [-54, -48, -42, -36, -30, -24].map((x, i) => [i, `${x} DB`]), 2],
+    ["tilt", 64, "TILT", OB_DB(-3, 3, 0.5, " DB/OCT"), 8],
+    ["colour", 65, "COLOUR", Array.from({ length: 11 }, (_, i) => [i, `${i * 10} %`]), 10],
+    ["blend", 66, "BLEND", ["SUM", "FILL"], 0]],
+  page: [["byp", 146, "BYPASS", ["OFF", "REPLACEMENT", "SPEECH"], 2], ["brsel", 147, "BRIDGING", ["OFF", "SUM", "INDIVIDUAL"], 1],
+    ["addsel", 148, "ADDITION", ["OFF", "SUM", "INDIVIDUAL"], 1], ["actl", 149, "AUTOCONTROL", ["OFF", "ON"], 0]] },
+};
+const OB_PG = 72;                                     /* vocset_t pcur: mute (4), emph[20], add[20], brg[10], fn[20], byp .. */
+const obOpts = (f) => f[3].map((x, i) => (Array.isArray(x) ? x : [i, x]));
+const obResp = (d) => (d[68] & 1 ? (d[69] & 1 ? 2 : 1) : 0);
+const obBendGet = (d, f) => {                         /* smk_wheel.h: 0 the default (down: as up), 0x80 none, else semitones */
+  const up = d[6] === 0x80 ? 0 : d[6] || 7, b = d[f[1]];
+  return f[0] === "bup" ? up : b === 0x80 ? 0 : b || up;
+};
+function obGet(k, f) {
+  const d = OB[k].d;
+  if (f[0] === "resp") return obResp(d);
+  if (f[0] === "bup" || f[0] === "bdn") return obBendGet(d, f);
+  return d[f[1]];
+}
+function obSet(k, f, v) {
+  const d = OB[k].d;
+  if (f[0] === "resp") { d[68] = v ? 1 : 0; d[69] = v === 2 ? 1 : 0; }
+  else if (f[0] === "bup" || f[0] === "bdn") {
+    const up = f[0] === "bup" ? v : obBendGet(d, OB.smk.fields[2]), dn = f[0] === "bdn" ? v : obBendGet(d, OB.smk.fields[3]);
+    d[6] = up === 7 ? 0 : up || 0x80;
+    d[7] = dn === up ? 0 : dn || 0x80;
+  } else d[f[1]] = v;
+  if (k === "vocoder" && f[1] >= 4 && f[1] < 16) d[14] = 1;   /* (cur.have: the settings taken) */
+  if (k === "vocoder" && f[1] >= OB_PG) d[OB_PG + 78] = 1;    /* (pcur.have) */
+  OB[k].dirty = true;
+  obRender(k);
+}
+function obDefaults(k) {
+  const o = OB[k], d = o.d;
+  for (const f of o.fields) obSet(k, f, f[4] < 0 ? obGet(k, o.fields[2]) : f[4]);
+  if (k === "vocoder") {
+    for (const f of o.page) obSet(k, f, f[4]);
+    d.fill(0, OB_PG, OB_PG + 4);                      /* nothing muted */
+    d.fill(50, OB_PG + 4, OB_PG + 44);                /* EMPHASIS, ADDITION at their middle */
+    d.fill(0, OB_PG + 44, OB_PG + 74);                /* bridging 0, every knob on EMPHASIS */
+  }
+  obRender(k);
+}
+async function obRead(k) {
+  const o = OB[k];
+  const L = parse[CMD.BK_LIST](await rq(req.bkList(), { timeout: 5000, retries: 0 }));
+  if (L.rc) throw new BackupError("bkRc" + L.rc, `LIST rc ${L.rc}`);
+  const it = L.items.find((x) => x.id === o.id);
+  const d = it ? await bkReadObj(rq, it) : null;
+  const dv = d ? new DataView(d.buffer, d.byteOffset, d.length) : null;
+  o.d = d && d.length === o.len && dv.getUint32(0, true) === o.magic ? new Uint8Array(d) : null;
+  o.dirty = false;
+  obRender(k);
+}
+function obRender(k) {
+  const o = OB[k], box = $(o.box);
+  if (!box) return;
+  $(k === "smk" ? "smkstate" : "vocstate").textContent = !o.d ? t("none") : o.dirty ? t("obUnsent") : "";
+  if (!o.d) { box.replaceChildren(); if (k === "vocoder") { $("vocpgset").replaceChildren(); $("vocch").replaceChildren(); } return; }
+  const one = (f) => {
+    const v = obGet(k, f), def = f[4] < 0 ? obGet(k, o.fields[2]) : f[4];
+    return el("label", { class: v === def ? "" : "chg" }, el("span", { class: "dim", text: f[2] + " " }),
+      dawSel("", obOpts(f), v, (x) => obSet(k, f, x)));
+  };
+  box.replaceChildren(...o.fields.map(one));
+  if (k !== "vocoder") return;
+  const d = o.d, P = OB_PG;
+  $("vocpgset").replaceChildren(...o.page.map(one));
+  const mute = new DataView(d.buffer, d.byteOffset + P, 4).getUint32(0, true);
+  const pct = (at, def) => {
+    const n = el("input", { type: "number", min: "0", max: "100", value: String(d[at]) });
+    n.addEventListener("change", () => { d[at] = Math.max(0, Math.min(100, n.value | 0)); d[P + 78] = 1; o.dirty = true; obRender(k); });
+    return el("td", { class: d[at] === def ? "" : "chg" }, n);
+  };
+  const rows = [el("tr", {}, ...["obCh", "obFn", "obEmph", "obAdd", "obBrg", "obMute"].map((x) => el("th", { text: t(x) })))];
+  for (let c = 0; c < 20; c++) {
+    const fns = [[0, "EMPHASIS"], [1, "ADDITION"], ...(c < 10 ? [[2, "BRIDGING"]] : [])];
+    const fn = dawSel("", fns, d[P + 54 + c], (x) => { d[P + 54 + c] = x; d[P + 78] = 1; o.dirty = true; obRender(k); });
+    const mb = el("input", { type: "checkbox" });
+    mb.checked = !!(mute >> c & 1);
+    mb.addEventListener("change", () => {
+      const m = (new DataView(d.buffer, d.byteOffset + P, 4).getUint32(0, true) & ~(1 << c)) | (mb.checked ? 1 << c : 0);
+      new DataView(d.buffer, d.byteOffset + P, 4).setUint32(0, m >>> 0, true);
+      d[P + 78] = 1; o.dirty = true; obRender(k);
+    });
+    rows.push(el("tr", { class: d[P + 54 + c] || mute >> c & 1 || d[P + 4 + c] !== 50 || d[P + 24 + c] !== 50 ? "chg" : "" },
+      el("td", { text: String(c + 1) }), el("td", { class: d[P + 54 + c] ? "chg" : "" }, fn), pct(P + 4 + c, 50), pct(P + 24 + c, 50),
+      c < 10 ? pct(P + 44 + c, 0) : el("td", { class: "dim", text: "-" }), el("td", {}, mb)));
+  }
+  $("vocch").replaceChildren(...rows);
+}
+async function obSend(k) {
+  const o = OB[k];
+  if (!o.d) return;
+  try { await bkWriteObj(rq, o.id, o.d); }
+  catch (e) { if (e.code === "bkStop") { sayK("bkStop"); return; } throw e; }
+  o.dirty = false;
+  obRender(k);
+  sayK("obSent");
+}
+for (const k of ["smk", "vocoder"]) {
+  const p = k === "smk" ? "smk" : "voc";
+  $(p + "send").addEventListener("click", () => op(() => obSend(k)));
+  $(p + "read").addEventListener("click", () => op(() => obRead(k)));
+  $(p + "def").addEventListener("click", () => { if (OB[k].d) obDefaults(k); });
+}
 
 /* ---- SLOOP 2.5: the Song page: the order of the sections A..D (the device's SONG screen, from the browser) ---- */
 const SG = { rows: null, loop: false, bytes: null, err: "", dirty: false };

@@ -893,13 +893,18 @@ static void smkset_fill(smkset_t *s)
     s->sqlb = (uint8_t)(sq_lb % SQ_LB_N);
     s->sqgrid = (uint8_t)(sq_grid % SQ_GRID_N);
 }
-static void smkset_boot(void)                      /* after the settings (persist_boot, dsu_boot) */
+/* a record of n bytes (as read from flash, or the editor's restore, backup object 12): 1 taken (the settings set from
+ * it), 0 not one (nothing changes) */
+static int smkset_take(const uint8_t *b, uint32_t n)
 {
     smkset_t s;
-    int n;
     memset(&s, 0, sizeof s);
-    n = st_load(OBJ_SMKSET, &s, sizeof s);
-    if ((n == (int)sizeof s || n == (int)SMKSET_V2 || n == (int)SMKSET_V1) && s.magic == SMKSET_MAGIC) {
+    if (n != sizeof s && n != SMKSET_V2 && n != SMKSET_V1)
+        return 0;
+    memcpy(&s, b, n);
+    if (s.magic != SMKSET_MAGIC)
+        return 0;
+    {
         vel_mode = (uint8_t)(s.vel < VEL_N ? s.vel : VEL_DYNAMIC);
         trs_out = (uint8_t)(s.trs != 0u);
         bend_up = (uint8_t)bend_up_of_byte(s.bup);
@@ -912,12 +917,21 @@ static void smkset_boot(void)                      /* after the settings (persis
         stem_light = (uint8_t)(s.sfilt & 1u);
         tp_xfl = (uint8_t)(s.xfl < TPX_N ? s.xfl : TPX_128);
         tp_lin = (uint8_t)(s.lin & 1u);
-        if (n == (int)sizeof s) {                  /* (an older record has none: the defaults stay) */
+        if (n == sizeof s) {                       /* (an older record has none: the defaults stay) */
             sq_carry = (uint8_t)(s.sqcarry & 1u);
             sq_lb = (uint8_t)(s.sqlb < SQ_LB_N ? s.sqlb : 1u);
             sq_grid = (uint8_t)(s.sqgrid < SQ_GRID_N ? s.sqgrid : 0u);
         }
         knob_layout_apply();
+    }
+    return 1;
+}
+static void smkset_boot(void)                      /* after the settings (persist_boot, dsu_boot) */
+{
+    smkset_t s;
+    int n;
+    n = st_load(OBJ_SMKSET, &s, sizeof s);
+    if (n > 0 && smkset_take((const uint8_t *)&s, (uint32_t)n)) {
         smkset_fill(&smkset_saved);
         return;
     }
@@ -1026,17 +1040,22 @@ static void vocset_load(const project_t *p)
         vpg_put(&vocset.psec[k]);
 }
 static void vocset_drop(uint32_t slot) { vocset.sec[slot & 3u].have = 0, vocset.psec[slot & 3u].have = 0; }
-static void vocset_boot(void)                      /* after smkset_boot */
+/* an object of n bytes (as read from flash, or the editor's restore, backup object 14): 1 taken (the settings, the page
+ * and each slot's set from it), 0 not one (nothing changes) */
+static int vocset_take(const uint8_t *b, uint32_t n)
 {
     static vocset_t s;                                 /* (472 bytes: not on the stack) */
-    int n;
+    uint32_t k;
+    if (n != sizeof s && n != VOCSET_V3 && n != VOCSET_V2 && n != VOCSET_V1)
+        return 0;
     memset(&s, 0, sizeof s);                           /* (an older, shorter object: the rest none / OFF) */
-    n = st_load(OBJ_VOCSET, &s, sizeof s);
-    if ((n == (int)sizeof s || n == (int)VOCSET_V3 || n == (int)VOCSET_V2 || n == (int)VOCSET_V1) &&
-        s.magic == VOCSET_MAGIC) {
-        if (n < (int)VOCSET_V3)                        /* (saved before NORMAL: OFF) */
+    memcpy(&s, b, n);
+    if (s.magic != VOCSET_MAGIC)
+        return 0;
+    {
+        if (n < VOCSET_V3)                             /* (saved before NORMAL: OFF) */
             s.norm = 0, s.emsel = 0, s.rsv[0] = s.rsv[1] = 0;
-        if (n == (int)VOCSET_V1)                       /* (saved before BRIDGE TONE: its defaults) */
+        if (n == VOCSET_V1)                            /* (saved before BRIDGE TONE: its defaults) */
             s.tilt = voc_tilt, s.colour = voc_colour, s.blend = voc_blend, s.agc = 0;
         vocset = s;
         voc_tilt = (uint8_t)(s.tilt % VOC_TILT_N), voc_colour = (uint8_t)(s.colour % VOC_COLOUR_N);
@@ -1048,15 +1067,31 @@ static void vocset_boot(void)                      /* after smkset_boot */
             vocv_put(&s.cur);
             uin_mode = (uint8_t)(s.cur.uin & 1u);
         }
+        for (k = 0; k < 4u; k++) {                     /* (each slot's page record in range when it loads: vpg_put) */
+            vocset.sec[k].have &= 1u;
+            vocset.psec[k].have &= 1u;
+        }
     }
+    return 1;
+}
+static void vocset_boot(void)                      /* after smkset_boot */
+{
+    static vocset_t s;
+    int n = st_load(OBJ_VOCSET, &s, sizeof s);
+    if (n > 0)
+        (void)vocset_take((const uint8_t *)&s, (uint32_t)n);
     vocset.magic = VOCSET_MAGIC;
     vocset_saved = vocset;
 }
-static void vocset_save(void)
+static void vocset_fill(void)                      /* the object as it is now (a save, the editor's backup) */
 {
     vocv_get(&vocset.cur);
     vocset.tilt = voc_tilt, vocset.colour = voc_colour, vocset.blend = voc_blend, vocset.agc = voc_agc;
     vocset.norm = voc_norm, vocset.emsel = voc_emsel, vocset.pcur = vpg;
+}
+static void vocset_save(void)
+{
+    vocset_fill();
     if (memcmp(&vocset, &vocset_saved, sizeof vocset) && st_save(OBJ_VOCSET, &vocset, sizeof vocset) == 0)
         vocset_saved = vocset;
 }

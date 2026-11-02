@@ -492,6 +492,23 @@ CC, CC TOGGLE, NOTE; a button OFF, CC, CC TOGGLE, NOTE, MMC; the pitch wheel OFF
 **channel:** 0 = CHANNEL, else 1..16. A setting out of range stays as it was, an entry out of range becomes its default.
 No flash write in the command: the device keeps it with its settings once quiet.
 
+## SMK-37: the build byte, backup objects 12..14
+
+`INFO` on an SMK-37 has one byte after the protocol version: bit 0 SMK-37, bit 1 the vocoder build (an FM-1 or older
+firmware: no byte, read as 0). On the vocoder build track 3 is the vocoder's own patch (VOCODER: the built-in saw
+carrier; AUDIO: the voice dry): the firmware takes no engine, preset or Program Change there, and the editor locks them.
+
+Backup objects (BK_LIST / GET / PUT as above; an older device answers a begin with rc 5 and the editor skips it):
+- **12** the SMK-37 settings (project.c `smkset_t`, 20 bytes, "SKST"; 12- and 16-byte records restore, the rest at
+  their defaults). Taken as at power-on and saved; rc 3 while the song plays. A changed USB LAYOUT / STEM RATE re-plugs
+  USB 3 s after the restore's last write. The wheels' calibration is the unit's and is never in a backup.
+- **13** DAW mode and its map (`daw_store_t`, "DAW1"; as `daw_store_take`).
+- **14** (vocoder build) the vocoder's settings, now and each project slot's (`vocset_t`, 472 bytes, "VOCS"; 64-, 68-
+  and 72-byte objects restore with the rest at their defaults). Restored after the projects (a project's restore drops
+  its slot's vocoder settings).
+
+The editor's SMK-37 and Vocoder tabs read 12 / 14, change fields in place and write the object back whole.
+
 ## Notes for the editor
 
 - **One request at a time.** Wait for the reply, about 10–50 ms, before sending the next.
