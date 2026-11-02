@@ -477,6 +477,21 @@ UI_SMALL static void chain_sub(char *sub, uint32_t n)
 }
 
 /* KNOB 1..4 while a layer is held: what the layer gives them (the page does not see them) */
+#if BOARD_SMK37
+/* once a pass (ui_input.c): the volume knob held while the punch page is up in the SMK layout (K5 is its keys' choice
+ * there), given back after */
+static void pk_hold(void)
+{
+    static uint8_t on, prev;
+    uint32_t want = ui.layer == LY_FX && knob_of(EN_MASTER) == 4u;
+    if (want && !on)
+        prev = smk_master_hold, on = 1;
+    if (want)
+        smk_master_hold = 1;
+    else if (on)
+        smk_master_hold = prev, on = 0;
+}
+#endif
 UI_SMALL static void layer_knobs(uint32_t layer)
 {
     uint32_t k;
@@ -522,6 +537,10 @@ UI_SMALL static void layer_knobs(uint32_t layer)
                 song.g[G_DUST] = (int16_t)clamp(song.g[G_DUST] + accel(EN_K2, s, 127), 0, 127);
             else if (k == 2u)
                 song.g[G_DUCK] = (int16_t)clamp(song.g[G_DUCK] + accel(EN_K3, s, 127), 0, 127);
+#if SMK_UAC_IN_PROBE
+            else if (VOC_TRK_AUDIO(t) && voc_mode % VM_N == VM_SAW)   /* track 3 vocoding: CARRIER CUTOFF */
+                voc_cut = (uint8_t)clamp((int32_t)voc_cut + accel(EN_K4, s, 127), 0, 127);
+#endif
             else                                        /* the selected track's FILTER (2.4) */
                 t->p[P_TFLT] = (int16_t)clamp(t->p[P_TFLT] + accel(EN_K4, s, 127), -64, 63);
             break;
@@ -585,6 +604,20 @@ UI_SMALL static void layer_knobs(uint32_t layer)
             break;
         }
     }
+#if BOARD_SMK37
+    if (layer == LY_FX && knob_of(EN_MASTER) == 4u) {  /* K5 (the SMK layout's volume knob, held here: pk_hold): what the
+                                                        * keys play, FX (the punch-ins) <-> T1 .. T4 (that track, selected) */
+        int32_t d = fm1_enc_take(smk_master_enc % FM1_NENC) * smk_master_dir;
+        if (d) {
+            int32_t pos = pk_keys ? 1 + (int32_t)(song.sel % NTRK) : 0;
+            pos = clamp(pos + (d > 0 ? 1 : -1), 0, (int32_t)NTRK);
+            pk_keys = (uint8_t)(pos != 0);
+            if (pos)
+                track_select((uint32_t)pos - 1u);
+            ui.layer_used = 1;
+        }
+    }
+#endif
     if (layer == LY_FX && (s = panel_enc(EN_SELECT)) != 0) {   /* (2.7.2) SELECT: the punch-in FX fade (GLO > ... ), not the
                                                                * tempo while FX is held; shown top right (layer_screen_draw) */
         song.g[G_FXFADE] = (int16_t)clamp(song.g[G_FXFADE] + s, 0, 15);
@@ -684,7 +717,7 @@ UI_SMALL static void layer_title(const char *name, const char *sub, uint16_t col
     uint32_t locked = ly_lock != LY_PLAY;
 #if BOARD_SMK37
     uint32_t sig = studio_hash(studio_hash(col, name), sub) + (ui.msg_t ? studio_hash(3u, ui.msg) : 0u) + locked * 7919u +
-                   studio_hash(104729u, hdr_r);
+                   studio_hash(104729u, hdr_r) + (ui.layer == LY_FX) * (pk_keys * 31u + song.sel + 1u) * 6007u;
 #else
     uint32_t sig = studio_hash(studio_hash(col, name), sub) + (ui.msg_t ? studio_hash(3u, ui.msg) : 0u) + locked * 7919u +
                    (locked ? 0u : studio_hash(104729u, hdr_r));
@@ -715,6 +748,14 @@ UI_SMALL static void layer_title(const char *name, const char *sub, uint16_t col
         int32_t w = (int32_t)text_w(&FONT_S, "LOCK") + 8;
         cv_rect(120 - w / 2, 1, w, 16, C_WHITE);
         cv_text(124 - w / 2, 1, &FONT_S, "LOCK", C_BLACK);
+    }
+    if (ui.layer == LY_FX) {                              /* the punch page: what the keys play (K5), beside LOCK */
+        char tb[3] = {'T', (char)('1' + song.sel % NTRK), 0};
+        const char *bt = pk_keys ? tb : "FX";
+        int32_t w = (int32_t)text_w(&FONT_S, bt) + 8, x = locked ? 120 + ((int32_t)text_w(&FONT_S, "LOCK") + 8) / 2 + 4
+                                                                     : 120 - w / 2;
+        cv_rect(x, 1, w, 16, pk_keys ? TE_COL[song.sel & 3u] : col);
+        cv_text(x + 4, 1, &FONT_S, bt, C_BLACK);
     }
 #else
     if (locked) {                                         /* locked open (HOME): any button lets it go */
@@ -770,15 +811,17 @@ UI_SMALL static void layer_screen_draw(void)
         str_cpy(sub, thr_req == 3u ? "rev + echo throw" : thr_req == 2u ? "echo throw" : thr_req ? "rev throw" : "hold + key",
                 sizeof sub);
 #if BOARD_SMK37
+        if (!thr_req)
+            sub[0] = 0;                                 /* (the fade's readout, not a standing hint) */
+#endif
+#if BOARD_SMK37
         if (tp_page_on()) {                             /* SMK-37 STEM FX: the effects on the stems, by kind */
             static const char *const TSHORT[TP_PAGE_N] = {"loop 4", "loop 8", "loop16", "loop32", "stutt", "rev",
                                                           "stop", "half", "loop8t", "gate", "rewind", "freeze"};
             static const char *const LBS[SQ_LB_N] = {"2bar", "1bar", "1/2b", "1/4", "1/8", "1/16"};
             static const char *const GRS[SQ_GRID_N] = {"4", "8", "16", "4.", "8.", "16."};
-            if (!thr_req) {
-                str_cpy(sub, stem_fx == SFX_HQ ? "stems  punch hq  " : "stems  punch  ", sizeof sub);
-                str_cpy(sub + str_len(sub), sq_carry ? "carry" : "slip", 6);
-            }
+            if (!thr_req)
+                sub[0] = 0;                             /* (the owner: no standing line here, it covered the fade) */
             if (sq_tempo_shown()) {                     /* a RAMP held: the tempo it is at */
                 str_cpy(sub, "ramp ", sizeof sub);
                 fmt_int(sub + 5, (int32_t)sq_tempo_shown());

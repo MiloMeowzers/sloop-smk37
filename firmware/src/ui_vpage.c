@@ -113,7 +113,7 @@ static void vp_db(char *b, int32_t t)               /* tenths of a dB: "+4.2" */
 }
 static void vp_val(char *b, uint32_t ch, uint32_t f)   /* channel ch's value for function f */
 {
-    uint32_t v = f == VF_BRG ? vpg.brg[ch / 2u] : f == VF_ADD ? vpg.add[ch] : vpg.emph[ch];
+    uint32_t v = f == VF_BRG ? vpg.brg[ch % VOC_PAIRS] : f == VF_ADD ? vpg.add[ch] : vpg.emph[ch];
     if (f == VF_BRG) {
         fmt_int(b, (int32_t)v);
         str_cpy(b + str_len(b), " %", 3);
@@ -127,9 +127,9 @@ static void vp_chname(char *b, uint32_t ch, uint32_t f)
 {
     if (f == VF_BRG) {                                  /* "BRIDGE 7/8" */
         str_cpy(b, "BRIDGE ", 8);
-        fmt_int(b + 7, (int32_t)(ch & ~1u) + 1);
+        fmt_int(b + 7, 2 * (int32_t)ch + 1);   /* (channel n: pair n, its channels 2n-1/2n) */
         str_cpy(b + str_len(b), "/", 2);
-        fmt_int(b + str_len(b), (int32_t)(ch | 1u) + 1);
+        fmt_int(b + str_len(b), 2 * (int32_t)ch + 2);
     } else {
         str_cpy(b, "CH ", 4);
         fmt_int(b + 3, (int32_t)ch + 1);
@@ -170,7 +170,7 @@ static void vp_turn(uint32_t k, int32_t s)          /* knob k of the group turne
     char a[16], b[12];
     if (k < nch) {
         uint32_t ch = g * 7u + k, f = vpg.fn[ch] % VF_N;
-        uint8_t *v = f == VF_BRG ? &vpg.brg[ch / 2u] : f == VF_ADD ? &vpg.add[ch] : &vpg.emph[ch];
+        uint8_t *v = f == VF_BRG ? &vpg.brg[ch % VOC_PAIRS] : f == VF_ADD ? &vpg.add[ch] : &vpg.emph[ch];
         int32_t n = (int32_t)*v + s * (s > 1 || s < -1 ? 3 : 1);
         if (f != VF_BRG) {                              /* the centre (the basic setting) holds VP_DET detents */
             uint32_t a = (uint32_t)(s < 0 ? -s : s);
@@ -216,8 +216,8 @@ static int vp_deferred(uint32_t p)
 static void vp_basic(uint32_t ch)                   /* a channel back to the basic setting (its mute stays) */
 {
     vpg.emph[ch] = 50, vpg.add[ch] = 50;
-    if (ch < 2u * VOC_PAIRS)
-        vpg.brg[ch / 2u] = 0;
+    if (ch < VOC_PAIRS)
+        vpg.brg[ch % VOC_PAIRS] = 0;
 }
 static void vp_tap(uint32_t p)                      /* a deferred pad let go before VP_LONG_MS */
 {
@@ -347,15 +347,38 @@ static void vp_padrgb(uint32_t p, const uint8_t *c, uint32_t sh)   /* a colour, 
 {
     padled_set(p, (uint8_t)(c[0] >> sh), (uint8_t)(c[1] >> sh), (uint8_t)(c[2] >> sh));
 }
+/* the channels' meters (the pads below: playing white, its brightness the level after the channel's controls), its
+ * peak held: 8 steps of 6 dB from the analysis's envelope (Q19) times the channel's EMPHASIS; a step down every 4
+ * frames (~1 s from the top). The pads are sent only when a colour changed (lcd.c padled) */
+static const uint8_t VP_MB[8] = {10, 16, 24, 36, 54, 80, 115, 160};
+static uint8_t vp_pk[VOC_CH], vp_pkt[VOC_CH];
+static uint32_t vp_meter(uint32_t ch)
+{
+    int64_t l = voa.env[ch % VOC_CH];
+    uint32_t s = 0;
+    if (voc_norm && voc_emsel)
+        l = (l * voc_emph_q12(vpg.emph[ch % VOC_CH])) >> 12;
+    for (l >>= 11; l > 0 && s < 7u; l >>= 1)
+        s++;
+    if (s >= vp_pk[ch])
+        vp_pk[ch] = (uint8_t)s, vp_pkt[ch] = 0;
+    else if (++vp_pkt[ch] >= 4u)
+        vp_pk[ch]--, vp_pkt[ch] = 0;
+    return vp_pk[ch] & 7u;
+}
 static void vp_leds(void)                           /* the group's pads: functions and mutes, the selectors lit when on */
 {
-    static const uint8_t W[3] = {150, 150, 150};
     uint32_t g = vp.grp, c, nch = g < 2u ? 7u : 6u;
     for (c = 0; c < 8u; c++) {
         if (c < nch) {
             uint32_t ch = g * 7u + c;
             vp_padrgb(c, VP_RGB[vpg.fn[ch] % VF_N], (vpg.mute >> ch) & 1u ? 3u : 1u);
-            vp_padrgb(8u + c, W, (vpg.mute >> ch) & 1u ? 5u : 1u);
+            if ((vpg.mute >> ch) & 1u) {
+                padled_set(8u + c, 2, 2, 2);            /* (muted: dark) */
+            } else {
+                uint8_t b = VP_MB[vp_meter(ch)];         /* the channel's level: the white's brightness */
+                padled_set(8u + c, b, b, b);
+            }
         } else if (g == 0u) {
             vp_padrgb(c, VP_OPT[VO_BYP][vp_opt(VO_BYP)], 0u);
             vp_padrgb(8u + c, VP_OPT[VO_VOC][vp_opt(VO_VOC)], 0u);
@@ -382,7 +405,7 @@ static void vp_nodb(char *d, const char *s, uint32_t max)   /* a menu value with
 /* a cluster's value in 3 characters (FONT_S: 8 px each, a column 30): "+12", "-4", "OFF", "60%", "100" */
 static void vp_short(char *b, uint32_t ch, uint32_t f)
 {
-    uint32_t v = f == VF_BRG ? vpg.brg[ch / 2u] : f == VF_ADD ? vpg.add[ch] : vpg.emph[ch];
+    uint32_t v = f == VF_BRG ? vpg.brg[ch % VOC_PAIRS] : f == VF_ADD ? vpg.add[ch] : vpg.emph[ch];
     if (f == VF_BRG) {
         fmt_int(b, (int32_t)v);
         if (v < 100u)
@@ -461,7 +484,7 @@ static void vp_cluster(uint32_t col, uint32_t ch)   /* channel ch in column col 
     cv_rect(x + 6, VP_Y0 + 20, VP_COLW - 12, 3, mu ? RGB(255, 40, 40) : TE_G2);   /* the mute light: red, muted */
     for (f = 0; f < nb; f++) {
         uint16_t c = f == VF_EMPH ? VP_COL_E : f == VF_ADD ? VP_COL_A : VP_COL_B, fc = c;
-        uint32_t v = f == VF_BRG ? vpg.brg[ch / 2u] : f == VF_ADD ? vpg.add[ch] : vpg.emph[ch];
+        uint32_t v = f == VF_BRG ? vpg.brg[ch % VOC_PAIRS] : f == VF_ADD ? vpg.add[ch] : vpg.emph[ch];
         if (mu)
             fc = c = f == fn ? TE_G3 : TE_G2;
         else if (f != fn)

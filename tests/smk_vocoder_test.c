@@ -469,6 +469,60 @@ int main(void)
               step <= 200 && settled);
         uin_mode = 0;
     }
+    {   /* the vocoder page's channel controls (vocoder-ui-spec.md §4-6, 2026-11-02): defaults as before, bit for bit;
+         * EMPHASIS on NORMAL's weights; every channel muted; BYPASS REPLACEMENT; AUTOCONTROL */
+        static double ref[66214];   /* (1 s: tone() reads the last 0.5 s) */
+        uint32_t n, k, same;
+        double b0, b1;
+        voc_agc = 0, voc_bridge = 0, voc_norm = 1, voc_emsel = 0;
+        reset();
+        n = run(1.0, v1k, saw110);
+        memcpy(ref, outbuf, n * sizeof ref[0]);
+        b0 = tone(n, 990.0);
+        voc_emsel = 1;                                  /* EMPHASIS, every channel at its middle */
+        reset();
+        run(1.0, v1k, saw110);
+        same = !memcmp(ref, outbuf, n * sizeof ref[0]);
+        check("page: VOCODER EMPHASIS with every channel at its middle is NORMAL, bit for bit", same);
+        for (k = 0; k < VOC_CH; k++)
+            vpg.emph[k] = 100;                          /* every channel +12 dB */
+        reset();
+        run(1.0, v1k, saw110);
+        b1 = tone(n, 990.0);
+        printf("   EMPHASIS every channel at the top: %+.2f dB (a pot's square: +12.04)\n", b1 - b0);
+        check("page: EMPHASIS at the top +12 dB (+-0.3)", fabs(b1 - b0 - 12.04) < 0.3);
+        for (k = 0; k < VOC_CH; k++)
+            vpg.emph[k] = 50;
+        voc_emsel = 0;
+        vpg.mute = (1u << VOC_CH) - 1u;                 /* every channel muted: no synthesis, no speech addition */
+        reset();
+        run(1.0, v1k, saw110);
+        b1 = tone(n, 990.0);
+        printf("   every channel muted: %+.1f dB\n", b1 - b0);
+        check("page: every channel muted, the vocoded tone gone (> 60 dB down)", b1 - b0 < -60.0);
+        vpg.mute = 0;
+        vpg.byp = VB_SPEECH, voc_dry = 0;
+        reset();
+        n = run(1.0, vzero, saw110);
+        b0 = tone(n, 110.0);
+        vpg.byp = VB_REPL, voc_dry = VOC_MIX_N - 1u;   /* the carrier dry at 0 dB, no voice */
+        reset();
+        run(1.0, vzero, saw110);
+        b1 = tone(n, 110.0);
+        vpg.byp = VB_SPEECH, voc_dry = 0;
+        printf("   BYPASS REPLACEMENT at 0 dB, no voice: 110 Hz %+.1f dB over none\n", b1 - b0);
+        check("page: BYPASS REPLACEMENT adds the carrier dry (no voice: the saw heard)", b1 - b0 > 30.0);
+        vpg.actl = 1;
+        reset();
+        run(1.0, v1k, saw110);
+        printf("   AUTOCONTROL on a voice at -6 dB: gain %.1f dB\n", db(voc_acg / 4096.0));
+        check("page: AUTOCONTROL turns a hot voice down (-12 .. 0 dB)", voc_acg < 4096 && voc_acg >= 1024);
+        vpg.actl = 0;
+        reset();
+        run(0.1, v1k, saw110);
+        check("page: AUTOCONTROL off, back to 1.0", voc_acg == 4096);
+        voc_norm = 0;
+    }
     printf(fails ? "VOCODER TEST FAILED (%d)\n" : "smk_vocoder: all ok\n", fails);
     return fails != 0;
 }

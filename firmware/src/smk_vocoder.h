@@ -125,13 +125,27 @@ enum { VB_OFF, VB_REPL, VB_SPEECH, VB_N };   /* BYPASS: off, REPLACEMENT (the ca
 enum { VS_OFF, VS_SUM, VS_IND, VS_N };   /* BRIDGING, ADDITION: off, the SUM control, INDIVIDUAL (the next build: as SUM) */
 typedef struct {
     uint32_t mute;                       /* bit per channel */
-    uint8_t emph[VOC_CH], add[VOC_CH], brg[VOC_PAIRS], fn[VOC_CH];
+    uint8_t emph[VOC_CH], add[VOC_CH], brg[VOC_PAIRS], fn[VOC_CH];   /* (brg[n]: pair n (channels 2n+1/2n+2), on
+                                                                     * channel n+1's knob: the VSM201's P1..P10) */
     uint8_t byp, brsel, addsel, actl, have, rsv;   /* BYPASS, BRIDGING, ADDITION, AUTOCONTROL (the next build) */
 } vocpg_t;
 static vocpg_t vpg = {0, {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50},
                       {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50},
                       {0}, {0}, VB_SPEECH, VS_SUM, VS_SUM, 0, 1, 0};
-static uint8_t voc_emsel;                /* VOCODER EMPHASIS (with NORMAL): the channels' emphasis (the next build: as NORMAL) */
+static uint8_t voc_emsel;                /* VOCODER EMPHASIS (with NORMAL): the channels' emphasis on NORMAL's weights */
+/* the channels' gains from their positions (a pot's: the square): EMPHASIS Q12, 50 = 1.0 (4096), 100 = 4.0 (+12 dB),
+ * 0 = OFF; ADDITION Q15, 100 = 1.0, 50 = 0.25 (-12 dB) */
+static inline int32_t voc_emph_q12(uint32_t p) { return (int32_t)(p * p * 4096u / 2500u); }
+static inline int32_t voc_add_q15(uint32_t p) { return (int32_t)(p * p * 32767u / 10000u); }
+/* the synthesis bank's first sections' gains this block (voc_chan_block): NORMAL's weights (or none), times each
+ * channel's EMPHASIS (VOCODER EMPHASIS) and 0 when muted; the constant tables themselves when nothing is applied (the
+ * output as before, bit for bit) */
+static int32_t voc_ga[VOC_CH];
+static const int32_t *voc_bap = VOC_B0;
+/* AUTOCONTROL (the VSM201's input AGC): the analysis's input gain, Q12 (1.0 .. -12 / +18 dB), towards the voice's level
+ * at VOC_ACT in speech, held in a pause (no lift of the room's noise); the analysis only (DRY is the voice as it came) */
+#define VOC_ACT 60000                    /* (the voice's mean |x| aimed at, the analysis's scale: full 2^19; ~ -19 dB) */
+static int32_t voc_acg = 4096;
 
 #define VOC_HN 32u                       /* the half-band's history at 44.1 kHz (27 taps), a power of two */
 #define VOC_ON 16u                       /* the decimated outputs' history (the interpolator's: 2 HB), a power of two */
@@ -241,8 +255,13 @@ static void voc_ana_flip(void) { voc_aw ^= 1u; }
 /* core 0, while core 1 renders: this block's voice (voc_in, n even) through the analysis bank into voc_ab[voc_aw] */
 static void voc_analyse(uint32_t n)
 {
-    uint32_t i, k, j = 0;
-    int32_t pin = voa.peak_in;
+    uint32_t i, k, j = 0, mu = vpg.mute & ((1u << VOC_NB) - 1u);
+    uint32_t afast = vpg.addsel != VS_IND && !(mu >> VOC_HF0), act = vpg.actl & 1u;   /* (SUM, none of its bands
+                                                                 * muted: the speech addition as before) */
+    int32_t pin = voa.peak_in, ag[VOC_NB], acg = act ? voc_acg : 4096;
+    for (k = 0; k < VOC_NB; k++)                         /* the speech addition's gain a band: INDIVIDUAL each channel's, SUM
+                                                          * the top bands; a muted channel none */
+        ag[k] = (mu >> k) & 1u ? 0 : vpg.addsel == VS_IND ? voc_add_q15(vpg.add[k]) : k >= VOC_HF0 ? 32767 : 0;
     for (i = 0; i + 1u < n && i + 1u < VOC_MAXN; i += 2u, j++) {
         int32_t v, hf = 0;
         for (k = 0; k < 2u; k++) {
@@ -252,6 +271,10 @@ static void voc_analyse(uint32_t n)
             voa.vh[voa.hw++ & (VOC_HN - 1u)] = x;
         }
         v = voc_dec(voa.vh, voa.hw) << 4;
+        if (act) {                                       /* AUTOCONTROL */
+            int64_t g = ((int64_t)v * acg) >> 12;
+            v = g > (1 << 23) ? 1 << 23 : g < -(1 << 23) ? -(1 << 23) : (int32_t)g;
+        }
         voa.lp1 += (int32_t)(((int64_t)(v - voa.lp1) * VOC_LF_K) >> 16);   /* channel 0: below 1 kHz */
         voa.lp2 += (int32_t)(((int64_t)(voa.lp1 - voa.lp2) * VOC_LF_K) >> 16);
         voa.env0 = voc_env(voa.env0, voa.lp2);
@@ -262,12 +285,26 @@ static void voc_analyse(uint32_t n)
             int32_t ya = voc_band(v, VOC_B0[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], &voa.a[k]);
             voa.env[k] = voc_env(voa.env[k], ya);        /* (ya: Q19) */
             voc_ab[voc_aw].env[j][k] = voa.env[k] >> 4;  /* (Q15) */
-            if (k >= VOC_HF0)
-                hf += ya;                                /* the speech addition: the voice's top bands */
+            if (afast) {
+                if (k >= VOC_HF0)
+                    hf += ya;                            /* the speech addition: the voice's top bands */
+            } else if (ag[k]) {
+                hf += (int32_t)(((int64_t)ya * ag[k]) >> 15);   /* (INDIVIDUAL, or a top band muted) */
+            }
         }
         voc_ab[voc_aw].hf[j] = hf;
     }
     voa.peak_in = pin;
+    if (act && voa.envs > 0 && n) {                      /* AUTOCONTROL: the gain towards VOC_ACT in speech (~90 ms), held in a
+                                                          * pause; -12 .. +18 dB */
+        if (voc_ab[voc_aw].speech || voa.envs > VOC_ACT) {
+            int64_t t = ((int64_t)VOC_ACT * acg) / voa.envs;
+            int32_t gt = t < 1024 ? 1024 : t > 32767 ? 32767 : (int32_t)t;
+            voc_acg = acg + (gt - acg) / 16;
+        }
+    } else if (!act) {
+        voc_acg = 4096;                                  /* (off: from 1.0 when it comes on) */
+    }
     {   /* the detector: channel 0 against channel 19 (twice to turn voiced, 1.4 x to stay) */
         int32_t e19 = voa.env[18];
         voa.voiced = (uint8_t)(voa.env0 > (voa.voiced ? e19 + e19 * 2 / 5 : 2 * e19) && voa.env0 > 0);
@@ -312,7 +349,7 @@ static int64_t voc_bands(int32_t c, uint32_t k, uint32_t k1, const int32_t *env,
 {
     int64_t sum = 0;
     voc_bq *s = &voc.b[k];
-    const int32_t *ba = voc_norm ? VOC_B0S : VOC_B0;     /* (the first section's gain: NORMAL's weight, or none) */
+    const int32_t *ba = voc_bap;                         /* (the first section's gain: voc_chan_block) */
     if (mode == VT_PLAIN) {
         for (; k < k1; k++, s++)
             sum += (int64_t)voc_band(c, ba[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], s) * env[k];   /* Q15 */
@@ -340,11 +377,31 @@ static int32_t voc_tick(int32_t c, uint32_t j, const int32_t *bk, int32_t cf, ui
     return o;
 }
 
+/* the first sections' gains this block: NORMAL's weights (or none), each channel's EMPHASIS (VOCODER EMPHASIS), 0 muted.
+ * Nothing applied: the constant table itself */
+_Static_assert(VOC_CH == VOC_NB, "the page's channels are the bands");
+static void voc_chan_block(void)
+{
+    const int32_t *ba = voc_norm ? VOC_B0S : VOC_B0;
+    uint32_t k, mu = vpg.mute & ((1u << VOC_NB) - 1u), em = voc_norm && voc_emsel;
+    if (!mu && !em) {
+        voc_bap = ba;
+        return;
+    }
+    for (k = 0; k < VOC_NB; k++) {
+        int32_t g = (mu >> k) & 1u ? 0 : em ? voc_emph_q12(vpg.emph[k]) : 4096;
+        voc_ga[k] = g == 4096 ? ba[k] : (int32_t)(((int64_t)ba[k] * g) >> 12);
+    }
+    voc_bap = voc_ga;
+}
+
 /* the carrier block b (the track's scale, n even) becomes the vocoded block, in place */
 static void voc_process(int32_t *b, uint32_t n)
 {
     uint32_t i, j;
     int32_t pout = voc.peak_out, dg = VOC_MIX_Q15[vpg.byp == VB_SPEECH ? voc_dry % VOC_MIX_N : 0u];
+    int32_t dr = VOC_MIX_Q15[vpg.byp == VB_REPL ? voc_dry % VOC_MIX_N : 0u];   /* BYPASS REPLACEMENT: the carrier dry */
+    uint32_t bmu = vpg.mute & ((1u << VOC_NB) - 1u), bind = vpg.brsel == VS_IND;
     uint32_t vm = voc_vmode % VV_N, br = vpg.brsel != VS_OFF && voc_bridge % VOC_BR_N != 0u;
     int32_t badd = br ? (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * voc_br_q15(voc_bridge % VOC_BR_N) >> 15) *
                                   VOC_BR_Q15 >> 15) : 0;
@@ -353,6 +410,7 @@ static void voc_process(int32_t *b, uint32_t n)
     int32_t uvt = vm == VV_UNVOICED ? 32767 : vm == VV_VOICED ? 0 :                 /* the noise's share wanted */
                   voc_ab[voc_aw ^ 1u].unvoiced && (!br || voc_ab[voc_aw ^ 1u].speech) ? 32767 : 0;
     voc.blocks++;
+    voc_chan_block();
     {   /* BRIDGE TONE: the bridge per band (TILT), the envelopes' share in a pause (COLOUR: full in speech), each
          * ramped over the block from where the last one ended (the pause value moves block by block: a step there is a
          * click, loudest where the carrier is strongest, the low bands a negative TILT lifts) */
@@ -362,6 +420,10 @@ static void voc_process(int32_t *b, uint32_t n)
             m = 1;
         for (j = 0; j < VOC_NB; j++) {
             to = (badd * (int32_t)tq[j]) >> 12;
+            if ((bmu >> j) & 1u)
+                to = 0;                                  /* (a muted channel: no bridge) */
+            else if (bind)                               /* INDIVIDUAL: the pair's control (SUM above it) */
+                to = (int32_t)(((int64_t)to * vpg.brg[(j / 2u) % VOC_PAIRS] * 32767 / 100) >> 15);
             bk[j] = voc.bk[j];
             dbk[j] = (to - bk[j]) / m;
             ramp |= (uint32_t)(dbk[j] != 0);
@@ -433,6 +495,8 @@ static void voc_process(int32_t *b, uint32_t n)
             int32_t x = o[k];
             if (dg)
                 x += (int32_t)(((int64_t)VOC_VS(voc_in[i + (uint32_t)k]) * dg) >> 15);   /* DRY */
+            if (dr)
+                x += (int32_t)(((int64_t)b[i + (uint32_t)k] * dr) >> 15);   /* REPLACEMENT (b: still the carrier) */
             x = x > VOC_XMAX ? VOC_XMAX : x < -VOC_XMAX ? -VOC_XMAX : x;
             if ((x < 0 ? -x : x) > pout)
                 pout = x < 0 ? -x : x;

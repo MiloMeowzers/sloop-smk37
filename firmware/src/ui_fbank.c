@@ -37,6 +37,15 @@ static int fb_left(void)                           /* drawn last frame, not now:
 static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
 {
     static const uint8_t TID[4] = {P_LEVEL, P_TFLT, P_REV, P_DLY}, GID[4] = {G_DRLVL, 0, G_DRREV, G_DRDLY};
+#if SMK_UAC_IN_PROBE
+    if (b == 1u && VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW) {   /* track 3 vocoding: CARRIER CUTOFF */
+        static int16_t cut;
+        static const param_desc_t CUT = {"CUTOFF", F_PCT, 0, 127, 127, 0, 0};
+        cut = (int16_t)voc_cut;
+        *vp = &cut;
+        return &CUT;
+    }
+#endif
     if (i == TRK_DRUM && b != 1u) {
         *vp = &song.g[GID[b & 3u]];
         return &GP[GID[b & 3u]];
@@ -86,6 +95,10 @@ static void fb_draw(void)
                     str_cpy(lab, "DRUMS", sizeof lab);
                 else
                     lab[6] = (char)('1' + i);
+#if SMK_UAC_IN_PROBE
+                if (b == 1u && VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW)
+                    str_cpy(lab, "T3 CUTOFF", sizeof lab);
+#endif
                 param_format(d, *vp, val, &unit);
                 str_cpy(v2, val, sizeof v2);
                 str_cpy(v2 + str_len(v2), unit, sizeof v2 - str_len(v2));

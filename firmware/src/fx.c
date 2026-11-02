@@ -921,6 +921,10 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         {
             tsvf_t fc;                                  /* the track's FILTER (P_TFLT), after the SLICER */
             djf_t *f = &tflt[(uint32_t)(t - trk) % NTRK];
+#if SMK_UAC_IN_PROBE
+            if (!(VOC_TRK_AUDIO(t) && voc_mode % VM_N == VM_SAW))   /* (track 3 vocoding: no FILTER; its fader and
+                                                         * FX's K4 are CARRIER CUTOFF, the owner 2026-11-02) */
+#endif
             if (djf_block(f, t->p[P_TFLT], &fc, tflt_reso()))
                 tflt_run(f, &fc, b, n, 0);
         }

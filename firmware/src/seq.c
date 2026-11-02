@@ -153,6 +153,10 @@ static volatile uint8_t ly_lock = LY_PLAY;
 static uint32_t layer_buttons(void) { return fm1_in.buttons | (ly_lock != LY_PLAY ? ly_bit[ly_lock % LY_COUNT] : 0u); }
 /* the layer the keys are in: the held function button (FX, EDIT, ARP, SEQ, SEL, GLO in that order),
  * else the locked one */
+#if BOARD_SMK37
+static uint8_t pk_keys;                           /* the punch page's keys (K5, ui_layers.c): 0 the punch-ins, 1 the selected
+                                                   * track (the pads stay the punch-ins); the owner, 2026-11-02 */
+#endif
 static uint32_t layer_now(void)
 {
     uint32_t b = layer_buttons(), l;
@@ -2280,6 +2284,10 @@ static void key_down(uint32_t k)
 {
     uint32_t layer = layer_now(), sel = song.sel % NTRK, i, mc;
     track_t *t = &trk[sel];
+#if BOARD_SMK37
+    if (layer == LY_FX && pk_keys)
+        layer = LY_PLAY;                              /* (the punch page, its keys on the track: played as ever) */
+#endif
     kb_kind[k] = KS_NONE;
     kb_trk[k] = (uint8_t)sel;
     kb_n[k] = 0;

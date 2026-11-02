@@ -228,7 +228,17 @@ static void smk_faders(void)
         last[i] = (uint8_t)v;
         switch (smk_fbank) {
         case 1:
-            trk[i].p[P_TFLT] = (int16_t)((int32_t)v - 64);
+#if SMK_UAC_IN_PROBE
+            if (VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW) {
+                voc_cut = (uint8_t)(v > 127u ? 127u : v);   /* track 3 vocoding: its fader is CARRIER CUTOFF (the
+                                                     * track's FILTER is off, fx.c) */
+                break;
+            }
+#endif
+            {   /* a dead zone in the middle (+-3): a fader resting there is the filter off, not a step of it running */
+                int32_t f = (int32_t)v - 64;
+                trk[i].p[P_TFLT] = (int16_t)(f >= -3 && f <= 3 ? 0 : f);
+            }
             break;
         case 2:
             pv = i == TRK_DRUM ? &song.g[G_DRREV] : &trk[i].p[P_REV];

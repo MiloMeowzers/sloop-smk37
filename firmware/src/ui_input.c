@@ -1441,6 +1441,9 @@ UI_SMALL static void ui_input(void)
 #if SMK_VOC_LEAN
     vp_input(&pressed, &home);                          /* the vocoder page: its knobs, pads, PATCH (ui_vpage.c) */
 #endif
+#if BOARD_SMK37
+    pk_hold();                                          /* (the punch page: the volume knob is K5, ui_layers.c) */
+#endif
     if (pressed || notes)
         ui_input_ms = fm1_ms;
     remote_poll();                                      /* (2.7) the buttons over MIDI */
