@@ -320,14 +320,14 @@ static void con_dbg(void)
 }
 
 #if SMK_TIMING
-/* where an audio half's time goes (smk_timing.h), in us: each figure's worst, the worst half's split, and the mean over
- * the halves past the shed line (85 %); then cleared */
+/* where an audio half's time goes (smk_timing.h), in us: each figure's worst, the worst half's split, the mean over
+ * the halves past the shed line (85 %) and the mean over every half; then cleared */
 static void con_timing(void)
 {
-    uint32_t i, n = tim.n_over;
+    uint32_t i, n = tim.n_over, h = tim.halves;
     con_kv("halves", (int32_t)tim.halves);
     con_kv("over_85", (int32_t)n);
-    con_puts("what max worst_half over_mean (us)\r\n");
+    con_puts("what max worst_half over_mean mean (us)\r\n");
     for (i = 0; i < TS_N; i++) {
         con_puts(TS_NAME[i]);
         con_putc(' ');
@@ -336,10 +336,13 @@ static void con_timing(void)
         con_dec((int32_t)(tim.worst[i] / FM1_TICKS_PER_US));
         con_putc(' ');
         con_dec(n ? (int32_t)(tim.over[i] / n / FM1_TICKS_PER_US) : 0);
+        con_putc(' ');
+        con_dec(h ? (int32_t)(tim.sum[i] / h * 16u / FM1_TICKS_PER_US) : 0);
         con_puts("\r\n");
     }
     fm1_irq_off();
     memset(tim.max, 0, sizeof tim.max), memset(tim.worst, 0, sizeof tim.worst), memset(tim.over, 0, sizeof tim.over);
+    memset(tim.sum, 0, sizeof tim.sum);
     tim.halves = tim.n_over = 0;
     fm1_irq_on();
 }

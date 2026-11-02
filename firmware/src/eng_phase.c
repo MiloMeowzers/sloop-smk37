@@ -65,8 +65,15 @@ static void pd_setup(pd_t *b, uint32_t w, uint32_t dcw)
     b->x = x;
 }
 
+/* (SMK-37, the vocoder build) a call every sample: inlined into phase_render, out of the flash beyond the hot code
+ * (tools/build.py HOT_TEXT; vocoder-ui-spec.md §7g) */
+#if SMK_VOC_LEAN
+#define PD_INL inline __attribute__((always_inline))
+#else
+#define PD_INL
+#endif
 /* one sample at phase ph (16 bit): bipolar Q15 */
-static int32_t pd_wave(const pd_t *b, uint32_t ph)
+static PD_INL int32_t pd_wave(const pd_t *b, uint32_t ph)
 {
     uint32_t pd, x = b->x;
     switch (b->w) {

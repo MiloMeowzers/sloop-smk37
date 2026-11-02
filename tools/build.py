@@ -194,13 +194,19 @@ def build_loader():
 # units and the engines they render, the drums, the stems, core 1's jobs, the USB audio's timer). The cores share the
 # cache: scattered among the UI's code, each block's hot code evicted itself and the cold code it sat beside (a build
 # that only moved code, b053d01, shed 3.5 a second against 4.7). Names the compiler inlined are not functions: skipped,
-# reported. Only with SMK_VOC_LEAN=1: the other builds keep their layout (FM-1 byte-identical)
-HOT_TEXT = ["fm1_alnk0_irq", "events_block", "trk_note_on", "trk_note_off", "voice_victim", "lock_step",
-            "drum_synth_on", "roll_hit", "mix_units", "mix_part_run", "analog_render", "analog_render_f",
-            "fm6_render", "fm6_op_run", "fm6_block", "fm6_sync", "fm6_note_on", "fm6_done", "phase_render",
-            "sample_render", "slice_render", "drawbar_render", "grain_render", "phys_render", "slicer_track",
-            "drums_mix", "slicer_drums", "tp_x", "cpu1_units_job", "cpu1_stems_job", "cpu1_tail_job", "uac6_tap_ch",
-            "uac_tap48", "uac_render_start", "fm1_timer5_irq", "uac_service", "uin_rx"]
+# reported. Only with SMK_VOC_LEAN=1: the other builds keep their layout (FM-1 byte-identical). (§7g) With them, what
+# they call every block or every sample that was left out in the flash beyond (the disassembly's calls out of the hot
+# span: the track filter, the INSERT, the envelope sync, the LFO, FM6's feedback operator and envelopes, PHASE's set-up,
+# the drums' filter, the waits for core 1)
+HOT_TEXT = ["fm1_alnk0_irq", "mix_tail_wait", "cpu1_wait", "tp_pos", "uac6_room", "lfo_sync_inc", "events_block",
+            "trk_note_on", "trk_note_off", "voice_victim", "lock_step", "drum_synth_on", "drum_pick", "roll_hit",
+            "mix_units", "mix_part_run", "gain_next", "esync_coef", "lfo_wave", "tflt_run", "ins_run", "click_render",
+            "voc_fade", "tp_zero", "eng_arena_of", "pow2_q16", "analog_render", "analog_render_f",
+            "fm6_render", "fm6_part_of", "fm6_note_of", "fm6_op_run", "fm6_op_fb", "fm6_env_advance",
+            "fm6_penv_advance", "fm6_block", "fm6_sync", "fm6_note_on", "fm6_done", "phase_render", "pd_setup",
+            "sample_render", "sample_next", "slice_render", "drawbar_render", "grain_render", "phys_render",
+            "slicer_track", "drums_mix", "ds_filter", "slicer_drums", "tp_x", "cpu1_units_job", "cpu1_stems_job",
+            "cpu1_tail_job", "uac6_tap_ch", "uac_tap48", "uac_render_start", "fm1_timer5_irq", "uac_service", "uin_rx"]
 
 
 def build_app():

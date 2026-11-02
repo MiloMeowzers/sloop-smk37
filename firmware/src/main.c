@@ -320,6 +320,7 @@ UI_SMALL static void felucca_init(void)
     uint32_t i;
     for (i = 0; i < G_COUNT; i++)
         song.g[i] = GP[i].def;
+    sine_ram_load();                          /* (SMK-37 vocoder build: the oscillators' sine in RAM, dsp.c) */
     fm6_init();                               /* every part's FM6 patch: the init voice */
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];

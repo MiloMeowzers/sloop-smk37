@@ -37,17 +37,22 @@ enum {
     TS_REST,     /* the half outside mix_block's sections (shed, the USB render's start, the output) */
     TS_T5,       /* TIMER5 nested in the half (USB audio), inside the figures above */
     TS_ALL,      /* the whole half */
+    TS_E1, TS_E2, TS_E3,  /* (§7g) the engines alone (voice.c track_render: every voice's render, the vocoder apart), tracks
+                           * 1..3 on whichever core: the unit (u / c1_u) less this, the track's chain (filter, DIST, INSERT, mix) */
     TS_N
 };
 static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wait", "pre_go", "ana", "units",
                                           "stem", "wait", "tail_go", "fx", "post", "ev_xport", "ev_trk", "ev_keys",
                                           "ev_midi", "ev_s1", "ev_s2", "ev_s3", "ev_sd", "ev_arp", "u1", "u2", "u3", "ud",
                                           "c1",
-                                          "c1_u1", "c1_u2", "c1_u3", "c1_ud", "c1_stem", "voc", "rest", "t5", "all"};
+                                          "c1_u1", "c1_u2", "c1_u3", "c1_ud", "c1_stem", "voc", "rest", "t5", "all",
+                                          "eng1", "eng2", "eng3"};
 static struct {
     uint32_t t, ut[2];                                  /* the section's start; the unit's, each core */
     uint32_t cur[TS_N];                                 /* this half's */
     uint32_t max[TS_N], worst[TS_N], over[TS_N];        /* each worst; the worst half's; the shedding halves' summed */
+    uint32_t sum[TS_N];                                 /* (§7g) every half's summed, in 16 ticks (2/3 us): 48 minutes of
+                                                         * halves before it wraps (the console reads and clears it) */
     uint32_t halves, n_over;
 } tim;
 /* TIMER4 read in place (hal/fm1_time.h fm1_ticks_inl, as fm1_ticks): the tail's code runs from RAM (fx.c RAMHOT),
@@ -81,6 +86,8 @@ static void tim_half(uint32_t all, uint32_t t5, uint32_t over)   /* audio.c, eac
             tim.over[i] += tim.cur[i];
         tim.n_over++;
     }
+    for (i = 0; i < TS_N; i++)
+        tim.sum[i] += tim.cur[i] >> 4;
     tim.halves++;
     memset(tim.cur, 0, sizeof tim.cur);
 }

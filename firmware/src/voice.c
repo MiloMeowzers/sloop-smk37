@@ -989,7 +989,11 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             voc_saw(v, out, n, &m);                     /* the SAW carrier */
         else
 #endif
-        e->render(t, v, out, n, &m);
+        {
+            TIM_VOC_T(te);                              /* (SMK_TIMING: the engine alone, smk_timing.h TS_E1..) */
+            e->render(t, v, out, n, &m);
+            TIM_ADD(TS_E1 + (uint32_t)(t - trk) % NPART, TIM_NOW() - te);
+        }
         nr++;
     }
     if (fade) {

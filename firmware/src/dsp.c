@@ -20,11 +20,28 @@ static inline int32_t clamp(int32_t v, int32_t lo, int32_t hi) { return v < lo ?
 #define MULQ12R(x, g, k) \
     ((((x) >> (k)) * (g) + ((((x) & ((1 << (k)) - 1)) * (g) + (1 << ((k) - 1))) >> (k)) + (1 << (11 - (k)))) >> (12 - (k)))
 
+/* (SMK-37, the vocoder build) the sine read from a RAM copy (sine_ram_load, at power-on: main.c felucca_init): every sample of
+ * every oscillator reads it at a new place (FM6's six operators a voice, sine_i: PHASE, ANALOG's sine, the drums); from
+ * the flash each read took a line of the cache both cores share (vocoder-ui-spec.md §7g). The same values: bit-exact */
+#if SMK_VOC_LEAN
+static int16_t sine_ram[1025] __attribute__((section(".lowram")));
+#define SINE_T sine_ram
+static inline void sine_ram_load(void)
+{
+    uint32_t i;
+    for (i = 0; i < 1025u; i++)
+        sine_ram[i] = SINE[i];
+}
+#else
+#define SINE_T SINE
+static inline void sine_ram_load(void) {}
+#endif
+
 /* sine, linearly interpolated between the 1024 table points (plain lookup: THD -55 dB) */
 static inline int32_t sine_i(uint32_t ph)
 {
     uint32_t i = ph >> 22;
-    int32_t a = SINE[i], b = SINE[(i + 1u) & 1023u];
+    int32_t a = SINE_T[i], b = SINE_T[(i + 1u) & 1023u];
     return a + (((b - a) * (int32_t)((ph >> 7) & 0x7FFFu)) >> 15);
 }
 static inline int32_t osc_sine(uint32_t ph) { return sine_i(ph); }
