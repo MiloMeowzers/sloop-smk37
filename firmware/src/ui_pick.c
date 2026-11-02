@@ -14,6 +14,8 @@ static uint8_t pick_pin, pick_tmp, pick_sel = 0xFF;
 static uint16_t pick_page;
 static uint32_t pick_t, pick_frame;                /* last touch (ms); the frame drawn last */
 static uint32_t pick_k4_until;                     /* KNOB BANK lit until (ms): a PRESETS detent */
+static uint16_t pick_orig = 0xFFFFu;               /* (ui-map.md §6.2) the sound when it opened: marked, OCT- + OCT+ back */
+static uint8_t pick_orig_sel = 0xFF;               /* .. its track */
 typedef struct { uint16_t first, len, sub, nsub, kind; } pick_pg_t;
 
 static uint32_t pick_total(void)
@@ -99,11 +101,14 @@ static void pick_home(void)                        /* to the page of the current
     pick_page = (uint16_t)p;
     pick_sel = song.sel;
 }
+static void pick_orig_set(void) { pick_orig = (uint16_t)pick_cur(), pick_orig_sel = song.sel; }
 static uint32_t pick_info(pick_pg_t *pg)          /* the page shown (back to the current one on a new track) */
 {
     uint32_t np;
-    if (pick_sel != song.sel)
+    if (pick_sel != song.sel) {
         pick_home();
+        pick_orig_set();
+    }
     np = pick_walk(pick_page, pg, 0xFFFFu, 0);
     if (np && pick_page >= np) {
         pick_page = 0;
@@ -124,8 +129,10 @@ static void pick_pin_toggle(void)                  /* KNOB BANK */
 {
     pick_pin = !pick_pin && !ui.menu;
     pick_tmp = 0;
-    if (pick_pin)
+    if (pick_pin) {
         pick_home();
+        pick_orig_set();
+    }
 }
 static void pick_open_tmp(void)                    /* a PRESETS turn: the current sound's page */
 {
@@ -143,24 +150,44 @@ static void pick_turn(int32_t d)                   /* < > */
     pick_t = fm1_ms;
     ui.force = 1;
 }
-static void pick_select(uint32_t w)                /* white key / cell w (0..15) of the page */
+static void pick_load(uint32_t n)                  /* entry n: loaded (as PRESETS does), a short preview */
 {
-    pick_pg_t pg;
-    uint32_t n;
-    pick_t = fm1_ms;
-    if (!pick_info(&pg) || w >= pg.len)
-        return;
-    n = pg.first + w;
     if (is_drum(TSEL)) {
         TDRUM->p[P_E0] = (int16_t)(n + DRUM_KIT_MIN);
         audition_req(1u << 0 | 1u << 4, 0u);      /* kick + closed hat */
     } else {
         preset_go(n);
 #if BOARD_SMK37
-        pick_aud_req = (uint8_t)((pg.kind == 0u ? 48u : 60u) + 1u);   /* basses an octave down */
+        pick_aud_req = (uint8_t)((pick_kind_of(n) == 0u ? 48u : 60u) + 1u);   /* basses an octave down */
 #endif
     }
     ui.force = 1;
+}
+static void pick_select(uint32_t w)                /* white key / cell w (0..15) of the page */
+{
+    pick_pg_t pg;
+    pick_t = fm1_ms;
+    if (!pick_info(&pg) || w >= pg.len)
+        return;
+    pick_load(pg.first + w);
+}
+/* OCT- / OCT+ (ui-map.md §6.2): the sound before / after, on to the next page at a page's end (round) */
+static void pick_step(int32_t d)
+{
+    uint32_t total = pick_total();
+    pick_t = fm1_ms;
+    if (!total)
+        return;
+    pick_load((pick_cur() + total + (d > 0 ? 1u : total - 1u)) % total);
+    pick_home();
+}
+static void pick_back(void)                        /* OCT- + OCT+: the sound it opened on */
+{
+    pick_t = fm1_ms;
+    if (pick_orig_sel == song.sel && pick_orig < pick_total()) {
+        pick_load(pick_orig);
+        pick_home();
+    }
 }
 
 static uint16_t pick_col(uint32_t kind, uint32_t sh)   /* the kind's colour, >> sh */
@@ -183,6 +210,8 @@ static void pick_leds(void)                         /* the current sound white, 
             padled_set(p, 0, 0, 0);
         else if (pg.first + w == cur)
             padled_set(p, 150, 150, 150);
+        else if (pg.first + w == pick_orig && pick_orig_sel == song.sel)
+            padled_set(p, c[0], c[1], c[2]);      /* the sound it opened on: its kind's colour full (§6.2) */
         else
             padled_set(p, (uint8_t)(c[0] >> 2), (uint8_t)(c[1] >> 2), (uint8_t)(c[2] >> 2));
     }
@@ -202,7 +231,8 @@ static void pick_draw(void)
         ui.force = 1;
     }
     pick_frame = ui.frame;
-    sig = (np ? pg.first * 977u + pg.kind * 31u : 0u) + cur * 7919u + song.sel * 131u + pick_total() * 3u;
+    sig = (np ? pg.first * 977u + pg.kind * 31u : 0u) + cur * 7919u + song.sel * 131u + pick_total() * 3u +
+          pick_orig * 104729u;
     if (!ui.force && sig == shown)
         return;
     shown = sig;
@@ -226,9 +256,13 @@ static void pick_draw(void)
         }
         for (w = half * 8u; np && w < half * 8u + 8u && w < pg.len; w++) {
             int32_t x = (int32_t)(w & 7u) * 30, sel = pg.first + w == cur;
+            int32_t org = !sel && pg.first + w == pick_orig && pick_orig_sel == song.sel;
             pick_name(pg.first + w, nm);
             pick_abbr(nm, l1, l2);
-            cv_rect(x + 1, y0, 28, 78, sel ? C_WHITE : kc);   /* filled like a button: the kind's colour, the current one white */
+            cv_rect(x + 1, y0, 28, 78, sel || org ? C_WHITE : kc);   /* filled like a button: the kind's colour, the
+                                                                     * current one white, the original framed white */
+            if (org)
+                cv_rect(x + 4, y0 + 3, 22, 72, kc);
             cv_text(x + 15 - text_w(&FONT_S, l1) / 2, y0 + 20, &FONT_S, l1, C_BLACK);
             cv_text(x + 15 - text_w(&FONT_S, l2) / 2, y0 + 42, &FONT_S, l2, C_BLACK);
         }

@@ -1415,6 +1415,17 @@ UI_SMALL static void ui_input(void)
             vp_hits |= h;                               /* (the vocoder page's: vp_input, below) */
 #endif
     }
+    if (pick_shown()) {                                 /* OCT- / OCT+: the sound before / after (on to the next page);
+                                                         * both: back to the one it opened on (ui-map.md §6.2) */
+        uint32_t ob = 1u << panel.btn[B_OCTDN], pb = 1u << panel.btn[B_OCTUP];
+        if (pressed & (ob | pb)) {
+            if ((fm1_in.buttons & (ob | pb)) == (ob | pb))
+                pick_back();
+            else
+                pick_step(pressed & pb ? 1 : -1);
+            pressed &= ~(ob | pb);
+        }
+    }
     if (home == BT_TAP && (fb_shown() || pick_shown())) {   /* PATCH tapped: closes the FADER BANK screen / picker */
         if (fb_shown())
             fb_close();
@@ -1608,6 +1619,10 @@ UI_SMALL static void ui_input(void)
          * page and TRACKS only (the drum track: its kits); elsewhere a stray turn would throw away the sound
          * being edited. Every detent counts */
         uint32_t total, cur = preset_pos(&total);
+#if BOARD_SMK37
+        if (!pick_shown())
+            pick_orig_set();                            /* (the sound before the turn: the picker's original, §6.2) */
+#endif
         if (is_drum(TSEL))
             TDRUM->p[P_E0] = (int16_t)clamp(TDRUM->p[P_E0] + s, DRUM_KIT_MIN, DRUM_KITS - 1);
         else if (total)
