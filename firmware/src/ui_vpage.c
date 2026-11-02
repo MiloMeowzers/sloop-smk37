@@ -26,9 +26,11 @@ static const uint8_t VP_RGB[VF_N][3] = {{255, 150, 30}, {40, 190, 255}, {180, 10
 /* the selectors: a colour an option, the pad and the strip's name and value alike (OFF dark grey) */
 enum { VO_VOC, VO_BYP, VO_BRG, VO_ADD, VO_VM, VO_NOISE, VO_AUTO, VO_N };
 static const uint8_t VP_OPT[VO_N][4][3] = {
-    {{40, 40, 40}, {210, 210, 210}, {255, 150, 30}, {255, 50, 90}},     /* VOCODER: OFF, FLAT, NORMAL, EMPHASIS */
-    {{40, 40, 40}, {40, 190, 255}, {40, 220, 90}, {0, 0, 0}},           /* BYPASS: OFF, REPLACEMENT, SPEECH */
-    {{40, 40, 40}, {180, 100, 255}, {255, 220, 0}, {0, 0, 0}},          /* BRIDGING: OFF, SUM, INDIVIDUAL */
+    {{255, 150, 30}, {0, 230, 230}, {255, 220, 0}, {255, 50, 90}},     /* VOCODER: OFF (its orange: which pad it is), FLAT,
+                                                                        * NORMAL, EMPHASIS (no white: the mutes' colour) */
+    {{230, 60, 230}, {100, 200, 255}, {40, 220, 90}, {0, 0, 0}},        /* BYPASS: OFF (its magenta), REPLACEMENT, SPEECH */
+    {{180, 100, 255}, {0, 240, 170}, {255, 220, 0}, {0, 0, 0}},         /* BRIDGING: OFF (its purple), SUM, INDIVIDUAL (the
+                                                                         * K8 column too: as ADDITION) */
     {{40, 190, 255}, {0, 240, 170}, {255, 220, 0}, {0, 0, 0}},          /* ADDITION: OFF (its blue: which pad it is),
                                                                          * SUM, INDIVIDUAL (the K8 column too) */
     {{0, 200, 210}, {255, 220, 0}, {130, 130, 255}, {0, 0, 0}},         /* VOICE: AUTO, VOICED, UNVOICED */
@@ -46,7 +48,7 @@ static uint32_t vp_opt(uint32_t sel)                /* the option each selector 
     default: return vpg.actl & 1u;
     }
 }
-static uint16_t vp_optc(uint32_t sel)               /* .. its colour on the screen (OFF: the screen's grey) */
+static uint16_t vp_optc(uint32_t sel)               /* .. its colour on the screen */
 {
     const uint8_t *c = VP_OPT[sel][vp_opt(sel) & 3u];
     return c[0] == 40u && c[1] == 40u ? TE_G3 : RGB(c[0], c[1], c[2]);
@@ -147,9 +149,9 @@ static int32_t vp_knob(uint32_t k)
 #define VP_MT 90u                                   /* (frames: ~3 s) */
 static uint32_t vp_mpos(uint32_t mi)
 {
-    return mi == MI_VLVL ? voc_level : mi == MI_VBR ? voc_bridge : mi == MI_VTHR ? voc_thr : voc_hf;
+    return mi == MI_VLVL ? voc_level : mi == MI_VBR ? voc_bridge : mi == MI_VTHR ? voc_thr : mi == MI_VDRY ? voc_dry : voc_hf;
 }
-static uint32_t vp_mdef(uint32_t mi) { return mi == MI_VLVL ? 4u : mi == MI_VBR ? 0u : 2u; }   /* (smk_vocoder.h's) */
+static uint32_t vp_mdef(uint32_t mi) { return mi == MI_VLVL ? 4u : mi == MI_VBR || mi == MI_VDRY ? 0u : 2u; }   /* (smk_vocoder.h's) */
 static void vp_master(uint32_t mi, const char *name, int32_t s)
 {
     uint16_t c;
@@ -190,10 +192,8 @@ static void vp_turn(uint32_t k, int32_t s)          /* knob k of the group turne
         vp_say(a, f == VF_BRG ? "" : f == VF_ADD ? "ADD" : "EMP", b);
     } else if (g == 0u && k == 7u) {
         if (smk_pick_down & 1u << 7) {                  /* the BYPASS pad held: its level */
-            uint16_t c;
             vp.bp_used = 1;
-            mi_set(MI_VDRY, s > 0 ? 1 : -1);
-            vp_say("BYPASS", VP_BYP[vpg.byp % VB_N], mi_value(MI_VDRY, &c));
+            vp_master(MI_VDRY, "BYPASS", s);           /* (the K8 column shows it while the pad is held) */
         } else {
             vp_master(MI_VLVL, "LEVEL", s);
         }
@@ -527,7 +527,10 @@ static void vp_paint(void)                          /* the whole page; the canva
     for (k = 0; k < nch; k++)
         vp_cluster(k, g * 7u + k);
     if (g == 0u) {
-        vp_mcol(7, "LVL", MI_VLVL, voc_level % VOC_LEVEL_N, VOC_LEVEL_N, W);
+        if (smk_pick_down & 1u << 7)                    /* the BYPASS pad held: K8 is its level */
+            vp_mcol(7, "BYP", MI_VDRY, voc_dry % VOC_MIX_N, VOC_MIX_N, vp_optc(VO_BYP));
+        else
+            vp_mcol(7, "LVL", MI_VLVL, voc_level % VOC_LEVEL_N, VOC_LEVEL_N, W);
         vp_item(0, 1, 8, 0, W, "LEVEL", mi_value(MI_VLVL, &c));
         str_cpy(b, BYP3[vpg.byp % VB_N], sizeof b);
         if (vpg.byp != VB_OFF) {
@@ -537,12 +540,12 @@ static void vp_paint(void)                          /* the whole page; the canva
         vp_item(3, 0, 8, 0, vp_optc(VO_BYP), "BYPASS", b);
         vp_item(4, 0, 8, 1, vp_optc(VO_VOC), "VOCODER", VOC4[vp_voc()]);
         cv_text(2, VP_Y1 + 20, &FONT_S, "HOLD", TE_G3);   /* (the BYPASS pad held: K8 is its level) */
-        cv_rect(38, VP_Y1 + 22, 13, 13, W);
+        cv_rect(38, VP_Y1 + 22, 13, 13, vp_optc(VO_BYP));
         cv_rect(38, VP_Y1 + 22, 13, 2, C_WHITE);
         cv_text(56, VP_Y1 + 20, &FONT_S, "+K8", TE_G3);
     } else if (g == 1u) {
-        vp_mcol(7, "BRG", MI_VBR, voc_bridge % VOC_BR_N, VOC_BR_N, VP_COL_B);
-        vp_item(0, 1, 8, 0, VP_COL_B, "BRIDGE", mi_value(MI_VBR, &c));
+        vp_mcol(7, "BRG", MI_VBR, voc_bridge % VOC_BR_N, VOC_BR_N, vp_optc(VO_BRG));   /* (the BRIDGING selector's colour) */
+        vp_item(0, 1, 8, 0, vp_optc(VO_BRG), "BRIDGE", mi_value(MI_VBR, &c));
         vp_item(3, 0, 8, 0, vp_optc(VO_AUTO), "AUTO", vpg.actl ? "ON" : "OFF");
         vp_item(4, 0, 8, 1, vp_optc(VO_BRG), "BRIDGING", SEL3[vpg.brsel % VS_N]);
     } else {
@@ -567,6 +570,7 @@ static uint32_t vp_sig(void)
               (uint32_t)voc_thr << 18 | (uint32_t)voc_vmode << 21 | (uint32_t)voc_pink << 23 | (uint32_t)voc_mode << 24 |
               (uint32_t)voc_norm << 26 | (uint32_t)voc_emsel << 27 | (uint32_t)vp.grp << 28)) * 16777619u;
     h = (h ^ (vp.msg_t ? 1u : 0u) ^ (ui.msg_t ? 2u : 0u) ^ (vp.grn_t ? 4u + 8u * vp.grn_ch : 0u)) * 16777619u;
+    h = (h ^ (smk_pick_down & 1u << 7)) * 16777619u;   /* (the BYPASS pad held: the K8 column changes) */
     h = (h ^ (vp.mt ? 1u + vp.mi * 2u + vp.mbefore * 64u + vp.mmoved * 8192u + (ui.frame & 8u) * 4096u : 0u)) * 16777619u;
     for (i = 0; vp.msg_t && vp.msg[i]; i++)
         h = (h ^ (uint8_t)vp.msg[i]) * 16777619u;
