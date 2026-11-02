@@ -37,6 +37,8 @@ static struct {
     uint8_t grp, msg_t, hold, hold_prev, bp_used;
     uint16_t pend, fired;                           /* the deferred pads down, those whose hold has acted */
     uint32_t t0[16];                                /* .. when each went down (ms) */
+    uint8_t det_ch, det, grn_ch, grn_t;             /* the centre detent: its channel, the detents it still holds; the
+                                                     * channel outlined green (at basic, just turned), the frames left */
     char msg[28];
 } vp;
 
@@ -116,6 +118,7 @@ static void vp_master(uint32_t mi, const char *name, int32_t s)
     mi_set(mi, s > 0 ? 1 : -1);
     vp_say(name, mi_value(mi, &c), "");
 }
+#define VP_DET 3u
 static void vp_turn(uint32_t k, int32_t s)          /* knob k of the group turned s */
 {
     uint32_t g = vp.grp, nch = g < 2u ? 7u : 6u;
@@ -124,7 +127,21 @@ static void vp_turn(uint32_t k, int32_t s)          /* knob k of the group turne
         uint32_t ch = g * 7u + k, f = vpg.fn[ch] % VF_N;
         uint8_t *v = f == VF_BRG ? &vpg.brg[ch / 2u] : f == VF_ADD ? &vpg.add[ch] : &vpg.emph[ch];
         int32_t n = (int32_t)*v + s * (s > 1 || s < -1 ? 3 : 1);
+        if (f != VF_BRG) {                              /* the centre (the basic setting) holds VP_DET detents */
+            uint32_t a = (uint32_t)(s < 0 ? -s : s);
+            if (*v == 50u && vp.det_ch == ch && vp.det) {
+                vp.det = (uint8_t)(vp.det > a ? vp.det - a : 0u);
+                n = 50;
+            } else if ((*v < 50u && n >= 50) || (*v > 50u && n <= 50)) {
+                n = 50;
+                vp.det_ch = (uint8_t)ch, vp.det = VP_DET;
+            }
+        }
         *v = (uint8_t)(n < 0 ? 0 : n > 100 ? 100 : n);
+        if (f != VF_BRG && *v == 50u)
+            vp.grn_ch = (uint8_t)ch, vp.grn_t = 30;   /* (its outline green a second) */
+        else if (vp.grn_ch == ch)
+            vp.grn_t = 0;
         vp_chname(a, ch, f);
         vp_val(b, ch, f);
         vp_say(a, f == VF_BRG ? "" : f == VF_ADD ? "ADD" : "EMP", b);
@@ -343,14 +360,15 @@ static void vp_short(char *b, uint32_t ch, uint32_t f)
 #define VP_BB 150
 #define VP_BM ((VP_BT + VP_BB) / 2)
 #define VP_Y1 180                                   /* the strip: three rows of 20 */
-static void vp_frame(int32_t x, uint32_t col)       /* a column's background: alternate shades, framed */
+/* a column's background: alternate shades, framed (t px of edge: 2, light green, a channel turned to its basic) */
+static void vp_frame(int32_t x, uint32_t col, uint16_t e, int32_t t)
 {
     int32_t h = VP_Y1 - 4 - VP_Y0;
     cv_rect(x + 1, VP_Y0, VP_COLW - 2, h, col & 1u ? TE_G1 : RGB(14, 14, 18));
-    cv_rect(x + 1, VP_Y0, VP_COLW - 2, 1, TE_G2);
-    cv_rect(x + 1, VP_Y0 + h - 1, VP_COLW - 2, 1, TE_G2);
-    cv_rect(x + 1, VP_Y0, 1, h, TE_G2);
-    cv_rect(x + VP_COLW - 2, VP_Y0, 1, h, TE_G2);
+    cv_rect(x + 1, VP_Y0, VP_COLW - 2, t, e);
+    cv_rect(x + 1, VP_Y0 + h - t, VP_COLW - 2, t, e);
+    cv_rect(x + 1, VP_Y0, t, h, e);
+    cv_rect(x + VP_COLW - 1 - t, VP_Y0, t, h, e);
 }
 static void vp_ctext(int32_t x, int32_t y, const char *t, uint16_t c)   /* centred in a column */
 {
@@ -391,7 +409,10 @@ static void vp_cluster(uint32_t col, uint32_t ch)   /* channel ch in column col 
     uint32_t fn = vpg.fn[ch] % VF_N, nb = ch < VOC_PAIRS ? 3u : 2u, f;
     int32_t bw = nb == 3u ? 5 : 7, gap = nb == 3u ? 3 : 5, x0 = x + (nb == 3u ? 4 : 5);
     char b[8];
-    vp_frame(x, col);
+    if (vp.grn_t && vp.grn_ch == ch)
+        vp_frame(x, col, RGB(140, 255, 140), 2);   /* (the centre detent: at basic) */
+    else
+        vp_frame(x, col, TE_G2, 1);
     fmt_int(b, (int32_t)ch + 1);
     vp_ctext(x, VP_Y0 + 2, b, mu ? TE_G3 : TE_G4);
     cv_rect(x + 6, VP_Y0 + 20, VP_COLW - 12, 3, mu ? RGB(255, 40, 40) : TE_G2);   /* the mute light: red, muted */
@@ -412,7 +433,7 @@ static void vp_mcol(uint32_t col, const char *name, uint32_t mi, uint32_t pos, u
     int32_t x = (int32_t)col * VP_COLW;
     uint16_t dc;
     char b[10];
-    vp_frame(x, col);
+    vp_frame(x, col, TE_G2, 1);
     vp_ctext(x, VP_Y0 + 2, name, c);
     cv_rect(x + 9, VP_BT, VP_COLW - 18, VP_BB - VP_BT, TE_G2);
     vp_bar(x + 9, VP_COLW - 18, n > 1u ? pos * 100u / (n - 1u) : 0u, 0, c);
@@ -494,7 +515,7 @@ static uint32_t vp_sig(void)
     h = (h ^ (voc_level | (uint32_t)voc_dry << 4 | (uint32_t)voc_hf << 8 | (uint32_t)voc_bridge << 12 |
               (uint32_t)voc_thr << 18 | (uint32_t)voc_vmode << 21 | (uint32_t)voc_pink << 23 | (uint32_t)voc_mode << 24 |
               (uint32_t)voc_norm << 26 | (uint32_t)voc_emsel << 27 | (uint32_t)vp.grp << 28)) * 16777619u;
-    h = (h ^ (vp.msg_t ? 1u : 0u) ^ (ui.msg_t ? 2u : 0u)) * 16777619u;
+    h = (h ^ (vp.msg_t ? 1u : 0u) ^ (ui.msg_t ? 2u : 0u) ^ (vp.grn_t ? 4u + 8u * vp.grn_ch : 0u)) * 16777619u;
     for (i = 0; vp.msg_t && vp.msg[i]; i++)
         h = (h ^ (uint8_t)vp.msg[i]) * 16777619u;
     for (i = 0; ui.msg_t && ui.msg[i]; i++)
@@ -508,6 +529,8 @@ static void vis_draw(void)
     uint32_t pass, sig;
     if (vp.msg_t)
         vp.msg_t--;
+    if (vp.grn_t)
+        vp.grn_t--;
     sig = vp_sig();
     if (!vis_shown_last) {
         vis_shown_last = 1;
