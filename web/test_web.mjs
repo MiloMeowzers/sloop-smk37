@@ -34,7 +34,7 @@ const E = vm.runInNewContext(proto + `
    CHOP, chopNovelty, chopHits, chopSnap, chopGrid, chopEqual, chopList, chopPick, chopFit, chopZones, wavFile, zipStore, crc32,
    UP, bank, capturePatch, auditionPatch, startWatch, libraryFile, readLibraryFile, paramKeys, patternFromSteps, stepsFromPattern, upName,
    mixer, GM_DRUM, drumName, parseNotes, fmtValue, F, DRUM_LANES, LV_NAMES, emptyDrum, lockable, MICRO, FC, fillGet, fillSet, pack7, unpack7,
-   loudDb, matchGains, withGain, LEVEL_MIN, backupCapture, backupRestore, backupObjects, b64enc, b64dec, FM6, KIT, kitPad, kitZones, kitLen, kitBytes, kitFit, kitSplit, kitLaneOf, kitPlace, smpMax, smpSlotsSet, imaEncode, imaDecode, slotParse, rawKept, kitFromSounds, slotRead, zipRead, ROLL, SMF, ARR, mockSettings, fm6CartWrite, fm6CartPreset, fm6CartSlots, fm6CartPresets, DSYN, DSYN_MOCK_NAMES, DSYN_MOCK_KITS, DAW, SetGate, bkProjFormat, bkDevFormat, bkFwAtLeast, THEME, FM1_PORT_ED: FM1_PORT, fm1Ports, LOOP, LIVE, LVX, SONGF, songCapture, songLoad, songObjects })`,
+   loudDb, matchGains, withGain, LEVEL_MIN, backupCapture, backupRestore, backupObjects, BK, b64enc, b64dec, FM6, KIT, kitPad, kitZones, kitLen, kitBytes, kitFit, kitSplit, kitLaneOf, kitPlace, smpMax, smpSlotsSet, imaEncode, imaDecode, slotParse, rawKept, kitFromSounds, slotRead, zipRead, ROLL, SMF, ARR, mockSettings, fm6CartWrite, fm6CartPreset, fm6CartSlots, fm6CartPresets, DSYN, DSYN_MOCK_NAMES, DSYN_MOCK_KITS, DAW, SetGate, bkProjFormat, bkDevFormat, bkFwAtLeast, THEME, FM1_PORT_ED: FM1_PORT, fm1Ports, LOOP, LIVE, LVX, SONGF, songCapture, songLoad, songObjects })`,
 { setTimeout, clearTimeout, setInterval, clearInterval, console, TextEncoder, TextDecoder, Blob, Response, DecompressionStream });
 
 async function editorMock() {
@@ -606,8 +606,10 @@ async function editorBackup() {
   const info = E.parse[C.INFO](await rq(E.req.info()));
   ok(info.proto >= 6, "backup: INFO protocol v6 or later");
   const ec = readFileSync(join(HERE, "../firmware/src/editor.c"), "utf8");
-  ok(/ED_BK_IDS\[\] = \{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 32, 33, 34, 35\}/.test(ec) && E.backupObjects && [10, 11].every((id) => ec.includes(`id == ${id}u`)),
-    "backup: the object ids == editor.c ED_BK_IDS (35: USR4, 9: SYN kits, 10: MIDI LEARN, 11: theme)");
+  ok(/ED_BK_IDS\[\] = \{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,\s*#if BOARD_SMK37\s*12, 13,\s*#if ED_BK_VOC\s*14,\s*#endif\s*#endif\s*32, 33, 34, 35\}/.test(ec)
+    && E.backupObjects && [10, 11, 12, 13, 14].every((id) => ec.includes(`id == ${id}u`)) && [12, 13, 14].every((id) => E.BK.RESTORE.includes(id))
+    && E.BK.RESTORE.indexOf(14) > E.BK.RESTORE.indexOf(0),
+    "backup: the object ids == editor.c ED_BK_IDS (35: USR4, 9: SYN kits, 10: MIDI LEARN, 11: theme, SMK-37 12, 13, 14 after the projects)");
   await rq(E.req.upStore(3, "BACKUP ME"));
   await rq(E.req.project(1, 2), { timeout: 4000, retries: 0 });
   const s = Int16Array.from({ length: 3000 }, (_, i) => Math.round(8000 * Math.sin(i / 7)));
@@ -1457,7 +1459,7 @@ function editorTabs() {
   const tabs = [...html.matchAll(/<button role="tab" data-tab="(\w+)"/g)].map((x) => x[1]);
   const panels = [...html.matchAll(/<section class="panel" id="p-(\w+)" data-tab="(\w+)"/g)].map((x) => [x[1], x[2]]);
   const TABS = JSON.parse((/const TABS = (\[[^\]]*\]);/.exec(html) || [])[1] || "[]");
-  ok(tabs.length === 13 && js(tabs) === js(TABS) && js(panels.map((x) => x[1])) === js(TABS) && panels.every(([a, b]) => a === b),
+  ok(tabs.length === 15 && js(tabs) === js(TABS) && js(panels.map((x) => x[1])) === js(TABS) && panels.every(([a, b]) => a === b),
     `editor: ${tabs.length} tabs, one panel each (${tabs.join(" ")})`);
   ok(/localStorage\.setItem\(TAB_KEY/.test(html) && /try \{ localStorage/.test(html) && /history\.replaceState\([^)]*"#" \+ name\)/.test(html)
     && /addEventListener\("hashchange"/.test(html), "editor: last tab in localStorage (try/catch) and in the URL hash");

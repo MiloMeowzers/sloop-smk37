@@ -889,9 +889,9 @@
       <button role="tab" data-tab="projects" data-t="projects" data-ic="symbol_folder"></button>
       <button role="tab" data-tab="settings" data-t="tabSettings" data-ic="symbol_cog"></button>
       <button role="tab" data-tab="theme" data-t="tabTheme" data-ic="ui_knob"></button>
-      <button role="tab" data-tab="daw" data-t="tabDaw" data-ic="ui_slider_vertical" hidden></button>
       <button role="tab" data-tab="smk" data-t="tabSmk" data-ic="symbol_cog" hidden></button>
       <button role="tab" data-tab="vocoder" data-t="tabVoc" data-ic="symbol_audio" hidden></button>
+      <button role="tab" data-tab="daw" data-t="tabDaw" data-ic="ui_slider_vertical" hidden></button>
     </nav>
     <div class="devcard">
       <div class="devline"><span class="led" id="led"></span><span data-t="fm1"></span></div>
@@ -5169,6 +5169,13 @@ const TEXT = {
     stockBtn: "M-Vave に戻る準備をする", stockDone: "準備しました: M-Vave ファームウェアは工場出荷時のマッピングで起動します",
     stockNone: "準備は済んでいます（目印はありません）", stockBusy: "ソングを止めてから",
     tabDaw: "DAW マップ", dawTitle: "DAW モード（SMK-37）",
+    tabSmk: "SMK-37", smkTitle: "SMK-37 の設定",
+    smkHelp: "HOME メニューの SMK-37 設定（SLOOP の設定とは別）。キーボードへ送ると、すぐに反映して保存します（先に曲を止めてください）。USB LAYOUT か STEM RATE を変えると、数秒後に USB をつなぎ直します。ホイールの校正は本体固有のもので、ここにもバックアップにも含まれません。",
+    tabVoc: "ボコーダー", vocTitle: "ボコーダー（T3）",
+    vocHelp: "このビルドの T3 はボコーダー専用のパッチです。VOCODER は USB オーディオ入力の声から内蔵のノコギリ波キャリア（VSM201 の標準）を鳴らし、AUDIO は声をそのまま鳴らします。ここは現在の設定です（各プロジェクトのスロットは自分の設定を持ち、ここでは変わりません）。キーボードへ送ると、すぐに反映して保存します（先に曲を止めてください）。色の付いた名前: 初期値から変更。",
+    vocPage: "ボコーダーページ", vocNote: "このビルドの T3 はボコーダーのパッチです（VOCODER: 内蔵ノコギリ波キャリア、AUDIO: 声そのまま）。エンジン、プリセット、プログラムチェンジは使えません。設定はボコーダータブで。",
+    obSend: "キーボードへ送る", obRead: "キーボードから読む", obDefault: "初期値", obUnsent: "未送信", obSent: "送信して保存しました",
+    obCh: "チャンネル", obFn: "ノブ", obEmph: "エンファシス %", obAdd: "アディション %", obBrg: "ブリッジ %（ペア）", obMute: "ミュート",
     dawHelp: "DAW モードでは鍵盤が MIDI コントローラーになります（本体: < と > を同時に押す、または HOME メニュー > MIDI > MODE）。ここでノブ・フェーダー・パッド・ボタン・ホイールが送る CC / ノート / MMC とチャンネルを決め、「本体に送る」で USER マップとして使います（本体が静かなときにフラッシュに保存）。MAIN = 本体の CHANNEL。",
     dawSend: "本体に送る", dawRead: "本体から読む", dawDefault: "DEFAULT に戻す", dawSave: "ファイルに保存", dawOpen: "ファイルを開く",
     dawMode: "モード", dawCh: "チャンネル", dawLocal: "LOCAL", dawMap: "CC マップ", dawKnobs: "ノブ",
@@ -5632,7 +5639,7 @@ $("lang").addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; 
 
 /* ---------------------------------------------------------------- tabs --- */
 /* one panel at a time; the last one is remembered (localStorage) and in the URL hash (#sound ...) */
-const TABS = ["live", "sound", "sequencer", "tracks", "song", "library", "samples", "kits", "drumsynth", "projects", "settings", "theme", "daw", "smk", "vocoder"];
+const TABS = ["live", "sound", "sequencer", "tracks", "song", "library", "samples", "kits", "drumsynth", "projects", "settings", "theme", "smk", "vocoder", "daw"];
 const TAB_KEY = "felucca-editor-tab";
 const TRACK_TABS = new Set(["sound", "sequencer", "tracks"]);
 let tab = (() => {
