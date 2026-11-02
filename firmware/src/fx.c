@@ -910,6 +910,7 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         int32_t xmax = c > d ? c : d;
         int32_t ga = mulq15(g0, duck.g0), gb = mulq15(g1, duck.g1);   /* mute x duck, ramped over the block */
         xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);   /* sends: loud chords at a high LEVEL */
+        TIM_VOC_T(tc);                                  /* (SMK_TIMING: the chain's parts, smk_timing.h TS_P1 / TS_M1) */
         track_dist(t, b, n);
         if (t->p[P_ITYPE] | t->ins_run) {
             track_insert(t, b, n);                      /* the INSERT (2.6): off, nothing */
@@ -923,6 +924,7 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
             if (djf_block(f, t->p[P_TFLT], &fc, tflt_reso()))
                 tflt_run(f, &fc, b, n, 0);
         }
+        TIM_LAP(TS_P1 + (uint32_t)(t - trk) % NPART, tc);
         int32_t lvl0, dl, gl0, dgl, gr0, dgr;          /* (2.7) LEVEL (and a new sound's trim) and PAN glide (drums.c
                                                          * mix_glide), ramped sample by sample inside the block */
         if (!t->mix_on)
@@ -962,6 +964,7 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
                                                          * #4: x >> 4 floored the part to 16 LSB) */
             mx->r[i] += (x * (gr >> 4) + 128) >> 8;
         }
+        TIM_LAP(TS_M1 + (uint32_t)(t - trk) % NPART, tc);
         t->peak = pk;
     }
 }

@@ -104,6 +104,7 @@ static volatile uint8_t smk_pad_piano;
 static uint8_t smk_pad_note[SMK_NPAD];   /* the note key a pad pressed (+1; 0 = none): its release ends that one */
 static volatile uint16_t smk_pad_pick;   /* pads that go to the UI (picker, TRACKS track pads): a hit sets its bit here, no note */
 static volatile uint16_t smk_pick_hits;  /* bit per hardware pad */
+static volatile uint16_t smk_pick_down;  /* (the UI's pads: those held now; the vocoder page's BYPASS + K8) */
 static volatile uint8_t smk_pad_grid;    /* the pads are a 1..16 grid (steps, tiles): white key w = pad w */
 /* the pads' two states on the PLAY layer (the UI sets them; KNOB BANK + FADER BANK toggles): DRUM KIT (the default) a
  * pad plays its drum sound whatever track is selected (white key w = lane w, as on the drum track), STEPS a pad is a
@@ -470,6 +471,7 @@ static void smk__padq(uint32_t pad, uint32_t vel)     /* a pad hit (vel) or rele
         }
         if ((smk_pad_pick >> pad) & 1u) {
             smk_pick_hits |= (uint16_t)(1u << pad);
+            smk_pick_down |= (uint16_t)(1u << pad);
             return;
         }
         if (smk_pad_pfx && smk_pad_grid && !smk_pad_piano) {   /* the stem punch-in page: the pad itself */
@@ -487,6 +489,7 @@ static void smk__padq(uint32_t pad, uint32_t vel)     /* a pad hit (vel) or rele
             return;                                   /* (a gap of the piano layout) */
         smk_pad_note[pad] = (uint8_t)(n0 + 1);
     } else {
+        smk_pick_down &= (uint16_t)~(1u << pad);
         if (!smk_pad_note[pad])
             return;
         if (smk_pad_note[pad] & SMK_EXT_PAD) {         /* (DRUM KIT / STEPS / DAW: its release goes there too, whatever now) */

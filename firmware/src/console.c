@@ -292,6 +292,12 @@ static void con_status(void)
     con_kv("voc_blend", voc_blend);                      /* .. BLEND: 0 SUM, 1 FILL */
     con_kv("voc_agc", voc_agc);
     con_kv("voc_norm", voc_norm);                        /* BRIDGE TONE > NORMAL: 0 OFF (flat), 1 ON (the VSM201's) */                          /* SILENCE > AGC: 0 OFF, 1 PEAKS, 2 LIGHT, 3 FULL */
+    con_kv("voc_emsel", voc_emsel);                      /* the vocoder page: VOCODER EMPHASIS (with NORMAL) */
+    con_kv("vpg_byp", vpg.byp);                          /* .. BYPASS 0 OFF, 1 REPLACEMENT, 2 SPEECH */
+    con_kv("vpg_brsel", vpg.brsel);                      /* .. BRIDGING, ADDITION: 0 OFF, 1 SUM, 2 INDIVIDUAL */
+    con_kv("vpg_addsel", vpg.addsel);
+    con_kv("vpg_actl", vpg.actl);                        /* .. AUTOCONTROL */
+    con_kv("vpg_mute", (int32_t)vpg.mute);               /* .. the channels muted, bit per channel */
     con_kv("voc_agc_env", voc.agc_env);                  /* the carrier AGC: the summed carrier's level (mean |x|) */
     con_kv("voc_agc_g", voc.agc_g);                      /* .. its gain now, Q15 (32767: 1.0) */
     con_kv("voc_vmode", voc_vmode);                      /* CARRIER > VOICE: 0 AUTO, 1 VOICED, 2 UNVOICED */

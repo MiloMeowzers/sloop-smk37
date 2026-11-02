@@ -966,12 +966,18 @@ typedef struct {
     uint8_t tilt, colour, blend, agc;    /* BRIDGE TONE (2026-11-01; the unit's, not a project's): an object of 64 bytes
                                           * (before it) loads with these at their defaults; SILENCE > AGC (the byte spare
                                           * before it, 0: OFF) */
-    uint8_t norm, rsv[3];                /* BRIDGE TONE > NORMAL (an object of 68 bytes: OFF) */
+    uint8_t norm, emsel, rsv[2];         /* BRIDGE TONE > NORMAL (an object of 68 bytes: OFF); VOCODER EMPHASIS (the
+                                          * vocoder page, 2026-11-02: a spare byte before it, 0: FLAT / NORMAL) */
+    vocpg_t pcur, psec[4];               /* the vocoder page's (smk_vocoder.h vpg), now and each project slot's; an object
+                                          * of 72 bytes (before it) loads with the page at its defaults (the owner,
+                                          * 2026-11-02: old saves load) */
 } vocset_t;
 #define VOCSET_V1 64u                    /* (the object's size before BRIDGE TONE) */
 #define VOCSET_V2 68u                    /* (.. before NORMAL) */
-_Static_assert(sizeof(vocset_t) == 72u && __builtin_offsetof(vocset_t, tilt) == VOCSET_V1 &&
-               __builtin_offsetof(vocset_t, norm) == VOCSET_V2, "vocset: the magic, 5 x 12 bytes, tone, NORMAL");
+#define VOCSET_V3 72u                    /* (.. before the vocoder page) */
+_Static_assert(sizeof(vocset_t) == VOCSET_V3 + 5u * 80u && sizeof(vocpg_t) == 80u &&
+               __builtin_offsetof(vocset_t, tilt) == VOCSET_V1 && __builtin_offsetof(vocset_t, norm) == VOCSET_V2 &&
+               __builtin_offsetof(vocset_t, pcur) == VOCSET_V3, "vocset: the magic, 5 x 12 bytes, tone, NORMAL, the page");
 static vocset_t vocset, vocset_saved;
 static void vocv_get(vocv_t *v)
 {
@@ -987,31 +993,57 @@ static void vocv_put(const vocv_t *v)
     voc_vmode = (uint8_t)(v->vm % VV_N), voc_pink = (uint8_t)(v->pink & 1u);
     voc_bridge = (uint8_t)(v->br % VOC_BR_N), voc_thr = (uint8_t)(v->thr % VOC_THR_N);
 }
+static void vpg_put(const vocpg_t *v)          /* a page record, its values in range */
+{
+    uint32_t i;
+    vpg = *v;
+    vpg.mute &= (1u << VOC_CH) - 1u;
+    for (i = 0; i < VOC_CH; i++) {
+        vpg.emph[i] = (uint8_t)(vpg.emph[i] > 100u ? 100u : vpg.emph[i]);
+        vpg.add[i] = (uint8_t)(vpg.add[i] > 100u ? 100u : vpg.add[i]);
+        vpg.fn[i] = (uint8_t)(vpg.fn[i] % (i < VOC_PAIRS ? VF_N : VF_BRG));   /* (ch 11 .. 20: no bridging) */
+    }
+    for (i = 0; i < VOC_PAIRS; i++)
+        vpg.brg[i] = (uint8_t)(vpg.brg[i] > 100u ? 100u : vpg.brg[i]);
+    vpg.byp = (uint8_t)(vpg.byp % VB_N), vpg.brsel = (uint8_t)(vpg.brsel % VS_N);
+    vpg.addsel = (uint8_t)(vpg.addsel % VS_N), vpg.actl = (uint8_t)(vpg.actl & 1u), vpg.have = 1, vpg.rsv = 0;
+}
 static void vocset_cap(const project_t *p)
 {
     uint32_t k = (uint32_t)(p - proj_slot);
-    if (p >= proj_slot && k < 4u)
+    if (p >= proj_slot && k < 4u) {
         vocv_get(&vocset.sec[k]);
+        vocset.psec[k] = vpg;
+        vocset.psec[k].have = 1;
+    }
 }
 static void vocset_load(const project_t *p)
 {
     uint32_t k = (uint32_t)(p - proj_slot);
     if (p >= proj_slot && k < 4u && vocset.sec[k].have)
         vocv_put(&vocset.sec[k]);
+    if (p >= proj_slot && k < 4u && vocset.psec[k].have)
+        vpg_put(&vocset.psec[k]);
 }
-static void vocset_drop(uint32_t slot) { vocset.sec[slot & 3u].have = 0; }
+static void vocset_drop(uint32_t slot) { vocset.sec[slot & 3u].have = 0, vocset.psec[slot & 3u].have = 0; }
 static void vocset_boot(void)                      /* after smkset_boot */
 {
-    vocset_t s;
-    int n = st_load(OBJ_VOCSET, &s, sizeof s);
-    if ((n == (int)sizeof s || n == (int)VOCSET_V2 || n == (int)VOCSET_V1) && s.magic == VOCSET_MAGIC) {
-        if (n != (int)sizeof s)                        /* (saved before NORMAL: OFF) */
-            s.norm = 0, s.rsv[0] = s.rsv[1] = s.rsv[2] = 0;
+    static vocset_t s;                                 /* (472 bytes: not on the stack) */
+    int n;
+    memset(&s, 0, sizeof s);                           /* (an older, shorter object: the rest none / OFF) */
+    n = st_load(OBJ_VOCSET, &s, sizeof s);
+    if ((n == (int)sizeof s || n == (int)VOCSET_V3 || n == (int)VOCSET_V2 || n == (int)VOCSET_V1) &&
+        s.magic == VOCSET_MAGIC) {
+        if (n < (int)VOCSET_V3)                        /* (saved before NORMAL: OFF) */
+            s.norm = 0, s.emsel = 0, s.rsv[0] = s.rsv[1] = 0;
         if (n == (int)VOCSET_V1)                       /* (saved before BRIDGE TONE: its defaults) */
             s.tilt = voc_tilt, s.colour = voc_colour, s.blend = voc_blend, s.agc = 0;
         vocset = s;
         voc_tilt = (uint8_t)(s.tilt % VOC_TILT_N), voc_colour = (uint8_t)(s.colour % VOC_COLOUR_N);
         voc_blend = (uint8_t)(s.blend & 1u), voc_agc = (uint8_t)(s.agc % VOC_AGC_N), voc_norm = (uint8_t)(s.norm & 1u);
+        voc_emsel = (uint8_t)(s.emsel & voc_norm);
+        if (s.pcur.have)
+            vpg_put(&s.pcur);
         if (s.cur.have) {
             vocv_put(&s.cur);
             uin_mode = (uint8_t)(s.cur.uin & 1u);
@@ -1024,7 +1056,7 @@ static void vocset_save(void)
 {
     vocv_get(&vocset.cur);
     vocset.tilt = voc_tilt, vocset.colour = voc_colour, vocset.blend = voc_blend, vocset.agc = voc_agc;
-    vocset.norm = voc_norm;
+    vocset.norm = voc_norm, vocset.emsel = voc_emsel, vocset.pcur = vpg;
     if (memcmp(&vocset, &vocset_saved, sizeof vocset) && st_save(OBJ_VOCSET, &vocset, sizeof vocset) == 0)
         vocset_saved = vocset;
 }

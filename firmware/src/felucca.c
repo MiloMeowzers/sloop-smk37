@@ -103,7 +103,15 @@
 #include "ui_pick.c"          /* SMK-37 Pro: the pad sound picker */
 #endif
 #include "ui_draw.c"
+#if SMK_VOC_LEAN                 /* the vocoder build: the vocoder page in the visualiser's place (ui_vpage.c, below) */
+static void vis_open(void);
+static void vis_select(int32_t s);
+static void vp_input(uint32_t *pressed, uint32_t *home);
+static void vp_leds(void);
+static uint32_t vp_hits;                 /* the pads hit while it was up (ui_input.c) */
+#else
 #include "ui_vis.c"           /* the full-screen visualiser (HOME on HOME, 2.4) */
+#endif
 #include "ui_layers.c"       /* hold a function button: what the keys and knobs do (TE style) */
 #include "ui_menu.c"
 #if BOARD_SMK37
@@ -113,6 +121,9 @@
 #if BOARD_SMK37
 #include "ui_fbank.c"         /* SMK-37 Pro: the FADER BANK screen */
 #include "ui_daw.c"           /* SMK-37: DAW mode: its input, screens, lights and map editor */
+#if SMK_VOC_LEAN
+#include "ui_vpage.c"          /* the vocoder build: the vocoder page (vocoder-ui-spec.md §3e-5) */
+#endif
 #endif
 #ifndef FELUCCA_FLASH
 #define FELUCCA_FLASH 1          /* flash driver + storage.c */

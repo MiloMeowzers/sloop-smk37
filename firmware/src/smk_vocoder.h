@@ -114,6 +114,24 @@ static const int32_t VOC_MIX_Q15[VOC_MIX_N] = {0, 4125, 8231, 16423, 32767};
 #define VOC_XMAX ((1 << 23) - 1)         /* the output's ceiling (-2^22 .. -3 x 2^20 read as the ROM's addresses
                                           * 0xFFC00000.., which the build's image check refuses: 2^23 is clear) */
 #define VOC_HF0 17u                      /* the speech addition's first band (4560 Hz) */
+/* the vocoder page (ui_vpage.c, vocoder-ui-spec.md §4-6): the VSM201's channel controls and selectors. The channels'
+ * values are stored, saved and drawn; their DSP is the next build's. The selectors' defaults keep the sound as before
+ * (BYPASS SPEECH with DRY OFF, BRIDGING SUM, ADDITION SUM). Positions 0 .. 100 as a pot's: EMPHASIS 50 = NORMAL's
+ * (0 dB), 100 = +12 dB, 0 = OFF; ADDITION 100 = 0 dB, 50 = -12 dB (neutral), 0 = OFF; BRIDGING 0 .. 100 % */
+#define VOC_CH 20u
+#define VOC_PAIRS 10u                    /* (bridging: one control a pair, 1/2 .. 19/20) */
+enum { VF_EMPH, VF_ADD, VF_BRG, VF_N };  /* a channel's function: the knob's and the bar lit */
+enum { VB_OFF, VB_REPL, VB_SPEECH, VB_N };   /* BYPASS: off, REPLACEMENT (the carrier dry: the next build), SPEECH */
+enum { VS_OFF, VS_SUM, VS_IND, VS_N };   /* BRIDGING, ADDITION: off, the SUM control, INDIVIDUAL (the next build: as SUM) */
+typedef struct {
+    uint32_t mute;                       /* bit per channel */
+    uint8_t emph[VOC_CH], add[VOC_CH], brg[VOC_PAIRS], fn[VOC_CH];
+    uint8_t byp, brsel, addsel, actl, have, rsv;   /* BYPASS, BRIDGING, ADDITION, AUTOCONTROL (the next build) */
+} vocpg_t;
+static vocpg_t vpg = {0, {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50},
+                      {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50},
+                      {0}, {0}, VB_SPEECH, VS_SUM, VS_SUM, 0, 1, 0};
+static uint8_t voc_emsel;                /* VOCODER EMPHASIS (with NORMAL): the channels' emphasis (the next build: as NORMAL) */
 
 #define VOC_HN 32u                       /* the half-band's history at 44.1 kHz (27 taps), a power of two */
 #define VOC_ON 16u                       /* the decimated outputs' history (the interpolator's: 2 HB), a power of two */
@@ -317,7 +335,7 @@ static int32_t voc_tick(int32_t c, uint32_t j, const int32_t *bk, int32_t cf, ui
     const int32_t *env = voc_ab[voc_aw ^ 1u].env[j];
     int32_t o = (int32_t)(((voc_bands(c << 4, 0, VOC_NB, env, bk, cf, mode, fill) >> 19) *
                            VOC_LV_Q8[voc_level % VOC_LEVEL_N]) >> 8);
-    if (voc_hf)
+    if (voc_hf && vpg.addsel != VS_OFF)
         o += (int32_t)(((int64_t)VOC_VS(voc_ab[voc_aw ^ 1u].hf[j] >> 4) * VOC_MIX_Q15[voc_hf % VOC_MIX_N]) >> 15);
     return o;
 }
@@ -326,8 +344,8 @@ static int32_t voc_tick(int32_t c, uint32_t j, const int32_t *bk, int32_t cf, ui
 static void voc_process(int32_t *b, uint32_t n)
 {
     uint32_t i, j;
-    int32_t pout = voc.peak_out, dg = VOC_MIX_Q15[voc_dry % VOC_MIX_N];
-    uint32_t vm = voc_vmode % VV_N, br = voc_bridge % VOC_BR_N != 0u;
+    int32_t pout = voc.peak_out, dg = VOC_MIX_Q15[vpg.byp == VB_SPEECH ? voc_dry % VOC_MIX_N : 0u];
+    uint32_t vm = voc_vmode % VV_N, br = vpg.brsel != VS_OFF && voc_bridge % VOC_BR_N != 0u;
     int32_t badd = br ? (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * voc_br_q15(voc_bridge % VOC_BR_N) >> 15) *
                                   VOC_BR_Q15 >> 15) : 0;
     int32_t bk[VOC_NB], dbk[VOC_NB], cf, dcf, ag, dag, m = (int32_t)(n / 2u);

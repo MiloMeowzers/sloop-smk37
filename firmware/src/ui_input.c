@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Felucca UI input: LEDs, knobs and buttons, the layers (ui_layers.c), holds, SEQ step entry, panel setup. */
+#if SMK_VOC_LEAN
+#define VP_SHOWN() vis_shown()                     /* the vocoder build: the vocoder page up (ui_vpage.c) */
+#else
+#define VP_SHOWN() 0
+#endif
 /* ----------------------------------------------------------- LEDs --- */
 /* The LED picture is built off-line and copied one byte per column: clearing
  * and relighting would let the 10 kHz scan catch the dark gap and flicker. */
@@ -299,11 +304,11 @@ UI_SMALL static void ui_leds(void)
     fm1_led[SMK_BTN_FADER_BANK] = fb_shown() || ly_lock == LY_FX;   /* FADER BANK lit while its screen is up (one bank
                                                     * screen at a time), or while it holds the FX layer open */
     fm1_led[SMK_BTN_KNOB_BANK] = pick_pin || (int32_t)(fm1_ms - pick_k4_until) < 0;   /* KNOB BANK: picker pinned, PRESETS turning */
-    smk_pad_pick = (uint16_t)(pick_shown() ? 0xFFFFu : 0u);   /* (these pads: no notes) */
+    smk_pad_pick = (uint16_t)(pick_shown() || VP_SHOWN() ? 0xFFFFu : 0u);   /* (these pads: no notes) */
     smk_pad_grid = (uint8_t)padgrid_on();          /* (steps and tiles: reading order) */
     smk_pad_pfx = (uint8_t)(ui.layer == LY_FX && tp_page_on());   /* (the stem punch-in page: the pads its own) */
-    smk_pad_drums = (uint8_t)(!pad_steps && ui.layer == LY_PLAY && !smk_pad_grid);   /* the pads: DRUM KIT or STEPS */
-    smk_pad_steps = (uint8_t)(pad_steps && ui.layer == LY_PLAY && !smk_pad_grid);
+    smk_pad_drums = (uint8_t)(!pad_steps && ui.layer == LY_PLAY && !smk_pad_grid && !VP_SHOWN());   /* the pads: DRUM KIT or STEPS */
+    smk_pad_steps = (uint8_t)(pad_steps && ui.layer == LY_PLAY && !smk_pad_grid && !VP_SHOWN());
     if (!is_drum(TSEL) && TSEL->p[P_AMODE])        /* ARP lit while the selected track's arpeggiator runs */
         fm1_led[panel.btn[B_ARP]] = 1;
     if ((int32_t)(fm1_ms - bled_hold_until) < 0)   /* (console bled: only that LED) */
@@ -315,6 +320,11 @@ UI_SMALL static void ui_leds(void)
         if (pick_shown())
             pick_leds();
         else
+#if SMK_VOC_LEAN
+        if (vis_shown())
+            vp_leds();
+        else
+#endif
         if (ui.layer == LY_SCALE) {                /* white and black keys lit white, the scale green, its root brighter */
             uint32_t sk = scale_keys(0), rk = scale_keys(1);
             for (c = 0; c < 16u; c++) {
@@ -1400,6 +1410,10 @@ UI_SMALL static void ui_input(void)
         for (p = 0; h && p < SMK_NPAD; p++)
             if ((h >> p) & 1u && pick_shown())
                 pick_select(p);                         /* reading order, as the screen */
+#if SMK_VOC_LEAN
+        if (vis_shown())
+            vp_hits |= h;                               /* (the vocoder page's: vp_input, below) */
+#endif
     }
     if (home == BT_TAP && (fb_shown() || pick_shown())) {   /* PATCH tapped: closes the FADER BANK screen / picker */
         if (fb_shown())
@@ -1413,6 +1427,9 @@ UI_SMALL static void ui_input(void)
         home = BT_HOLD;
 #endif
     enc_hold = 0;                                       /* (panel.c: every knob readable again this pass) */
+#if SMK_VOC_LEAN
+    vp_input(&pressed, &home);                          /* the vocoder page: its knobs, pads, PATCH (ui_vpage.c) */
+#endif
     if (pressed || notes)
         ui_input_ms = fm1_ms;
     remote_poll();                                      /* (2.7) the buttons over MIDI */
