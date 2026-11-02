@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* SMK-37, the vocoder build (SMK_VOC_LEAN, smk37-devtools vocoder-ui-spec.md §7g): FM6's operator loops as that build
- * runs them (fm6_core.c FM6_FAST: two samples a turn, the feedback operator in a += and a = loop) and the sine from its
+ * runs them (fm6_core.c FM6_FAST: the feedback operator in a += and a = loop, two samples a turn) and the sine from its
  * RAM copy (dsp.c sine_ram), against the loops as they were, copied here (ref_*): every output sample and the feedback
  * state the same, bit for bit, over random phases, frequencies, gain ramps (rising, falling, from and to 0, msfa's
  * full range), modulator buses and starting outputs, every feedback shift, add or not, with a bus or none.

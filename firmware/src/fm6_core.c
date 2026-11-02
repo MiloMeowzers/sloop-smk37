@@ -324,39 +324,39 @@ typedef struct {                 /* msfa FmOpParams */
 
 #define FM6_THRESH 1120          /* msfa kLevelThresh: an operator below it on both block ends is skipped */
 
-/* (SMK-37, the vocoder build: FM6_FAST) the operator loops two samples a turn through pointers, and the feedback
- * operator in two loops (+= or =) instead of testing add every sample: the same arithmetic in the same order, bit-exact
- * (tests/fm6_loops_test.c against the loops below). FM6 is the heaviest unit on core 0 (vocoder-ui-spec.md §7g) */
+/* (SMK-37, the vocoder build: FM6_FAST) the feedback operator in two loops (+= or =), two samples a turn, instead of
+ * testing add every sample (27 instructions a sample on the device, 24.5-25.5 after: c10c13a's disassembly); the same
+ * arithmetic in the same order, bit-exact (tests/fm6_loops_test.c against the loop below). The plain operators stay
+ * one sample a turn: unrolled (c10c13a) they ran out of registers, spilled and reloaded the table's address every
+ * sample (20 -> 23.5). vocoder-ui-spec.md §7g */
 #ifndef FM6_FAST
 #define FM6_FAST SMK_VOC_LEAN
 #endif
-#if FM6_FAST
-#define FM6_OP_STEP(K, M, STORE)                                                  \
-    g += dg;                                                                    \
-    o[K] STORE (int32_t)(((int64_t)fm6_sin(phase M) * g) >> 15);                \
-    phase = (int32_t)((uint32_t)phase + (uint32_t)freq);
-#define FM6_OP_LOOP2(M0, M1, STORE, NEXT)                                         \
-    do {                                                                        \
-        FM6_OP_STEP(0, M0, STORE)                                               \
-        FM6_OP_STEP(1, M1, STORE)                                               \
-        o += 2;                                                                 \
-        NEXT;                                                                   \
-    } while (o < e)
+
+/* one operator over the block: modulated by in (0: none), into out (add: += else =). Four loops, so none
+ * tests a flag per sample */
+#define FM6_OP_LOOP(PH, STORE)                                                    \
+    for (i = 0; i < FM6_N; i++) {                                               \
+        g += dg;                                                                \
+        out[i] STORE (int32_t)(((int64_t)fm6_sin(PH) * g) >> 15);               \
+        phase = (int32_t)((uint32_t)phase + (uint32_t)freq);                    \
+    }
 static __attribute__((noinline)) void fm6_op_run(int32_t *out, const int32_t *in, int32_t phase, int32_t freq,
                                                  int32_t g1, int32_t g2, int add)
 {
     int32_t dg = (g2 - g1 + (FM6_N >> 1)) >> FM6_LG_N, g = g1;
-    int32_t *o = out, *const e = out + FM6_N;
+    uint32_t i;
     if (in && add)
-        FM6_OP_LOOP2(+ in[0], + in[1], +=, in += 2);
+        FM6_OP_LOOP(phase + in[i], +=)
     else if (in)
-        FM6_OP_LOOP2(+ in[0], + in[1], =, in += 2);
+        FM6_OP_LOOP(phase + in[i], =)
     else if (add)
-        FM6_OP_LOOP2(, , +=, (void)0);
+        FM6_OP_LOOP(phase, +=)
     else
-        FM6_OP_LOOP2(, , =, (void)0);
+        FM6_OP_LOOP(phase, =)
 }
 
+#if FM6_FAST
 #define FM6_FB_STEP(K, STORE)                                                     \
     s = (y0 + y) >> (shift + 1);                                                \
     g += dg;                                                                    \
@@ -384,29 +384,6 @@ static __attribute__((noinline)) void fm6_op_fb(int32_t *out, int32_t phase, int
     fb[1] = y;
 }
 #else
-/* one operator over the block: modulated by in (0: none), into out (add: += else =). Four loops, so none
- * tests a flag per sample */
-#define FM6_OP_LOOP(PH, STORE)                                                    \
-    for (i = 0; i < FM6_N; i++) {                                               \
-        g += dg;                                                                \
-        out[i] STORE (int32_t)(((int64_t)fm6_sin(PH) * g) >> 15);               \
-        phase = (int32_t)((uint32_t)phase + (uint32_t)freq);                    \
-    }
-static __attribute__((noinline)) void fm6_op_run(int32_t *out, const int32_t *in, int32_t phase, int32_t freq,
-                                                 int32_t g1, int32_t g2, int add)
-{
-    int32_t dg = (g2 - g1 + (FM6_N >> 1)) >> FM6_LG_N, g = g1;
-    uint32_t i;
-    if (in && add)
-        FM6_OP_LOOP(phase + in[i], +=)
-    else if (in)
-        FM6_OP_LOOP(phase + in[i], =)
-    else if (add)
-        FM6_OP_LOOP(phase, +=)
-    else
-        FM6_OP_LOOP(phase, =)
-}
-
 /* the operator with feedback (fb: its last two outputs) */
 static __attribute__((noinline)) void fm6_op_fb(int32_t *out, int32_t phase, int32_t freq, int32_t g1, int32_t g2,
                                                 int32_t *fb, int32_t shift, int add)
