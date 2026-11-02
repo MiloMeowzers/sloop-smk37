@@ -23,6 +23,33 @@
 #define VP_COL_B RGB(180, 100, 255)                 /* BRIDGING */
 #define VP_DIM(c) ((uint16_t)(((c) >> 2) & 0x39E7u))   /* a quarter (RGB565): the functions not on the knob */
 static const uint8_t VP_RGB[VF_N][3] = {{255, 150, 30}, {40, 190, 255}, {180, 100, 255}};   /* (the pads: the same) */
+/* the selectors: a colour an option, the pad and the strip's name and value alike (OFF dark grey) */
+enum { VO_VOC, VO_BYP, VO_BRG, VO_ADD, VO_VM, VO_NOISE, VO_AUTO, VO_N };
+static const uint8_t VP_OPT[VO_N][4][3] = {
+    {{40, 40, 40}, {210, 210, 210}, {255, 150, 30}, {255, 50, 90}},     /* VOCODER: OFF, FLAT, NORMAL, EMPHASIS */
+    {{40, 40, 40}, {40, 190, 255}, {40, 220, 90}, {0, 0, 0}},           /* BYPASS: OFF, REPLACEMENT, SPEECH */
+    {{40, 40, 40}, {180, 100, 255}, {255, 220, 0}, {0, 0, 0}},          /* BRIDGING: OFF, SUM, INDIVIDUAL */
+    {{40, 40, 40}, {40, 190, 255}, {255, 220, 0}, {0, 0, 0}},           /* ADDITION: OFF, SUM, INDIVIDUAL */
+    {{40, 220, 90}, {255, 150, 30}, {180, 100, 255}, {0, 0, 0}},        /* VOICE: AUTO, VOICED, UNVOICED */
+    {{210, 210, 210}, {255, 90, 160}, {0, 0, 0}, {0, 0, 0}},            /* NOISE: WHITE, PINK */
+    {{40, 40, 40}, {40, 220, 90}, {0, 0, 0}, {0, 0, 0}}};               /* AUTOCONTROL: OFF, ON */
+static uint32_t vp_opt(uint32_t sel)                /* the option each selector is on */
+{
+    switch (sel) {
+    case VO_VOC: return voc_mode % VM_N == VM_OFF ? 0u : 1u + voc_norm + voc_emsel;
+    case VO_BYP: return vpg.byp % VB_N;
+    case VO_BRG: return vpg.brsel % VS_N;
+    case VO_ADD: return vpg.addsel % VS_N;
+    case VO_VM: return voc_vmode % VV_N;
+    case VO_NOISE: return voc_pink & 1u;
+    default: return vpg.actl & 1u;
+    }
+}
+static uint16_t vp_optc(uint32_t sel)               /* .. its colour on the screen (OFF: the screen's grey) */
+{
+    const uint8_t *c = VP_OPT[sel][vp_opt(sel) & 3u];
+    return c[0] == 40u && c[1] == 40u ? TE_G3 : RGB(c[0], c[1], c[2]);
+}
 static const char *const VP_FN[VF_N] = {"EMPHASIS", "ADDITION", "BRIDGING"};
 static const char *const VP_SEL[VS_N] = {"OFF", "SUM", "INDIVIDUAL"};
 static const char *const VP_BYP[VB_N] = {"OFF", "REPLACEMENT", "SPEECH"};
@@ -37,7 +64,9 @@ static struct {
     uint8_t grp, msg_t, hold, hold_prev, bp_used;
     uint16_t pend, fired;                           /* the deferred pads down, those whose hold has acted */
     uint32_t t0[16];                                /* .. when each went down (ms) */
-    uint8_t det_ch, det, grn_ch, grn_t;             /* the centre detent: its channel, the detents it still holds; the
+    uint8_t det_ch, det, grn_ch, grn_t;
+    uint8_t mi, mbefore, mmoved, mt;                /* the master turned (its menu item), where it began, moved off it,
+                                                     * the frames left */             /* the centre detent: its channel, the detents it still holds; the
                                                      * channel outlined green (at basic, just turned), the frames left */
     char msg[28];
 } vp;
@@ -112,10 +141,23 @@ static int32_t vp_knob(uint32_t k)
         ;
     return r < NE ? panel_enc(r) : fm1_enc_take(smk_master_enc % FM1_NENC) * smk_master_dir;
 }
+/* the masters' columns (K7, K8): a turn after a rest notes where it began; while turned (and 3 s after) that place is
+ * ticked amber on the bar and the box flashes amber back on it, green on the default */
+#define VP_MT 90u                                   /* (frames: ~3 s) */
+static uint32_t vp_mpos(uint32_t mi)
+{
+    return mi == MI_VLVL ? voc_level : mi == MI_VBR ? voc_bridge : mi == MI_VTHR ? voc_thr : voc_hf;
+}
+static uint32_t vp_mdef(uint32_t mi) { return mi == MI_VLVL ? 4u : mi == MI_VBR ? 0u : 2u; }   /* (smk_vocoder.h's) */
 static void vp_master(uint32_t mi, const char *name, int32_t s)
 {
     uint16_t c;
+    if (!vp.mt || vp.mi != mi)
+        vp.mi = (uint8_t)mi, vp.mbefore = (uint8_t)vp_mpos(mi), vp.mmoved = 0;
+    vp.mt = VP_MT;
     mi_set(mi, s > 0 ? 1 : -1);
+    if (vp_mpos(mi) != vp.mbefore)
+        vp.mmoved = 1;
     vp_say(name, mi_value(mi, &c), "");
 }
 #define VP_DET 3u
@@ -306,7 +348,7 @@ static void vp_padrgb(uint32_t p, const uint8_t *c, uint32_t sh)   /* a colour, 
 }
 static void vp_leds(void)                           /* the group's pads: functions and mutes, the selectors lit when on */
 {
-    static const uint8_t W[3] = {150, 150, 150}, G[3] = {40, 220, 90}, P[3] = {255, 90, 160};
+    static const uint8_t W[3] = {150, 150, 150};
     uint32_t g = vp.grp, c, nch = g < 2u ? 7u : 6u;
     for (c = 0; c < 8u; c++) {
         if (c < nch) {
@@ -314,17 +356,17 @@ static void vp_leds(void)                           /* the group's pads: functio
             vp_padrgb(c, VP_RGB[vpg.fn[ch] % VF_N], (vpg.mute >> ch) & 1u ? 3u : 1u);
             vp_padrgb(8u + c, W, (vpg.mute >> ch) & 1u ? 5u : 1u);
         } else if (g == 0u) {
-            vp_padrgb(c, W, vpg.byp == VB_OFF ? 4u : vpg.byp == VB_REPL ? 2u : 1u);
-            vp_padrgb(8u + c, VP_RGB[VF_EMPH], vp_voc() ? 3u - (vp_voc() > 2u ? 2u : vp_voc() - 1u) : 5u);
+            vp_padrgb(c, VP_OPT[VO_BYP][vp_opt(VO_BYP)], 0u);
+            vp_padrgb(8u + c, VP_OPT[VO_VOC][vp_opt(VO_VOC)], 0u);
         } else if (g == 1u) {
-            vp_padrgb(c, W, vpg.actl ? 1u : 5u);
-            vp_padrgb(8u + c, VP_RGB[VF_BRG], vpg.brsel == VS_OFF ? 5u : vpg.brsel == VS_SUM ? 2u : 1u);
+            vp_padrgb(c, VP_OPT[VO_AUTO][vp_opt(VO_AUTO)], 0u);
+            vp_padrgb(8u + c, VP_OPT[VO_BRG][vp_opt(VO_BRG)], 0u);
         } else if (c == 6u) {
-            vp_padrgb(c, G, voc_vmode % VV_N == VV_AUTO ? 1u : 2u);
-            vp_padrgb(8u + c, P, voc_pink ? 1u : 5u);
+            vp_padrgb(c, VP_OPT[VO_VM][vp_opt(VO_VM)], 0u);
+            vp_padrgb(8u + c, VP_OPT[VO_NOISE][vp_opt(VO_NOISE)], 0u);
         } else {
             padled_set(c, 0, 0, 0);
-            vp_padrgb(8u + c, VP_RGB[VF_ADD], vpg.addsel == VS_OFF ? 5u : vpg.addsel == VS_SUM ? 2u : 1u);
+            vp_padrgb(8u + c, VP_OPT[VO_ADD][vp_opt(VO_ADD)], 0u);
         }
     }
 }
@@ -433,10 +475,18 @@ static void vp_mcol(uint32_t col, const char *name, uint32_t mi, uint32_t pos, u
     int32_t x = (int32_t)col * VP_COLW;
     uint16_t dc;
     char b[10];
-    vp_frame(x, col, TE_G2, 1);
+    int on = vp.mt && vp.mi == mi;
+    if (on && pos == vp_mdef(mi))
+        vp_frame(x, col, RGB(140, 255, 140), 2);   /* (the default) */
+    else if (on && vp.mmoved && pos == vp.mbefore && (ui.frame & 8u))
+        vp_frame(x, col, RGB(255, 190, 0), 2);     /* (back where it began: flashing) */
+    else
+        vp_frame(x, col, TE_G2, 1);
     vp_ctext(x, VP_Y0 + 2, name, c);
     cv_rect(x + 9, VP_BT, VP_COLW - 18, VP_BB - VP_BT, TE_G2);
     vp_bar(x + 9, VP_COLW - 18, n > 1u ? pos * 100u / (n - 1u) : 0u, 0, c);
+    if (on && vp.mmoved && n > 1u)                  /* where it began: an amber tick */
+        cv_rect(x + 5, VP_BB - 1 - (int32_t)(vp.mbefore * (VP_BB - VP_BT) / (n - 1u)), VP_COLW - 10, 3, RGB(255, 190, 0));
     vp_nodb(b, mi_value(mi, &dc), sizeof b);
     vp_ctext(x, VP_BB + 4, b, c);
 }
@@ -457,7 +507,7 @@ static void vp_item(uint32_t slot, int knob, uint32_t num, int below, uint16_t c
     cv_rect(x + 1, below ? y + 13 : y + 2, 13, 2, C_WHITE);
     x = cv_text(x + 18, y, &FONT_S, name, c) + 6;
     vp_nodb(b, val, sizeof b);
-    cv_text(x, y, &FONT_S, b, C_HI);
+    cv_text(x, y, &FONT_S, b, c);
 }
 static void vp_paint(void)                          /* the whole page; the canvas band shows its part (cv_oy) */
 {
@@ -483,8 +533,8 @@ static void vp_paint(void)                          /* the whole page; the canva
             str_cpy(b + str_len(b), " ", 2);
             vp_nodb(b + str_len(b), mi_value(MI_VDRY, &c), 8);
         }
-        vp_item(3, 0, 8, 0, W, "BYPASS", b);
-        vp_item(4, 0, 8, 1, VP_COL_E, "VOCODER", VOC4[vp_voc()]);
+        vp_item(3, 0, 8, 0, vp_optc(VO_BYP), "BYPASS", b);
+        vp_item(4, 0, 8, 1, vp_optc(VO_VOC), "VOCODER", VOC4[vp_voc()]);
         cv_text(2, VP_Y1 + 20, &FONT_S, "HOLD", TE_G3);   /* (the BYPASS pad held: K8 is its level) */
         cv_rect(38, VP_Y1 + 22, 13, 13, W);
         cv_rect(38, VP_Y1 + 22, 13, 2, C_WHITE);
@@ -492,17 +542,17 @@ static void vp_paint(void)                          /* the whole page; the canva
     } else if (g == 1u) {
         vp_mcol(7, "BRG", MI_VBR, voc_bridge % VOC_BR_N, VOC_BR_N, VP_COL_B);
         vp_item(0, 1, 8, 0, VP_COL_B, "BRIDGE", mi_value(MI_VBR, &c));
-        vp_item(3, 0, 8, 0, W, "AUTO", vpg.actl ? "ON" : "OFF");
-        vp_item(4, 0, 8, 1, VP_COL_B, "BRIDGING", SEL3[vpg.brsel % VS_N]);
+        vp_item(3, 0, 8, 0, vp_optc(VO_AUTO), "AUTO", vpg.actl ? "ON" : "OFF");
+        vp_item(4, 0, 8, 1, vp_optc(VO_BRG), "BRIDGING", SEL3[vpg.brsel % VS_N]);
     } else {
         static const char *const VM3[VV_N] = {"AUTO", "VOIC", "UNV"};
         vp_mcol(6, "THR", MI_VTHR, voc_thr % VOC_THR_N, VOC_THR_N, W);
         vp_mcol(7, "ADD", MI_VHF, voc_hf % VOC_MIX_N, VOC_MIX_N, VP_COL_A);
         vp_item(0, 1, 7, 0, W, "THRESH", mi_value(MI_VTHR, &c));
         vp_item(1, 1, 8, 0, VP_COL_A, "ADD SUM", mi_value(MI_VHF, &c));
-        vp_item(3, 0, 7, 0, RGB(40, 220, 90), "VOICE", VM3[voc_vmode % VV_N]);
-        vp_item(4, 0, 7, 1, RGB(255, 90, 160), "NOISE", voc_pink ? "PINK" : "WHITE");
-        vp_item(5, 0, 8, 1, VP_COL_A, "ADDITION", SEL3[vpg.addsel % VS_N]);
+        vp_item(3, 0, 7, 0, vp_optc(VO_VM), "VOICE", VM3[voc_vmode % VV_N]);
+        vp_item(4, 0, 7, 1, vp_optc(VO_NOISE), "NOISE", voc_pink ? "PINK" : "WHITE");
+        vp_item(5, 0, 8, 1, vp_optc(VO_ADD), "ADDITION", SEL3[vpg.addsel % VS_N]);
     }
 }
 /* what the page shows, as one number: drawn again only when it changes (no clearing: no flash) */
@@ -516,6 +566,7 @@ static uint32_t vp_sig(void)
               (uint32_t)voc_thr << 18 | (uint32_t)voc_vmode << 21 | (uint32_t)voc_pink << 23 | (uint32_t)voc_mode << 24 |
               (uint32_t)voc_norm << 26 | (uint32_t)voc_emsel << 27 | (uint32_t)vp.grp << 28)) * 16777619u;
     h = (h ^ (vp.msg_t ? 1u : 0u) ^ (ui.msg_t ? 2u : 0u) ^ (vp.grn_t ? 4u + 8u * vp.grn_ch : 0u)) * 16777619u;
+    h = (h ^ (vp.mt ? 1u + vp.mi * 2u + vp.mbefore * 64u + vp.mmoved * 8192u + (ui.frame & 8u) * 4096u : 0u)) * 16777619u;
     for (i = 0; vp.msg_t && vp.msg[i]; i++)
         h = (h ^ (uint8_t)vp.msg[i]) * 16777619u;
     for (i = 0; ui.msg_t && ui.msg[i]; i++)
@@ -531,6 +582,8 @@ static void vis_draw(void)
         vp.msg_t--;
     if (vp.grn_t)
         vp.grn_t--;
+    if (vp.mt)
+        vp.mt--;
     sig = vp_sig();
     if (!vis_shown_last) {
         vis_shown_last = 1;
