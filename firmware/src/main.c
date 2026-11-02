@@ -163,6 +163,10 @@ static void usb_replug_task(uint32_t now)
     uint8_t r = (uint8_t)(l != UL_STEREO && stem_rate);    /* (STEREO: STEM RATE does not apply) */
     if (usb.detached)
         return;                                             /* (an update or UBOOT under way) */
+#if BOARD_SMK37
+    if (ed_hold_ms && now - ed_hold_ms < 3000u)
+        return;                                             /* (an editor's restore under way: USB LAYOUT from it after) */
+#endif
     if (replug_st == 2u) {
         if (now - t < REPLUG_OFF_MS)
             return;

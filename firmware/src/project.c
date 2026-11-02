@@ -857,13 +857,18 @@ static void smkset_fill(smkset_t *s)
     s->sqlb = (uint8_t)(sq_lb % SQ_LB_N);
     s->sqgrid = (uint8_t)(sq_grid % SQ_GRID_N);
 }
-static void smkset_boot(void)                      /* after the settings (persist_boot, dsu_boot) */
+/* a record of n bytes (as read from flash, or the editor's restore, backup object 12): 1 taken (the settings set from
+ * it), 0 not one (nothing changes) */
+static int smkset_take(const uint8_t *b, uint32_t n)
 {
     smkset_t s;
-    int n;
     memset(&s, 0, sizeof s);
-    n = st_load(OBJ_SMKSET, &s, sizeof s);
-    if ((n == (int)sizeof s || n == (int)SMKSET_V2 || n == (int)SMKSET_V1) && s.magic == SMKSET_MAGIC) {
+    if (n != sizeof s && n != SMKSET_V2 && n != SMKSET_V1)
+        return 0;
+    memcpy(&s, b, n);
+    if (s.magic != SMKSET_MAGIC)
+        return 0;
+    {
         vel_mode = (uint8_t)(s.vel < VEL_N ? s.vel : VEL_DYNAMIC);
         trs_out = (uint8_t)(s.trs != 0u);
         bend_up = (uint8_t)bend_up_of_byte(s.bup);
@@ -876,12 +881,21 @@ static void smkset_boot(void)                      /* after the settings (persis
         stem_light = (uint8_t)(s.sfilt & 1u);
         tp_xfl = (uint8_t)(s.xfl < TPX_N ? s.xfl : TPX_128);
         tp_lin = (uint8_t)(s.lin & 1u);
-        if (n == (int)sizeof s) {                  /* (an older record has none: the defaults stay) */
+        if (n == sizeof s) {                       /* (an older record has none: the defaults stay) */
             sq_carry = (uint8_t)(s.sqcarry & 1u);
             sq_lb = (uint8_t)(s.sqlb < SQ_LB_N ? s.sqlb : 1u);
             sq_grid = (uint8_t)(s.sqgrid < SQ_GRID_N ? s.sqgrid : 0u);
         }
         knob_layout_apply();
+    }
+    return 1;
+}
+static void smkset_boot(void)                      /* after the settings (persist_boot, dsu_boot) */
+{
+    smkset_t s;
+    int n;
+    n = st_load(OBJ_SMKSET, &s, sizeof s);
+    if (n > 0 && smkset_take((const uint8_t *)&s, (uint32_t)n)) {
         smkset_fill(&smkset_saved);
         return;
     }

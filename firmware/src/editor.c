@@ -35,6 +35,10 @@ enum { ED_INFO = 1, ED_GET, ED_SET, ED_DUMP, ED_DESC, ED_STEP_GET, ED_STEP_SET, 
 /* v11 (SLOOP 2.7): backup object 11 = your theme (gfx.c theme_t), the editor's Theme page */
 /* v12 (SLOOP 2.7): LIVE = 77, editor_live.c: the LIVE page (transport, sections, mix keys, punch-in FX, REC, undo) */
 #define ED_PROTO 12u                                   /* the protocol version INFO ends with */
+#if BOARD_SMK37
+#define ED_BUILD (1u | (uint32_t)(SMK_UAC_IN_PROBE && !SMK_UAC_PROBE) << 1)
+static uint32_t ed_hold_ms;                             /* a restore's last write (main.c: no USB re-plug meanwhile) */
+#endif
 
 static uint8_t ed_out[600];
 static uint32_t ed_n;
@@ -409,6 +413,13 @@ _Static_assert(sizeof proj_tmp >= sizeof(project_t) && sizeof proj_tmp >= sizeof
 static persist_t ed_bk_set;                             /* LIST's snapshot of the settings */
 static uint8_t ed_bk_ml[MIDI_PART];                     /* .. and of the MIDI part (2.6, object 10: project.c) */
 static uint8_t ed_bk_valid, ed_bk_put, ed_bk_id;
+#if BOARD_SMK37
+/* SMK-37: the HOME menu's SMK-37 settings (12), DAW mode and its map (13), the vocoder build's settings and page, now and
+ * each project slot's (14), as LIST found them (project.c; the wheels' calibration is the unit's: not in a backup) */
+#define ED_BK_VOC (SMK_UAC_IN_PROBE && !SMK_UAC_PROBE)
+static smkset_t ed_bk_smk;
+static daw_store_t ed_bk_daw __attribute__((section(".pool")));
+#endif
 static uint32_t ed_bk_len, ed_bk_crc, ed_bk_pos, ed_bk_ms;
 UI_SMALL static void ed_bk_u32(uint32_t v) { uint32_t i; for (i = 0; i < 5u; i++) ed_b((v >> (7u * i)) & 127u); }
 UI_SMALL static uint32_t ed_bk_r32(const uint8_t *a)
@@ -449,6 +460,20 @@ UI_SMALL static const uint8_t *ed_bk_obj(uint32_t id, uint32_t *len)   /* 0 = no
         return (const uint8_t *)&dsu;
     }
 #if BOARD_SMK37
+    if (id == 12u) {
+        *len = sizeof ed_bk_smk;
+        return (const uint8_t *)&ed_bk_smk;
+    }
+    if (id == 13u) {
+        *len = sizeof ed_bk_daw;
+        return (const uint8_t *)&ed_bk_daw;
+    }
+#if ED_BK_VOC
+    if (id == 14u) {                                      /* (vocset itself, filled at LIST) */
+        *len = sizeof vocset;
+        return (const uint8_t *)&vocset;
+    }
+#endif
     if (id >= 32u && id < 32u + SMP_USER_SLOTS && !SMP_USER_HAS(id - 32u))
         return ED_BK_RAW;                                 /* SMK: a slot without flash, always empty (*len 0) */
 #endif
@@ -474,7 +499,14 @@ UI_SMALL static const uint8_t *ed_bk_obj(uint32_t id, uint32_t *len)   /* 0 = no
     }
     return 0;
 }
-static const uint8_t ED_BK_IDS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 32, 33, 34, 35};   /* 11: your theme (2.7) */   /* 35: USR4 (2.4), 9: SYN kits (2.5),
+static const uint8_t ED_BK_IDS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+#if BOARD_SMK37
+                                    12, 13,
+#if ED_BK_VOC
+                                    14,
+#endif
+#endif
+                                    32, 33, 34, 35};   /* 11: your theme (2.7) */   /* 35: USR4 (2.4), 9: SYN kits (2.5),
                                                                                       * 10: MIDI LEARN (2.6) */
 
 /* a flash erase silences the audio for ~50 ms and stalls USB: only while stopped (as the panel) */
@@ -570,6 +602,44 @@ UI_SMALL static uint32_t ed_bk_commit(void)
         persist_saved = p;
         return 0;
     }
+#if BOARD_SMK37
+    if (id == 12u) {                                      /* the SMK-37 settings: taken (checked as at power-on), saved */
+        smkset_t s;
+        if (ed_flash_busy())
+            return 3;
+        if (!smkset_take(raw, n))
+            return 2;
+        smkset_fill(&s);
+        if (!flash_ok || st_save(OBJ_SMKSET, &s, sizeof s))
+            return 4;
+        smkset_saved = s;
+        return 0;
+    }
+    if (id == 13u) {                                      /* DAW mode and its map */
+        if (ed_flash_busy())
+            return 3;
+        if (!daw_store_take(raw, n))
+            return 2;
+        daw_store_fill(&ed_bk_daw);
+        if (!flash_ok || st_save(OBJ_DAW, &ed_bk_daw, sizeof ed_bk_daw))
+            return 4;
+        daw_saved = ed_bk_daw;
+        return 0;
+    }
+#if ED_BK_VOC
+    if (id == 14u) {                                      /* the vocoder's: after the projects (their restore drops a slot's) */
+        if (ed_flash_busy())
+            return 3;
+        if (!vocset_take(raw, n))
+            return 2;
+        vocset_fill();
+        if (!flash_ok || st_save(OBJ_VOCSET, &vocset, sizeof vocset))
+            return 4;
+        vocset_saved = vocset;
+        return 0;
+    }
+#endif
+#endif
     return 1;
 }
 
@@ -583,6 +653,13 @@ UI_SMALL static int ed_backup(uint32_t cmd, const uint8_t *a, uint32_t na)   /* 
             proj_capture((project_t *)ED_BK_RAW);           /* the working project, as it is now */
             persist_fill(&ed_bk_set);
             midi_part_fill(ed_bk_ml);
+#if BOARD_SMK37
+            smkset_fill(&ed_bk_smk);
+            daw_store_fill(&ed_bk_daw);
+#if ED_BK_VOC
+            vocset_fill();
+#endif
+#endif
             ed_bk_valid = 1;
             ed_bk_put = 0;
         }
@@ -617,11 +694,18 @@ UI_SMALL static int ed_backup(uint32_t cmd, const uint8_t *a, uint32_t na)   /* 
     if (cmd == ED_BK_PUT) {                               /* op, id, ... -> op, id, rc */
         uint32_t op = na >= 2u ? a[0] : 99u, id = na >= 2u ? a[1] : 127u;
         rc = 1;
+#if BOARD_SMK37
+        ed_hold_ms = fm1_ms | 1u;
+#endif
         if (!flash_ok) {
             rc = 4;
-        } else if (op == 0u && na == 12u && (id <= 11u)) {  /* begin: id, length (5), CRC-32 (5) */
+        } else if (op == 0u && na == 12u && (id <= 11u
+#if BOARD_SMK37
+                                             || id == 12u || id == 13u || (ED_BK_VOC && id == 14u)
+#endif
+                                             )) {        /* begin: id, length (5), CRC-32 (5) */
             len = ed_bk_r32(a + 2);
-            if (id >= 2u || len) {                        /* (the working project and the settings are never empty) */
+            if ((id >= 2u && id <= 11u) || len) {         /* (the working project, the settings, 12..14 never empty) */
                 if (len <= sizeof proj_tmp) {
                     ed_bk_put = 1;
                     ed_bk_valid = 0;                      /* (the staging RAM is the snapshot's) */
@@ -689,6 +773,10 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
     int16_t *vp;
     const param_desc_t *d;
     ed_begin(cmd);
+#if BOARD_SMK37
+    if (cmd >= ED_SMP_BEGIN && cmd <= ED_SMP_ERASE)
+        ed_hold_ms = fm1_ms | 1u;                         /* (a restore's samples) */
+#endif
     if (ed_backup(cmd, a, na)) {                           /* v6: backup / restore */
         ed_send();
         return;
@@ -724,6 +812,11 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
             ed_str(ENGINES[i]->name, 8);
         ed_b(NTRK);                                       /* v3 */
         ed_b(ED_PROTO);                                   /* v5..: the protocol version (9: FM6 patches, 10: SYN kits) */
+#if BOARD_SMK37
+        ed_b(ED_BUILD);                                   /* the build: bit 0 SMK-37 (backup objects 12, 13), bit 1 the
+                                                       * vocoder (14; T3 is VOCODER / AUDIO, no engine of its own); an
+                                                       * FM-1 or an older device sends no byte */
+#endif
         break;
     case ED_GET:
     case ED_SET:
