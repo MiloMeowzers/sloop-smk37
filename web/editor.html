@@ -7863,7 +7863,7 @@ const OB = {
     ["dry", 6, "DRY", ["OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"], 0], ["hf", 7, "HF", ["OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"], 2],
     ["cut", 8, "CARRIER CUTOFF", Array.from({ length: 128 }, (_, i) => [i, String(i)]), 127],
     ["res", 9, "CARRIER RESO", Array.from({ length: 128 }, (_, i) => [i, String(i)]), 0],
-    ["vm", 10, "VOICE", ["AUTO", "VOICED", "UNVOICED"], 0], ["pink", 11, "NOISE", ["WHITE", "PINK"], 0],
+    ["vm", 10, "VOICE", ["AUTO", "VOICED", "UNVOICED"], 0], ["pink", 11, "NOISE", ["WHITE", "PINK", "SOFT"], 0],
     ["agc", 67, "AGC", ["OFF", "PEAKS", "LIGHT", "FULL"], 0],
     ["br", 12, "BRIDGE", [[0, "OFF"], ...OB_DB(-48, 0, 3, " DB").map(([i, n]) => [i + 1, n])], 0],
     ["thr", 13, "THRESHOLD", [-54, -48, -42, -36, -30, -24].map((x, i) => [i, `${x} DB`]), 2],
@@ -7871,7 +7871,8 @@ const OB = {
     ["colour", 65, "COLOUR", Array.from({ length: 11 }, (_, i) => [i, `${i * 10} %`]), 10],
     ["blend", 66, "BLEND", ["SUM", "FILL"], 0]],
   page: [["byp", 146, "BYPASS", ["OFF", "REPLACEMENT", "SPEECH"], 2], ["brsel", 147, "BRIDGING", ["OFF", "SUM", "INDIVIDUAL"], 1],
-    ["addsel", 148, "ADDITION", ["OFF", "SUM", "INDIVIDUAL"], 1], ["actl", 149, "AUTOCONTROL", ["OFF", "ON"], 0]] },
+    ["addsel", 148, "ADDITION", ["OFF", "SUM", "INDIVIDUAL"], 1], ["actl", 149, "AUTOCONTROL", ["OFF", "ON"], 0],
+    ["nzc", 151, "NOISE BLEND", Array.from({ length: 21 }, (_, i) => [100 - i * 5, `${i * 5} %`]).reverse(), 0]] },
 };
 const OB_PG = 72;                                     /* vocset_t pcur: mute (4), emph[20], add[20], brg[10], fn[20], byp .. */
 const obOpts = (f) => f[3].map((x, i) => (Array.isArray(x) ? x : [i, x]));

@@ -1004,7 +1004,7 @@ static void vocv_put(const vocv_t *v)
     voc_mode = (uint8_t)(v->mode % VM_N), voc_level = (uint8_t)(v->lvl % VOC_LEVEL_N);
     voc_dry = (uint8_t)(v->dry % VOC_MIX_N), voc_hf = (uint8_t)(v->hf % VOC_MIX_N);
     voc_cut = (uint8_t)(v->cut & 127u), voc_res = (uint8_t)(v->res & 127u);
-    voc_vmode = (uint8_t)(v->vm % VV_N), voc_pink = (uint8_t)(v->pink & 1u);
+    voc_vmode = (uint8_t)(v->vm % VV_N), voc_pink = (uint8_t)(v->pink % VOC_NOISE_N);
     voc_bridge = (uint8_t)(v->br % VOC_BR_N), voc_thr = (uint8_t)(v->thr % VOC_THR_N);
 }
 static void vpg_put(const vocpg_t *v)          /* a page record, its values in range */
@@ -1020,7 +1020,8 @@ static void vpg_put(const vocpg_t *v)          /* a page record, its values in r
     for (i = 0; i < VOC_PAIRS; i++)
         vpg.brg[i] = (uint8_t)(vpg.brg[i] > 100u ? 100u : vpg.brg[i]);
     vpg.byp = (uint8_t)(vpg.byp % VB_N), vpg.brsel = (uint8_t)(vpg.brsel % VS_N);
-    vpg.addsel = (uint8_t)(vpg.addsel % VS_N), vpg.actl = (uint8_t)(vpg.actl & 1u), vpg.have = 1, vpg.rsv = 0;
+    vpg.addsel = (uint8_t)(vpg.addsel % VS_N), vpg.actl = (uint8_t)(vpg.actl & 1u), vpg.have = 1;
+    vpg.nzc = (uint8_t)(vpg.nzc > 100u ? 100u : vpg.nzc);
 }
 static void vocset_cap(const project_t *p)
 {

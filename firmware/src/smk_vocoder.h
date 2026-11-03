@@ -64,7 +64,11 @@ static uint8_t voc_cut = 127;            /* CARRIER > CUTOFF, RESO: the saws' lo
 static uint8_t voc_res;
 enum { VV_AUTO, VV_VOICED, VV_UNVOICED, VV_N };
 static uint8_t voc_vmode;                /* CARRIER > VOICE: the VSM201's VOICE MODE (AUTOMATIC, VOICED / UNVOICED ONLY) */
-static uint8_t voc_pink;                 /* CARRIER > NOISE: WHITE, PINK (the PINK FILTER switch) */
+static uint8_t voc_pink;                 /* CARRIER > NOISE: WHITE, PINK (the PINK FILTER switch), SOFT (2026-11-03: a saw's
+                                          * -6 dB an octave, a one-pole low-pass at ~200 Hz, back to white's rms) */
+#define VOC_NOISE_N 3u
+#define VOC_SOFT_A 30953                 /* (exp(-2 pi 200 / 22050), Q15) */
+#define VOC_SOFT_G 194000                /* (sqrt((1 + a) / (1 - a)) = 5.92, Q15: the rms back to white's) */
 static uint8_t voc_bridge;               /* SILENCE > BRIDGE: OFF, -48 .. 0 dB in 3 dB steps (voc_br_q15); the manual's
                                           * basic: off */
 #define VOC_BR_N 18u
@@ -127,7 +131,8 @@ typedef struct {
     uint32_t mute;                       /* bit per channel */
     uint8_t emph[VOC_CH], add[VOC_CH], brg[VOC_PAIRS], fn[VOC_CH];   /* (brg[n]: pair n (channels 2n+1/2n+2), on
                                                                      * channel n+1's knob: the VSM201's P1..P10) */
-    uint8_t byp, brsel, addsel, actl, have, rsv;   /* BYPASS, BRIDGING, ADDITION, AUTOCONTROL (the next build) */
+    uint8_t byp, brsel, addsel, actl, have, nzc;   /* BYPASS, BRIDGING, ADDITION, AUTOCONTROL; nzc: NOISE BLEND as the share
+                                                   * taken off, 0 .. 100 (0: 100 %, as before; the byte spare before it) */
 } vocpg_t;
 static vocpg_t vpg = {0, {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50},
                       {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50},
@@ -145,6 +150,7 @@ static const int32_t *voc_bap = VOC_B0;
 /* AUTOCONTROL (the VSM201's input AGC): the analysis's input gain, Q12 (1.0 .. -12 / +18 dB), towards the voice's level
  * at VOC_ACT in speech, held in a pause (no lift of the room's noise); the analysis only (DRY is the voice as it came) */
 #define VOC_ACT 60000                    /* (the voice's mean |x| aimed at, the analysis's scale: full 2^19; ~ -19 dB) */
+#define VOC_ACG_MAX 11565                /* (AUTOCONTROL's most: +9 dB, Q12) */
 static int32_t voc_acg = 4096;
 
 #define VOC_HN 32u                       /* the half-band's history at 44.1 kHz (27 taps), a power of two */
@@ -188,6 +194,7 @@ static struct {                          /* the synthesis (track 3's core): the 
     int32_t bk[VOC_NB], cf;              /* BRIDGE TONE as the last block ended: each band's bridge, COLOUR's factor (the
                                           * next block ramps from them: no zipper) */
     int32_t pk0, pk1, pk2;               /* the pink filter */
+    int32_t sf;                          /* the SOFT noise's low-pass */
     uint32_t rnd;
 } voc;
 /* the audio track's state: 0 the engine (AUDIO IN off), 1 + MODE; the one playing (cur) and its fade (Q15) */
@@ -295,13 +302,15 @@ static void voc_analyse(uint32_t n)
         voc_ab[voc_aw].hf[j] = hf;
     }
     voa.peak_in = pin;
-    if (act && voa.envs > 0 && n) {                      /* AUTOCONTROL: the gain towards VOC_ACT in speech (~90 ms), held in a
-                                                          * pause; -12 .. +18 dB */
-        if (voc_ab[voc_aw].speech || voa.envs > VOC_ACT) {
-            int64_t t = ((int64_t)VOC_ACT * acg) / voa.envs;
-            int32_t gt = t < 1024 ? 1024 : t > 32767 ? 32767 : (int32_t)t;
-            voc_acg = acg + (gt - acg) / 16;
-        }
+    if (act && voa.envs > 0 && n) {                      /* AUTOCONTROL (2026-11-03: the pops / booms gone): down at once
+                                                          * above VOC_ACT, up slowly (~1.5 s) and only in clear speech
+                                                          * (within 12 dB of it), held in a pause; -12 .. +9 dB */
+        int64_t t = ((int64_t)VOC_ACT * acg) / voa.envs;
+        int32_t gt = t < 1024 ? 1024 : t > VOC_ACG_MAX ? VOC_ACG_MAX : (int32_t)t;
+        if (gt < acg)
+            voc_acg = gt;
+        else if (voc_ab[voc_aw].speech && voa.envs > VOC_ACT / 4)
+            voc_acg = acg + (gt - acg + 255) / 256;
     } else if (!act) {
         voc_acg = 4096;                                  /* (off: from 1.0 when it comes on) */
     }
@@ -408,7 +417,8 @@ static void voc_process(int32_t *b, uint32_t n)
     int32_t bk[VOC_NB], dbk[VOC_NB], cf, dcf, ag, dag, m = (int32_t)(n / 2u);
     uint32_t fill = voc_blend & 1u, mode, ramp = 0, any = 0;
     int32_t uvt = vm == VV_UNVOICED ? 32767 : vm == VV_VOICED ? 0 :                 /* the noise's share wanted */
-                  voc_ab[voc_aw ^ 1u].unvoiced && (!br || voc_ab[voc_aw ^ 1u].speech) ? 32767 : 0;
+                  voc_ab[voc_aw ^ 1u].unvoiced && (!br || voc_ab[voc_aw ^ 1u].speech)
+                      ? 32767 - (((int32_t)(vpg.nzc > 100u ? 100u : vpg.nzc) * 20971) >> 6) : 0;   /* (AUTO: NOISE BLEND, x 327.67) */
     voc.blocks++;
     voc_chan_block();
     {   /* BRIDGE TONE: the bridge per band (TILT), the envelopes' share in a pause (COLOUR: full in speech), each
@@ -467,7 +477,10 @@ static void voc_process(int32_t *b, uint32_t n)
             if (voc.uvg) {
                 voc.rnd = voc.rnd * 1664525u + 1013904223u;
                 w = (int32_t)voc.rnd >> 16;                      /* white, Q15 */
-                if (voc_pink) {                                  /* Kellet's economy pink, Q15 */
+                if (voc_pink == 2u) {                            /* SOFT: -6 dB an octave over ~200 Hz, white's rms */
+                    voc.sf = (int32_t)(((int64_t)voc.sf * VOC_SOFT_A) >> 15) + (int32_t)(((int64_t)w * (32768 - VOC_SOFT_A)) >> 15);
+                    w = (int32_t)(((int64_t)voc.sf * VOC_SOFT_G) >> 15);
+                } else if (voc_pink) {                           /* Kellet's economy pink, Q15 */
                     voc.pk0 = (int32_t)(((int64_t)voc.pk0 * 32690) >> 15) + ((w * 3245) >> 15);   /* (pk0 to ~1.4M) */
                     voc.pk1 = (int32_t)(((int64_t)voc.pk1 * 31556) >> 15) + ((w * 9716) >> 15);
                     voc.pk2 = (int32_t)(((int64_t)voc.pk2 * 18678) >> 15) + ((w * 34494) >> 15);

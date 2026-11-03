@@ -264,6 +264,22 @@ int main(void)
         printf("   a noise voice on a 110 Hz saw: above 4 kHz %.1f dB AUTO, %.1f dB VOICED\n", a, v);
         check("VOICE AUTO: on unvoiced sound the noise replaces the saws (> 10 dB more above 4 kHz than VOICED)",
               a - v > 10.0);
+        {   /* 2026-11-03: NOISE SOFT (-6 dB an octave), NOISE BLEND (AUTO: the noise's share) */
+            double sw, bl;
+            voc_vmode = VV_AUTO, voc_pink = 2;
+            reset();
+            n = run(1.0, vnoise, saw110);
+            sw = hiss(n);
+            voc_pink = 0, vpg.nzc = 100;                /* BLEND 0 %: no noise */
+            reset();
+            n = run(1.0, vnoise, saw110);
+            bl = hiss(n);
+            vpg.nzc = 0;
+            printf("   above 4 kHz: WHITE %.1f dB, SOFT %.1f dB, BLEND 0 %% %.1f dB (VOICED %.1f)
+", a, sw, bl, v);
+            check("NOISE SOFT: less above 4 kHz than WHITE (> 6 dB)", a - sw > 6.0);
+            check("NOISE BLEND 0 %: as VOICED above 4 kHz (+-3 dB)", fabs(bl - v) < 3.0);
+        }
         voc_vmode = VV_UNVOICED;
         reset();
         n = run(1.0, vnoise, vzero);

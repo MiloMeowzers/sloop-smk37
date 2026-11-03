@@ -306,7 +306,7 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     }
     case MI_VPINK:                                    /* the unvoiced replacement: WHITE, PINK (dim: VOICED only) */
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && voc_vmode % VV_N != VV_VOICED ? C_HI : C_DIM;
-        return voc_pink ? "PINK" : "WHITE";
+        return voc_pink == 2u ? "SOFT" : voc_pink ? "PINK" : "WHITE";
     case MI_VAGC: {                                   /* the carrier AGC's ceiling */
         static const char *const N[VOC_AGC_N] = {"OFF", "PEAKS", "LIGHT", "FULL"};
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
@@ -714,7 +714,8 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
                                     : s < 0 ? (voc_vmode ? voc_vmode - 1u : 0u) : (voc_vmode + 1u) % VV_N);
         break;
     case MI_VPINK:                                     /* right PINK, left WHITE; OCT+ toggles */
-        voc_pink = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_pink);
+        voc_pink = (uint8_t)(s > 0 ? (voc_pink + 1u < VOC_NOISE_N ? voc_pink + 1u : voc_pink)   /* WHITE, PINK, SOFT */
+                             : s < 0 ? (voc_pink ? voc_pink - 1u : 0u) : (voc_pink + 1u) % VOC_NOISE_N);
         break;
     case MI_VAGC:                                      /* OFF, PEAKS, LIGHT, FULL (stops at the ends); OCT+ OFF */
         voc_agc = (uint8_t)(s > 0 ? (voc_agc + 1u < VOC_AGC_N ? voc_agc + 1u : voc_agc)

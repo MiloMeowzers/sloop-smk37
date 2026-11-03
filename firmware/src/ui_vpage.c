@@ -34,7 +34,8 @@ static const uint8_t VP_OPT[VO_N][4][3] = {
     {{40, 190, 255}, {0, 240, 170}, {255, 220, 0}, {0, 0, 0}},          /* ADDITION: OFF (its blue: which pad it is),
                                                                          * SUM, INDIVIDUAL (the K8 column too) */
     {{0, 200, 210}, {255, 220, 0}, {130, 130, 255}, {0, 0, 0}},         /* VOICE: AUTO, VOICED, UNVOICED */
-    {{255, 235, 140}, {255, 90, 160}, {0, 0, 0}, {0, 0, 0}},            /* NOISE: WHITE (cream: white is a mute pad's), PINK */
+    {{255, 235, 140}, {255, 90, 160}, {255, 140, 40}, {0, 0, 0}},       /* NOISE: WHITE (cream: white is a mute pad's), PINK,
+                                                                         * SOFT */
     {{255, 60, 40}, {40, 220, 90}, {0, 0, 0}, {0, 0, 0}}};              /* AUTOCONTROL: OFF red, ON green */
 static uint32_t vp_opt(uint32_t sel)                /* the option each selector is on */
 {
@@ -44,7 +45,7 @@ static uint32_t vp_opt(uint32_t sel)                /* the option each selector 
     case VO_BRG: return vpg.brsel % VS_N;
     case VO_ADD: return vpg.addsel % VS_N;
     case VO_VM: return voc_vmode % VV_N;
-    case VO_NOISE: return voc_pink & 1u;
+    case VO_NOISE: return voc_pink % VOC_NOISE_N;
     default: return vpg.actl & 1u;
     }
 }
@@ -64,7 +65,7 @@ static const int16_t VP_DB[101] = {0, -680, -559, -489, -439, -400, -368, -342, 
     32, 35, 37, 40, 43, 46, 48, 51, 53, 56, 58, 61, 63, 66, 68, 70, 73, 75, 77, 79, 82, 84, 86, 88, 90, 92, 94, 96, 98,
     100, 102, 104, 106, 108, 110, 112, 113, 115, 117, 119, 120};
 static struct {
-    uint8_t grp, msg_t, hold, hold_prev, bp_used;
+    uint8_t grp, msg_t, hold, hold_prev, bp_used, vm_used;   /* (vm_used: the VOICE pad held, K7 turned: BLEND) */
     uint16_t pend, fired;                           /* the deferred pads down, those whose hold has acted */
     uint32_t t0[16];                                /* .. when each went down (ms) */
     uint8_t det_ch, det, grn_ch, grn_t;
@@ -147,21 +148,38 @@ static int32_t vp_knob(uint32_t k)
 /* the masters' columns (K7, K8): a turn after a rest notes where it began; while turned (and 3 s after) that place is
  * ticked amber on the bar and the box flashes amber back on it, green on the default */
 #define VP_MT 90u                                   /* (frames: ~3 s) */
+#define VP_MI_NBL 250u                              /* (NOISE BLEND: the page's own, no menu item) */
 static uint32_t vp_mpos(uint32_t mi)
 {
+    if (mi == VP_MI_NBL)
+        return (100u - (vpg.nzc > 100u ? 100u : vpg.nzc)) / 5u;
     return mi == MI_VLVL ? voc_level : mi == MI_VBR ? voc_bridge : mi == MI_VTHR ? voc_thr : mi == MI_VDRY ? voc_dry : voc_hf;
 }
-static uint32_t vp_mdef(uint32_t mi) { return mi == MI_VLVL ? 4u : mi == MI_VBR || mi == MI_VDRY ? 0u : 2u; }   /* (smk_vocoder.h's) */
+static const char *vp_mval(uint32_t mi, uint16_t *c)   /* a master's value (mi_value, or BLEND's) */
+{
+    static char b[8];
+    if (mi != VP_MI_NBL)
+        return mi_value(mi, c);
+    fmt_int(b, 100u - (vpg.nzc > 100u ? 100u : vpg.nzc));
+    str_cpy(b + str_len(b), " %", 3);
+    return b;
+}
+static uint32_t vp_mdef(uint32_t mi) { return mi == VP_MI_NBL ? 20u : mi == MI_VLVL ? 4u : mi == MI_VBR || mi == MI_VDRY ? 0u : 2u; }   /* (smk_vocoder.h's) */
 static void vp_master(uint32_t mi, const char *name, int32_t s)
 {
     uint16_t c;
     if (!vp.mt || vp.mi != mi)
         vp.mi = (uint8_t)mi, vp.mbefore = (uint8_t)vp_mpos(mi), vp.mmoved = 0;
     vp.mt = VP_MT;
-    mi_set(mi, s > 0 ? 1 : -1);
+    if (mi == VP_MI_NBL) {                              /* 5 % a detent, 0 .. 100 */
+        int32_t v = (int32_t)vpg.nzc - (s > 0 ? 5 : -5);
+        vpg.nzc = (uint8_t)(v < 0 ? 0 : v > 100 ? 100 : v);
+    } else {
+        mi_set(mi, s > 0 ? 1 : -1);
+    }
     if (vp_mpos(mi) != vp.mbefore)
         vp.mmoved = 1;
-    vp_say(name, mi_value(mi, &c), "");
+    vp_say(name, vp_mval(mi, &c), "");
 }
 #define VP_DET 3u
 static void vp_turn(uint32_t k, int32_t s)          /* knob k of the group turned s */
@@ -199,6 +217,9 @@ static void vp_turn(uint32_t k, int32_t s)          /* knob k of the group turne
         }
     } else if (g == 1u && k == 7u) {
         vp_master(MI_VBR, "BRIDGE", s);
+    } else if (k == 6u && g == 2u && (smk_pick_down & 1u << 6)) {   /* the VOICE pad held: NOISE BLEND */
+        vp.vm_used = 1;
+        vp_master(VP_MI_NBL, "BLEND", s);
     } else if (k == 6u) {
         vp_master(MI_VTHR, "THRESH", s);
     } else {
@@ -211,7 +232,7 @@ static void vp_turn(uint32_t k, int32_t s)          /* knob k of the group turne
 static int vp_deferred(uint32_t p)
 {
     uint32_t c = p & 7u, nch = vp.grp < 2u ? 7u : 6u;
-    return (p < 8u && c < nch) || (vp.grp == 0u && c == 7u);
+    return (p < 8u && c < nch) || (vp.grp == 0u && c == 7u) || (vp.grp == 2u && p == 6u);   /* (G3's VOICE: held + K7) */
 }
 static void vp_basic(uint32_t ch)                   /* a channel back to the basic setting (its mute stays) */
 {
@@ -228,9 +249,17 @@ static void vp_tap(uint32_t p)                      /* a deferred pad let go bef
         vpg.fn[ch] = (uint8_t)((vpg.fn[ch] + 1u) % (ch < VOC_PAIRS ? VF_N : VF_BRG));
         vp_chname(a, ch, VF_EMPH);
         vp_say(a, VP_FN[vpg.fn[ch] % VF_N], "");
+    } else if (vp.grp == 2u && p == 6u) {
+        uint16_t col;
+        if (!vp.vm_used) {
+            mi_set(MI_VVM, 0);
+            vp_say("VOICE MODE", mi_value(MI_VVM, &col), "");
+        }
     } else if (p == 7u) {
         if (!vp.bp_used) {
             vpg.byp = (uint8_t)((vpg.byp + 1u) % VB_N);
+            if (vpg.byp != VB_OFF && voc_dry % VOC_MIX_N == 0u)
+                voc_dry = 2;                            /* (its level at OFF: -12 dB, so the choice is heard) */
             vp_say("BYPASS", VP_BYP[vpg.byp], "");
         }
     } else {
@@ -268,6 +297,8 @@ static void vp_pad(uint32_t p)                      /* pad p hit (reading order:
         vp.pend |= (uint16_t)(1u << p), vp.fired &= (uint16_t)~(1u << p), vp.t0[p] = fm1_ms;
         if (p == 7u)
             vp.bp_used = 0;
+        if (p == 6u)
+            vp.vm_used = 0;
         return;
     }
     if (c < nch) {                                      /* (the pad below: the mute) */
@@ -511,7 +542,7 @@ static void vp_mcol(uint32_t col, const char *name, uint32_t mi, uint32_t pos, u
     vp_bar(x + 9, VP_COLW - 18, n > 1u ? pos * 100u / (n - 1u) : 0u, 0, c);
     if (on && vp.mmoved && n > 1u)                  /* where it began: an amber tick */
         cv_rect(x + 5, VP_BB - 1 - (int32_t)(vp.mbefore * (VP_BB - VP_BT) / (n - 1u)), VP_COLW - 10, 3, RGB(255, 190, 0));
-    vp_nodb(b, mi_value(mi, &dc), sizeof b);
+    vp_nodb(b, vp_mval(mi, &dc), sizeof b);
     vp_ctext(x, VP_BB + 4, b, c);
 }
 /* the strip: the knobs on the left ("K8" and the name: the value is in the knob's column above), the pads on the right
@@ -573,12 +604,15 @@ static void vp_paint(void)                          /* the whole page; the canva
         vp_item(4, 0, 8, 1, vp_optc(VO_BRG), "BRIDGING", SEL3[vpg.brsel % VS_N]);
     } else {
         static const char *const VM3[VV_N] = {"AUTO", "VOIC", "UNV"};
-        vp_mcol(6, "THR", MI_VTHR, voc_thr % VOC_THR_N, VOC_THR_N, W);
+        if (smk_pick_down & 1u << 6)                    /* the VOICE pad held: K7 is NOISE BLEND */
+            vp_mcol(6, "BLN", VP_MI_NBL, vp_mpos(VP_MI_NBL), 21u, vp_optc(VO_VM));
+        else
+            vp_mcol(6, "THR", MI_VTHR, voc_thr % VOC_THR_N, VOC_THR_N, W);
         vp_mcol(7, "ADD", MI_VHF, voc_hf % VOC_MIX_N, VOC_MIX_N, vp_optc(VO_ADD));   /* (in the ADDITION selector's colour) */
         vp_item(0, 1, 7, 0, W, "THRESH", mi_value(MI_VTHR, &c));
         vp_item(1, 1, 8, 0, vp_optc(VO_ADD), "ADD SUM", mi_value(MI_VHF, &c));
         vp_item(3, 0, 7, 0, vp_optc(VO_VM), "VOICE", VM3[voc_vmode % VV_N]);
-        vp_item(4, 0, 7, 1, vp_optc(VO_NOISE), "NOISE", voc_pink ? "PINK" : "WHITE");
+        vp_item(4, 0, 7, 1, vp_optc(VO_NOISE), "NOISE", voc_pink == 2u ? "SOFT" : voc_pink ? "PINK" : "WHITE");
         vp_item(5, 0, 8, 1, vp_optc(VO_ADD), "ADDITION", SEL3[vpg.addsel % VS_N]);
     }
 }
@@ -593,7 +627,7 @@ static uint32_t vp_sig(void)
               (uint32_t)voc_thr << 18 | (uint32_t)voc_vmode << 21 | (uint32_t)voc_pink << 23 | (uint32_t)voc_mode << 24 |
               (uint32_t)voc_norm << 26 | (uint32_t)voc_emsel << 27 | (uint32_t)vp.grp << 28)) * 16777619u;
     h = (h ^ (vp.msg_t ? 1u : 0u) ^ (ui.msg_t ? 2u : 0u) ^ (vp.grn_t ? 4u + 8u * vp.grn_ch : 0u)) * 16777619u;
-    h = (h ^ (smk_pick_down & 1u << 7)) * 16777619u;   /* (the BYPASS pad held: the K8 column changes) */
+    h = (h ^ (smk_pick_down & (1u << 7 | 1u << 6))) * 16777619u;   /* (the BYPASS / VOICE pad held: K8 / K7 change) */
     h = (h ^ (vp.mt ? 1u + vp.mi * 2u + vp.mbefore * 64u + vp.mmoved * 8192u + (ui.frame & 8u) * 4096u : 0u)) * 16777619u;
     for (i = 0; vp.msg_t && vp.msg[i]; i++)
         h = (h ^ (uint8_t)vp.msg[i]) * 16777619u;
