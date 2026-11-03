@@ -491,6 +491,77 @@ more features) with the full sequence playing. The vocoder page itself costs not
   - the editor's tests cover the backup objects and its tabs.
 - **On the unit:** each build flashed, played and measured (sheds, `timing`) before the next.
 
+### Next steps: the harmoniser
+
+**Not built.** The harmoniser is the next stage of the vocoder build. Its spec is being written and nothing will be
+built before it is complete and signed off. What follows is the spec as it stands.
+
+**What it is.** Your live voice (the same USB audio in as the vocoder) pitch-shifted into harmony voices that **keep
+the voice's own timbre**. The vocoder replaces the voice's timbre with the carrier's; the harmoniser keeps it. The two
+are separate sources and can sound together.
+
+**The model: the Eventide H949 / H910 Harmonizer.**
+- **The method:** a delay line with two read heads moving at the pitch ratio, spliced every segment (about 25 ms, the
+  H949's NORM).
+- **Ratios:** from the H949's table, equal-tempered, from ×0.25 to ×2.0 (two octaves down, one up). MICRO PITCH adds
+  about ±1 semitone for doubling and chorus.
+- **Harmonies hold** because the ratio multiplies every frequency; it is not a frequency shifter.
+- **The formants shift with the pitch**, as on the H949 (plain delay-line shifting). That is its sound. Formant
+  correction would go beyond the H949: an option for later, not in this spec.
+
+**Decided (the owner, 2026-11-01):**
+
+| | Decision |
+|---|---|
+| Where it plays | **HARMONY is a role T1 or T2 can take**, as AUDIO / VOCODER is on T3; one at a time. While a track is HARMONY it is not a synth. It works as a bus: any track sends into it with its own **HARM send** (as the reverb and delay sends). Its output is a track with level, pan, sends, its stem and punch-in |
+| Notes and intervals | the Eventide modes as their manuals define them. SLOOP's **SCALE** is respected when active (the intervals snap to the key). The owner's modes (chromatic, harmonic, circle-of-fifths modal) are ratio tables, in a format open to custom tables |
+| Voices | **3 harmony voices + the dry = 4-part harmony**, outside SLOOP's 8-voice budget (as the vocoder's carrier is) |
+| Per voice | as the H949: ratio, MICRO PITCH, delay, level, pan |
+| Its effects | the track's INSERT slot becomes the H949's effect modes: RANDOM / ADT, FLANGE, REVERSE, REPEAT |
+| Splice | a choice: H910 hard (the glitch, the character), H949 crossfaded, or by correlation (pitch-synchronous, the least colour) |
+| Feedback | its own control, with the H949's LOW / HIGH EQ in the loop |
+| Mix | one WET / DRY control on the harmoniser track |
+| Playing it | its own page, as the vocoder page on T3, with the same conventions. **The keys and pads play the harmoniser**, as the Eventides' buttons did. The track's own notes (keys, sequencer) set the intervals (HK940 style), with the tracked note as the other mode. **The sequencer records and plays the harmony changes** |
+| MIDI out (optional) | HARM CH (GLO > MIDI 3): each harmony voice's pitch (the tracked note + its interval) as a note, so an external synth can double it. Later: the voice itself as MIDI notes |
+| Saving | an object of its own (`OBJ_HARMSET`, the SMK store's last spare pair), in the autosave as the vocoder's settings are |
+| Exclude tracks from punch-in | a per-track PUNCH: IN / OUT. The excluded tracks are summed into a side bus and added after the punch-in; their reverb and delay tails stay in the shared returns |
+
+**The page (a draft, to be worked through against the H949's panel step by step, as the vocoder page was):**
+- **Keys:** each held key is one harmony voice's interval (up to 3), against a reference note or the tracked voice.
+- **Top pads:** the effect modes (RANDOM / ADT, FLANGE, REVERSE, REPEAT) and DELAY. Hold for momentary, tap to latch,
+  as punch-in.
+- **Bottom pads:** the H949's delay switches (6.25 / 12.5 / 25 / 50 / 100 / 200 ms, combined: 0–393.75 ms), the segment
+  (NORM / EXTEND), the splice, the interval mode.
+- **Knobs:** per voice MICRO PITCH, level, pan and delay; WET / DRY, FEEDBACK, LOW / HIGH EQ.
+
+**Cost (estimates, to be measured on the unit):**
+
+| Block | CPU (one core) | RAM |
+|---|---|---|
+| Pitch tracker (YIN-type at a reduced rate, a frame every ~10 ms, spread over the samples) | ~7 % | ~4 KB |
+| Each harmony voice (two interpolated heads, crossfade, splice by correlation) | ~1.2 % | ~5 KB (50 ms) |
+| Three voices | ~4 % | ~15 KB |
+| An H949-style long memory (400 ms: EXTEND, REVERSE, REPEAT), if wanted | — | ~38–77 KB |
+
+The room is already made. The vocoder build's flash savings (~295 KB) leave space. Storing the delay at 22 kHz gives
+64 KB of RAM back, leaving about 40 KB after the harmoniser. The vocoder's CPU work (sheds down from 6 a second to
+about 1) leaves the time.
+
+**Open, before the spec is complete:**
+1. **No key held:** what the voices play then (the last intervals, or fixed ratios as the H949's MANUAL).
+2. **The page, walked through with mock-ups**, as the vocoder page was.
+3. **The CPU budget on core 1:** a console micro-benchmark (cycles per multiply-accumulate) and the per-section
+   timing on the unit, then where it runs (core 0 or 1).
+4. **The splice timing:** from the H910's digital-board pages.
+
+**Then the build, in stages,** each one flashed, measured and tested on the unit before the next, the way the vocoder
+was built:
+1. **The core:** the pitch tracker and one voice, with host tests for the ratios and the splice.
+2. **The three voices and the page.**
+3. **The H949's effects and the MIDI out.**
+
+The spec lives with the vocoder's (`harmoniser-spec.md`, outside this repository, with the reference sheet).
+
 ## Power-on and special combos (same as SLOOP on FM-1)
 
 | Combo | Does |
