@@ -307,6 +307,17 @@ static void con_status(void)
     con_kv("uin_peak_l", uin.peak_l);                    /* |sample| since the last status */
     con_kv("uin_peak_r", uin.peak_r);
     uin.peak_l = uin.peak_r = 0;
+    {   /* track 3's carrier voices now (2026-11-04: a sequenced note against a played one): per active voice
+         * t3v = note | vel << 8 | gate << 16 | stage << 20, t3env its amplitude (Q15) */
+        uint32_t i;
+        for (i = 0; i < NVOICE; i++) {
+            const voice_t *v = &trk[VOC_TRK].v[i];
+            if (!v->active)
+                continue;
+            con_kv("t3v", (int32_t)(v->note | (uint32_t)v->vel << 8 | (uint32_t)v->gate << 16 | (uint32_t)v->stage << 20));
+            con_kv("t3env", v->env_out);
+        }
+    }
 #endif
 #if FELUCCA_FLASH
     con_kv("flash", flash_ok);
