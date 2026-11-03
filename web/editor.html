@@ -6431,7 +6431,7 @@ async function load(d) {
     for (let i = 0; i < d.info.pcount; i++) { sayK("reading", `${i + 1}/${total}`); d.pdesc[i] = await getDescOrNull(0, i); }
     for (let i = 0; i < d.info.gcount; i++) { sayK("reading", `${d.info.pcount + i + 1}/${total}`); d.gdesc[i] = await getDescOrNull(1, i); }
     const kd = d.pdesc[d.info.pe0];
-    if (kd && kd.label === "KIT" && kd.names.length) d.kitNames = kd.names;   /* (the drum track was selected) */
+    if (kd && kd.label === "KIT" && kd.names.length) { d.kitNames = kd.names; d.kitMin = kd.min; }   /* (the drum track was selected) */
     d.titles = [];
     for (let e = 0; e < d.info.nengines; e++) {
       const r = parse[CMD.NAMES](await d.link.request(req.names(e)));
@@ -6487,7 +6487,7 @@ async function rereadEngineDesc() {
   const before = JSON.stringify(dev.pdesc.slice(pe0));
   for (let i = 0; i < 8 && pe0 + i < dev.info.pcount; i++) dev.pdesc[pe0 + i] = await getDescOrNull(0, pe0 + i);
   const kd = dev.pdesc[pe0];
-  if (kd && kd.label === "KIT" && kd.names.length) dev.kitNames = kd.names;   /* the drum track's kits, for the mixer */
+  if (kd && kd.label === "KIT" && kd.names.length) { dev.kitNames = kd.names; dev.kitMin = kd.min; }   /* the drum track's kits, for the mixer */
   fm6Names();
   if (dev.built !== dev.dump.engine || JSON.stringify(dev.pdesc.slice(pe0)) !== before) buildGroups();
 }
@@ -6549,7 +6549,7 @@ function renderTrackbar() {
     const i = +b.dataset.i, x = dev.mix && dev.mix.tracks[i];
     b.setAttribute("aria-pressed", i === (dev.sel || 0) ? "true" : "false");
     const nm = i === 2 && dev.info.build & 2 ? ["VOCODER", "audio in"]   /* (the vocoder build's T3: its own patch) */
-      : !x ? [i === ntrk - 1 ? "DRUMS" : "", ""] : x.engine >= dev.info.nengines ? [(dev.kitNames || [])[x.e0] || "", "drums"]
+      : !x ? [i === ntrk - 1 ? "DRUMS" : "", ""] : x.engine >= dev.info.nengines ? [(dev.kitNames || [])[x.e0 - (dev.kitMin || 0)] || "", "drums"]
       : [(dev.names[x.engine] || [])[x.preset] || "", String(dev.info.engines[x.engine] || "").toLowerCase()];
     b.lastChild.replaceChildren(nm[0] + " ", el("span", { class: "dim", text: nm[1] }));
     b.title = `${t("track")} ${i + 1}`;
@@ -9439,7 +9439,7 @@ const mixTouched = (kind, i) => mixDrag === `${kind}:${i}` || performance.now() 
   || (kind === "pan" && (panWant.has(i) || (!!dev && dev.link.hasQueued("pan:" + i))));
 const drumTrack = (i) => !!dev && !!dev.mix && i === dev.mix.ntrk - 1;
 function trackName(x) {
-  if (x.engine >= dev.info.nengines) return ["DRUMS", (dev.kitNames || [])[x.e0]].filter(Boolean).join(" ");
+  if (x.engine >= dev.info.nengines) return ["DRUMS", (dev.kitNames || [])[x.e0 - (dev.kitMin || 0)]].filter(Boolean).join(" ");
   return [dev.info.engines[x.engine], (dev.names[x.engine] || [])[x.preset]].filter(Boolean).join(" ");
 }
 
@@ -10693,7 +10693,7 @@ async function lvKits() {
   try {
     if (sel !== ds) await rq(req.track(ds));
     const kd = await getDescOrNull(0, dev.info.pe0);
-    if (kd && kd.label === "KIT") LV.kitNames = dev.kitNames = kd.names;
+    if (kd && kd.label === "KIT") { LV.kitNames = dev.kitNames = kd.names; dev.kitMin = kd.min; }
   } finally { if (sel !== ds) await rq(req.track(sel)).catch(() => {}); }
 }
 
@@ -11254,7 +11254,7 @@ function lvStep(i, d) {
   const o = LV.tr[i];
   if (!o) return;
   if (lvDrum(i)) {
-    const nk = (LV.kitNames || []).length || 46, v = ((o.p[dev.info.pe0] ?? 0) + d + nk) % nk;
+    const nk = (LV.kitNames || []).length || 46, m = dev.kitMin || 0, v = m + (((o.p[dev.info.pe0] ?? m) - m + d + nk) % nk);
     lvParam(i, dev.info.pe0, v);
     return;
   }
@@ -11318,13 +11318,13 @@ function lvRenderStrip(i) {
   const s = LV.ui.strips && LV.ui.strips[i], o = LV.tr[i];
   if (!s || !o || LV.built !== dev) return;
   const drum = lvDrum(i);
-  const nm = drum ? (LV.kitNames || [])[o.p[dev.info.pe0]] || "DRUMS" : (dev.names[o.engine] || [])[o.preset] || "";
+  const nm = drum ? (LV.kitNames || [])[o.p[dev.info.pe0] - (dev.kitMin || 0)] || "DRUMS" : (dev.names[o.engine] || [])[o.preset] || "";
   s.name.textContent = drum ? "DRUMS" : dev.info.engines[o.engine] || "";
   /* the sound picker: the engine's presets (any engine: grouped), the drum track: the kits */
   const sig = drum ? "k" + (LV.kitNames || []).length : "e" + dev.names.length + ":" + [...LVS.favs].join(",") + ":" + (dev.bank ? dev.bank.slots.map((x) => x.used ? x.name : "").join("|") : "");
   if (s.sound.dataset.sig !== sig) {
     s.sound.dataset.sig = sig;
-    if (drum) s.sound.replaceChildren(...(LV.kitNames || []).map((n, k) => el("option", { value: String(k), text: n })));
+    if (drum) s.sound.replaceChildren(...(LV.kitNames || []).map((n, k) => el("option", { value: String(k + (dev.kitMin || 0)), text: n })));
     else s.sound.replaceChildren(...lvxSoundOptions(false), ...dev.names.map((names, e) => el("optgroup", { label: dev.info.engines[e] },
       ...(names || []).map((n, p) => el("option", { value: `${e}:${p}`, text: n })))));
   }
