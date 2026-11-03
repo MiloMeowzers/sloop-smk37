@@ -10492,6 +10492,11 @@ $("bk-file").addEventListener("change", async () => {
       renderSlots();
       try { await smpInfo(); renderSamples(); } catch (e) { /* shown by the next action */ }
       await afterSoundChange("bkRestored");
+      for (const k of ["smk", "vocoder"]) OB[k].dev = null;   /* (SMK-37: its tabs read again when shown) */
+      if (dev.daw) {                                    /* (the DAW map as restored) */
+        try { dev.daw = parse[CMD.DAW_GET](await rq(req.dawGet(1))); DW.map = dev.daw.map.map((x) => ({ ...x })); DW.dirty = false; }
+        catch (e) { /* shown by the next action */ }
+      }
       if (skipped.length) sayK("bkSmpSkipped", skipped.join(", "));   /* (slots bigger than this device's: an SMK-37's) */
       bkFillPages(file, skipped);                       /* the pages show the restored slots */
     } catch (e) { bkReport(e); } finally { $("bk-prog").hidden = true; }
