@@ -184,6 +184,26 @@ static void test_descriptors(void)
                         fmt &= (c[off + 8] | c[off + 9] << 8 | c[off + 10] << 16) == 44100;
                 }
             }
+            {   /* 2026-11-04: the reservation sized to the rate; 16 bit (a single-TT hub's): 2-byte subframes */
+                static const uint16_t MP[4] = {882, 828, 588, 552};
+                uint32_t m, mp_ok = 1, f16 = 1;
+                usb_layout_mode = UL_SYNTHS;
+                for (m = 0; m < 4u; m++) {
+                    stem_rate_mode = (uint8_t)m;
+                    get_desc(0x0200, &c, &cl);
+                    for (off = 0, cur_if = 0; off < cl; off += c[off]) {
+                        if (c[off + 1] == 4u)
+                            cur_if = c[off + 2];
+                        if (c[off] == 9u && c[off + 1] == 5u && c[off + 2] == 0x84u)
+                            mp_ok &= (uint32_t)(c[off + 4] | c[off + 5] << 8) == MP[m];
+                        if (c[off] == 11u && c[off + 1] == 0x24u && c[off + 2] == 2u && c[off + 3] == 1u &&
+                            cur_if == UAC_AS_IF)
+                            f16 &= m >= 2u ? c[off + 5] == 2u && c[off + 6] == 16u : c[off + 5] == 3u && c[off + 6] == 24u;
+                    }
+                }
+                check("EP4's reservation: 882 at 48, 828 at 44.1, 588 / 552 in 16 bit", mp_ok);
+                check("STEM RATE 16 bit: the format 2-byte subframes, 16 bit (else 3, 24)", f16);
+            }
             stem_rate_mode = 0, usb_layout_mode = UL_SYNTHS;
             check("STEM RATE 44.1: bcdDevice x.8x .. x.Ax, string 3 -D4 -Y4 -A4", ok);
             check("STEM RATE 44.1: the type I format 6 x 24 bit at 44100 only", fmt);

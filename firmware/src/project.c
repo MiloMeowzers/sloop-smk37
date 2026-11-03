@@ -885,7 +885,7 @@ static void smkset_fill(smkset_t *s)
     s->klay = (uint8_t)(knob_layout != 0u);
     s->ulay = (uint8_t)(usb_layout % UL_N);
     s->sfx = (uint8_t)(stem_fx % SFX_N);
-    s->srate = (uint8_t)(stem_rate != 0u);
+    s->srate = (uint8_t)(stem_rate & 3u);          /* (bit 1: 16 bit; an older build reads bit 0 only) */
     s->sfilt = (uint8_t)(stem_light != 0u);
     s->xfl = (uint8_t)(tp_xfl % TPX_N);
     s->lin = (uint8_t)(tp_lin != 0u);
@@ -913,7 +913,7 @@ static int smkset_take(const uint8_t *b, uint32_t n)
         knob_layout = (uint8_t)(s.klay & 1u);
         usb_layout = (uint8_t)(s.ulay < UL_N ? s.ulay : UL_STEREO);   /* (main.c: before usb_start) */
         stem_fx = (uint8_t)(s.sfx < SFX_N ? s.sfx : SFX_SLICER);
-        stem_rate = (uint8_t)(s.srate & 1u);
+        stem_rate = (uint8_t)(s.srate & 3u);
         stem_light = (uint8_t)(s.sfilt & 1u);
         tp_xfl = (uint8_t)(s.xfl < TPX_N ? s.xfl : TPX_128);
         tp_lin = (uint8_t)(s.lin & 1u);

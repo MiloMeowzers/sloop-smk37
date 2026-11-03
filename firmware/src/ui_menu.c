@@ -163,9 +163,9 @@ UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
     static const char *const G[4][2] = {{"RESAMPLED ON", "THE KEYBOARD"}, {"LIGHTEST:", "PC CONVERTS"},
                                         {"CLEANEST", "TOP END"}, {"1/3 LESS CPU", "BUSY PATTERNS"}};
     if (i == MI_SRATE)
-        return G[stem_rate & 1u][line & 1u];
+        return stem_rate & 2u ? (line ? "HUB SAFE" : "16 BIT:") : G[stem_rate & 1u][line & 1u];
     if (i == MI_SFILT)
-        return stem_rate ? (line ? "AT 44.1 KHZ" : "NOT USED") : G[2u + (stem_light & 1u)][line & 1u];
+        return stem_rate & 1u ? (line ? "AT 44.1 KHZ" : "NOT USED") : G[2u + (stem_light & 1u)][line & 1u];
     return 0;
 }
 static int ul_offered(uint32_t l) { return l < UL_N; }
@@ -381,9 +381,12 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_FRET: return sq_carry ? "CARRY" : "SLIP";   /* FLIP / LOOP BACK let go: the grid's place, or on from theirs */
     case MI_SRATE:                                    /* the stems' rate (STEREO: USB RATE's, this one dim) */
         *c = usb_layout != UL_STEREO ? C_HI : C_DIM;
-        return stem_rate ? "44.1 KHZ" : "48 KHZ";
+    {
+        static const char *const N[4] = {"48 KHZ", "44.1 KHZ", "48 / 16 BIT", "44.1 / 16"};   /* (16 bit: a hub's) */
+        return N[stem_rate & 3u];
+    }
     case MI_SFILT:                                    /* the resampler's filter (44.1: none, dim) */
-        *c = usb_layout != UL_STEREO && !stem_rate ? C_HI : C_DIM;
+        *c = usb_layout != UL_STEREO && !(stem_rate & 1u) ? C_HI : C_DIM;
         return stem_light ? "LIGHT" : "FULL";
     case MI_BUP:
     case MI_BDN: {                                    /* semitones of the pitch wheel up / down, the internal sounds */
@@ -771,7 +774,8 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         sq_carry = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !sq_carry);
         break;
     case MI_SRATE:                                     /* right 44.1, left 48; OCT+ toggles; re-plugged as LAYOUT */
-        stem_rate = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !stem_rate);
+        stem_rate = (uint8_t)(s > 0 ? (stem_rate < 3u ? stem_rate + 1u : 3u)   /* 48, 44.1, 48 / 16, 44.1 / 16 */
+                             : s < 0 ? (stem_rate ? stem_rate - 1u : 0u) : (stem_rate + 1u) % 4u);
         break;
     case MI_SFILT:                                     /* right LIGHT, left FULL; OCT+ toggles; at once */
         stem_light = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !stem_light);
