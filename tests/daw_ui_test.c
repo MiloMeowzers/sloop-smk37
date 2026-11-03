@@ -278,8 +278,15 @@ int main(int argc, char **argv)
         (void)mi_value(MI_SFILT, &col);
         check(col == C_DIM && !strcmp(mi_guide(MI_SFILT, 0), "NOT USED"), "STEM FILTER: dim, NOT USED at 44.1");
         check(!strcmp(MI_NAME[MI_SRATE], "STEM RATE") && !strcmp(MI_NAME[MI_SFILT], "STEM FILTER"), "the rows' names");
+        mi_set(MI_SRATE, 1);
+        check(stem_rate == 2 && !strcmp(mi_value(MI_SRATE, &col), "48 / 16 BIT") && !strcmp(mi_guide(MI_SRATE, 1), "HUB SAFE"),
+              "STEM RATE: then 48 / 16 BIT (2026-11-04: a single-TT hub's), its guide");
+        mi_set(MI_SRATE, 1);
+        mi_set(MI_SRATE, 1);
+        check(stem_rate == 3 && !strcmp(mi_value(MI_SRATE, &col), "44.1 / 16"), "STEM RATE: 44.1 / 16 the last, stops there");
+        stem_rate = 1;
         t_replug = 1;
-        ui.menu_sel = MI_SRATE; ui.force = 1; mi_set(MI_SRATE, 1); shot("daw-menu-usb-replug");
+        ui.menu_sel = MI_SRATE; ui.force = 1; stem_rate = 1; shot("daw-menu-usb-replug");
         t_replug = 0;
         mi_set(MI_SRATE, -1);
         ui.menu_sel = MI_SFILT; ui.force = 1; mi_set(MI_SFILT, 1); shot("daw-menu-usb-stems");

@@ -160,7 +160,7 @@ static void usb_replug_task(uint32_t now)
     static uint8_t lay, rate;
     static uint32_t t;
     uint8_t l = (uint8_t)(ul_offered(usb_layout) ? usb_layout : UL_STEREO);
-    uint8_t r = (uint8_t)(l != UL_STEREO && stem_rate);    /* (STEREO: STEM RATE does not apply) */
+    uint8_t r = (uint8_t)(l != UL_STEREO ? stem_rate & 3u : 0u);   /* (STEREO: STEM RATE does not apply) */
     if (usb.detached)
         return;                                             /* (an update or UBOOT under way) */
 #if BOARD_SMK37
@@ -393,7 +393,7 @@ UI_SMALL static void fm1_main(void)
 #if UAC6
     usb_layout_mode = (uint8_t)(ul_offered(usb_layout) ? usb_layout : UL_STEREO);   /* SMK-37: menu USB > USB LAYOUT,
                                                          * the same way (ui_menu.c: the layouts this build makes) */
-    stem_rate_mode = (uint8_t)(!SMK_UAC_PROBE && usb_layout_mode != UL_STEREO && stem_rate);   /* STEM RATE */
+    stem_rate_mode = (uint8_t)(!SMK_UAC_PROBE && usb_layout_mode != UL_STEREO ? stem_rate & 3u : 0u);   /* STEM RATE */
     stem_layout = usb_layout_mode;                      /* (fx.c: the channels it makes) */
 #endif
 #endif

@@ -61,8 +61,12 @@ static uint8_t usb_layout;                      /* the menu's USB LAYOUT (projec
 static uint8_t usb_layout_mode;                 /* this start's (main.c, before usb_start) */
 #define uac6_on (SMK_UAC_PROBE || usb_layout_mode != UL_STEREO)
 static int usb_layout_now(void) { return usb_layout_mode; }   /* (the menu: what this start presents) */
-static uint8_t stem_rate;                       /* the menu's STEM RATE: 0 48 kHz, 1 44.1 (project.c smkset) */
+static uint8_t stem_rate;                       /* the menu's STEM RATE: bit 0 44.1 kHz (else 48), bit 1 16 bit (else 24;
+                                                 * 2026-11-04: fits a single-TT hub's budget with AUDIO IN; project.c
+                                                 * smkset) */
 static uint8_t stem_rate_mode;                  /* this plug's (main.c; 0 with STEREO and in the probe) */
+#define U6_441 (stem_rate_mode & 1u)            /* (this plug's stems at 44.1 kHz) */
+#define U6_B16 ((stem_rate_mode >> 1) & 1u)     /* (.. in 16 bit) */
 static uint8_t stem_light;                      /* the menu's STEM FILTER: 0 FULL (12 taps), 1 LIGHT (8 taps); live */
 static uint8_t usb_replugging;                  /* main.c: off the bus for a re-plug (usb_retry waits for it) */
 #else
@@ -404,7 +408,8 @@ static int sn_string(const uint8_t **d, uint16_t *l)
         s[n++] = HEX[f[i] >> 4], s[n++] = HEX[f[i] & 15u];
     s[n++] = '-';
     {
-        static const char TAG[UL_N + 6][3] = {"ST", "DR", "SY", "AD", "P6", "S4", "S8", "D4", "Y4", "A4"};   /* (the
+        static const char TAG[UL_N + 12][3] = {"ST", "DR", "SY", "AD", "P6", "S4", "S8", "D4", "Y4", "A4",
+                                               "D6", "Y6", "A6", "D1", "Y1", "A1"};   /* (16 bit: 48, 44.1) */   /* (the
                                                          * probe, then STEREO with USB RATE 44.1 / 48, then the stems
                                                          * at STEM RATE 44.1: descriptors of their own, so devices of
                                                          * their own; AUTO keeps ST) */
@@ -413,7 +418,7 @@ static int sn_string(const uint8_t **d, uint16_t *l)
         if (ti == UL_STEREO && (usb_rate_mode == 1u || usb_rate_mode == 2u))
             ti = UL_N + usb_rate_mode;
         else if (ti != UL_STEREO && ti < UL_N && stem_rate_mode)
-            ti = UL_N + 3u + ti - 1u;
+            ti = UL_N + 3u + 3u * (stem_rate_mode - 1u) + ti - 1u;   /* (44.1; 16 bit at 48, at 44.1) */
         t = TAG[ti];
         s[n++] = t[0];
         s[n++] = t[1];
@@ -436,6 +441,10 @@ static int sn_string(const uint8_t **d, uint16_t *l)
 #define U6_CH 6u
 #define U6_MAXF 49u
 #define U6_MAXP (U6_MAXF * U6_CH * 3u)
+/* the largest packet this plug sends, which the host reserves on the bus whether it is used or not: 48 kHz 48 +-1
+ * frames, 44.1 44 / 45 +-1 (so 46), 3 bytes a sample or 2 (16 bit). A single-TT hub budgets about 1000 bytes a frame
+ * for full-speed isochronous: 24 bit at 48 (882) + AUDIO IN (196) does not fit, 16 bit (588 / 552) does */
+#define U6_MAXP_NOW ((U6_441 ? 46u : 49u) * U6_CH * (U6_B16 ? 2u : 3u))
 static uint8_t dev_u6[18], cfg_u6[CFG_LEN];
 static void uac6_desc(const uint8_t **d, uint16_t *l, int cfg)
 {
@@ -444,7 +453,11 @@ static void uac6_desc(const uint8_t **d, uint16_t *l, int cfg)
     if (!cfg) {
         memcpy(dev_u6, src, 18);
         dev_u6[12] = (uint8_t)((dev_u6[12] & 0x0Fu) |
-                               (SMK_UAC_PROBE ? 0x70u : (stem_rate_mode ? 0x70u : 0x30u) + 0x10u * usb_layout_mode));
+                               (SMK_UAC_PROBE ? 0x70u : (U6_441 ? 0x70u : 0x30u) + 0x10u * usb_layout_mode));
+        dev_u6[12] ^= (uint8_t)(U6_B16 ? 0x08u : 0u);   /* (16 bit: a version of its own) */
+#if SMK_UAC_IN_PROBE
+        dev_u6[13] = 0x04;                              /* (the playback probe: a version of its own, 4.x) */
+#endif
         *d = dev_u6;
         return;
     }
@@ -455,7 +468,9 @@ static void uac6_desc(const uint8_t **d, uint16_t *l, int cfg)
             static const uint8_t F6[11] = {11, 0x24, 2, 1, U6_CH, 3, 24, 1, 48000u & 0xFF, (48000u >> 8) & 0xFF,
                                            48000u >> 16};
             memcpy(q, F6, 11);
-            if (stem_rate_mode)
+            if (U6_B16)
+                q[5] = 2, q[6] = 16;                    /* (2 bytes a subframe, 16 bit) */
+            if (U6_441)
                 q[8] = UAC_RATE & 0xFFu, q[9] = (UAC_RATE >> 8) & 0xFFu, q[10] = UAC_RATE >> 16;
             k += 11u;
             continue;
@@ -467,8 +482,8 @@ static void uac6_desc(const uint8_t **d, uint16_t *l, int cfg)
             q[10] = 4;                                                      /* iChannelNames: strings 4.. */
         }
         if (p[0] == 9u && p[1] == 5u && p[2] == 0x84u) {
-            q[4] = (uint8_t)(U6_MAXP & 0xFFu);
-            q[5] = (uint8_t)(U6_MAXP >> 8);
+            q[4] = (uint8_t)(U6_MAXP_NOW & 0xFFu);
+            q[5] = (uint8_t)(U6_MAXP_NOW >> 8);
         }
         k += p[0];
     }
@@ -636,7 +651,7 @@ static void uac_rate_set(uint32_t hz)
 #endif
 #if UAC6
     if (uac6_on)
-        r48 = !stem_rate_mode;                          /* the stems: the one rate described (a host may never send
+        r48 = !U6_441;                                  /* the stems: the one rate described (a host may never send
                                                          * SET_CUR) */
 #endif
     if (r48 == uac.r48)
@@ -1669,7 +1684,12 @@ static void uac_service(void)
 #else
         n = uac6_ring_packet(ep4tx6);
 #endif
-        fm1_usb_ep4_send(ep4tx6, n * U6_FB);
+        if (U6_B16) {                                   /* 16 bit: each sample's top two bytes, packed in place */
+            uint32_t i;
+            for (i = 0; i < n * U6_CH; i++)
+                ep4tx6[2u * i] = ep4tx6[3u * i + 1u], ep4tx6[2u * i + 1u] = ep4tx6[3u * i + 2u];
+        }
+        fm1_usb_ep4_send(ep4tx6, n * U6_CH * (U6_B16 ? 2u : 3u));
         sie_wr(S_TXCSR1, 0x01);                         /* TxPktRdy (and UnderRun cleared) */
         return;
     }

@@ -175,7 +175,7 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 | SCREEN | KNOB LAYOUT | K7 | FM-1 (default): K1 MASTER, K2 SELECT, K3 ALGORITHM, K4 PRESETS, K5–K8 the dials. SMK: K1–K4 the dials, K5 MASTER, K6 SELECT, K7 PRESETS, K8 ALGORITHM. The knobs are endless: the new layout works at once. Switched to SMK, the menu's rows move to K1–K4 (K3 switches back) |
 | SCREEN | KNOB ACCEL | K8 | SLOOP's: ON (default), a fast turn moves further; OFF, one value a detent |
 | USB | USB LAYOUT | K5 | STEREO (default): the USB audio input as on the FM-1. DRUMS+RET, SYNTHS+RET, ALL DRY: [stems](#usb-audio-stems) for a DAW. A moment after the knob stops the keyboard re-plugs itself on USB (~1 s; RE-PLUG shows meanwhile) |
-| USB | STEM RATE | K6 | with a stem layout: 48 KHZ (default; resampled on the keyboard) or 44.1 KHZ (the lightest: the engines' own samples, the computer converts). Re-plugs as USB LAYOUT |
+| USB | STEM RATE | K6 | with a stem layout: 48 KHZ (default; resampled on the keyboard) or 44.1 KHZ (the lightest: the engines' own samples, the computer converts); **48 / 16 BIT** or **44.1 / 16**: 16-bit stems for a single-TT USB hub (about 78 dB below a full stem; with AUDIO IN, 24-bit stems do not fit such a hub's budget). Re-plugs as USB LAYOUT |
 | USB | STEM FILTER | K7 | at 48 KHZ: FULL (default; 12 taps, the cleanest top end) or LIGHT (8 taps, a third less of the stems' resampling, for busy patterns: −1.3 dB at 14 kHz, −2.8 dB at 16 kHz). At once |
 | PUNCH | STEM FX | K5 | with a stem layout: SLICER (default; each track's SLICER STUT, the punch-ins on the master only), PUNCH or PUNCH HQ (the rhythmic punch-ins on every stem; [below](#usb-audio-stems)). At once |
 | PUNCH | FADE | K6 | the punch-ins' fade in and out, 0 (default, the shortest) .. 15: the same setting as SELECT on the FX page (shown large at its top right). OCT+ back to 0 |
@@ -301,6 +301,7 @@ MIDI out all follow; they work with any STEM FX and any USB LAYOUT. Each while h
 - A fixed level: the stems follow neither MASTER nor USB AUDIO (set the levels in the DAW). The stereo output's full
   scale sits at −18 dBFS in the stems: 18 dB of headroom for the sum of six of them, and no limiter on them.
 - One rate at a time (6 channels of 24 bit fill a full-speed USB packet): **STEM RATE** 48 KHZ (default) or 44.1 KHZ.
+- **Through a USB hub:** a hub with a single TT (most) budgets about 1000 bytes a millisecond for full-speed audio. 24-bit stems reserve 882 (828 at 44.1); with AUDIO IN (196 more) that does not fit and the audio in drops out when the stems open. **STEM RATE 48 / 16 BIT** (or 44.1 / 16) reserves 588 / 552 and fits. A port on the computer itself needs none of this.
   The FM-1's USB RATE does not apply. At 48 kHz the stems are resampled on both cores, shared by the work each has
   (**STEM FILTER** FULL or LIGHT, at once); at 44.1 kHz they go out as the engines make them, with nothing to resample
   (the lightest on the keyboard; the computer converts if its project runs at 48). They are one 0.7 ms block later
