@@ -862,7 +862,12 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
         ed_str(d->unit, 8);
         if (d->fmt == F_ENUM && d->names)
             for (i = 0; i <= (uint32_t)(d->max - d->min) && i < 64u; i++)   /* (the 34 drum kits) */
+#if BOARD_SMK37
+                ed_str(d->names[i + (uint32_t)d->min], 8);   /* (names[] by value, as the screen reads them: the editor's
+                                                     * list starts at min, the vocoder build's KIT at 5) */
+#else
                 ed_str(d->names[i], 8);
+#endif
         break;
     case ED_STEP_GET:
     case ED_STEP_SET:
