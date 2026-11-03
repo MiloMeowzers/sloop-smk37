@@ -275,8 +275,7 @@ int main(void)
             n = run(1.0, vnoise, saw110);
             bl = hiss(n);
             vpg.nzc = 0;
-            printf("   above 4 kHz: WHITE %.1f dB, SOFT %.1f dB, BLEND 0 %% %.1f dB (VOICED %.1f)
-", a, sw, bl, v);
+            printf("   above 4 kHz: WHITE %.1f dB, SOFT %.1f dB, BLEND 0 %% %.1f dB (VOICED %.1f)\n", a, sw, bl, v);
             check("NOISE SOFT: less above 4 kHz than WHITE (> 6 dB)", a - sw > 6.0);
             check("NOISE BLEND 0 %: as VOICED above 4 kHz (+-3 dB)", fabs(bl - v) < 3.0);
         }
