@@ -105,7 +105,8 @@ void fm1_timer5_irq(void)
     if (felucca_dbg.in_audio) {
         felucca_dbg.nested++;
 #if SMK_UAC_IN_PROBE
-        if (usb_due)
+        if (uac_due)                            /* (5 kHz with the stems, as EP4: 2026-11-04, at 2 kHz ~0.9 % of the
+                                                 * packets overran, two arriving inside one poll with the stems out) */
             uin_rx();                           /* the playback probe: a packet a ms cannot wait for the render either
                                                  * (on the unit, polled only between renders, ~18 % were overrun);
                                                  * EP4's RX side and the ring's writer only, as uac_service */
@@ -123,8 +124,12 @@ void fm1_timer5_irq(void)
     if (owed & 1u)
         usb_poll();
 #if UAC6
-    else if (uac_due)
+    else if (uac_due) {
+#if SMK_UAC_IN_PROBE
+        uin_rx();                               /* (the audio in at the stems' 5 kHz too, before their packet) */
+#endif
         uac_service();                          /* (not nested: usb_poll does not run now, no interleaving) */
+    }
 #endif
 #if FELUCCA_UART
     if (owed & 2u)
