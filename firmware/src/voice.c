@@ -21,15 +21,20 @@ static uint32_t vage;                                   /* voice ages: one clock
 static void voc_saw(voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     uint32_t ph = v->ph[0], i;
-    int32_t ic1 = v->s[0], ic2 = v->s[1];
+    int32_t ic1 = v->s[0], ic2 = v->s[1], a = v->s[2];
+    /* the VOCODER patch's own envelope (2026-11-04, the owner: a carrier holds full while its key or step is held,
+     * whatever the track's ADSR and level trim): ~1.5 ms up to the velocity's level, ~12 ms down when let go; a voice
+     * given up (stage 4) fades as any */
+    int32_t tgt = v->gate ? 16384 + (int32_t)v->vel * 129 : 0;
     tsvf_t f;
     tsvf_coef(&f, ((int32_t)voc_cut << 8) + m->cutoff, voc_res);
     for (i = 0; i < n; i++, ph += m->inc) {
         int32_t s = clamp(tsvf_lp(&f, osc_saw(ph, m->inc), &ic1, &ic2), -32767, 32767);
-        out[i] += mulq15(mulq15(s, amp_at(m, i)), VOICE_FS) << 1;
+        a += (tgt - a) >> (tgt > a ? 6 : 9);
+        out[i] += mulq15(mulq15(s, v->stage == 4u ? amp_at(m, i) : a), VOICE_FS) << 1;
     }
     v->ph[0] = ph;
-    v->s[0] = ic1, v->s[1] = ic2;
+    v->s[0] = ic1, v->s[1] = ic2, v->s[2] = a;
 }
 /* track 3 while AUDIO IN is on: the audio track; its engine plays no part (no note_on, no render, no voice cap) */
 #define VOC_TRK_AUDIO(t) ((t) == &trk[VOC_TRK] && VOC_AUDIO_ON)
@@ -388,7 +393,7 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
 #if SMK_UAC_IN_PROBE
     if (VOC_TRK_AUDIO(t)) {                             /* the carrier: its filter afresh (sounding: kept) */
         if (!sounding)
-            v->s[0] = v->s[1] = 0;
+            v->s[0] = v->s[1] = v->s[2] = 0;
         return;
     }
 #endif
