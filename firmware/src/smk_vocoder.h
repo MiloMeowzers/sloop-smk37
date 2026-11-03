@@ -306,11 +306,12 @@ static void voc_analyse(uint32_t n)
                                                           * above VOC_ACT, up slowly (~1.5 s) and only in clear speech
                                                           * (within 12 dB of it), held in a pause; -12 .. +9 dB */
         int64_t t = ((int64_t)VOC_ACT * acg) / voa.envs;
-        int32_t gt = t < 1024 ? 1024 : t > VOC_ACG_MAX ? VOC_ACG_MAX : (int32_t)t;
+        int32_t gt = t < 1024 ? 1024 : t > 32767 ? 32767 : (int32_t)t;   /* (2026-11-04: +18 dB again, the owner:
+                                                                          * +9 and the slow rise sounded thin) */
         if (gt < acg)
-            voc_acg = gt;
-        else if (voc_ab[voc_aw].speech && voa.envs > VOC_ACT / 4)
-            voc_acg = acg + (gt - acg + 255) / 256;
+            voc_acg = gt;                                /* down at once (the pops) */
+        else if (voc_ab[voc_aw].speech)
+            voc_acg = acg + (gt - acg) / 16;             /* up as before (~90 ms), in speech */
     } else if (!act) {
         voc_acg = 4096;                                  /* (off: from 1.0 when it comes on) */
     }

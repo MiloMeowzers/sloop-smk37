@@ -258,8 +258,6 @@ static void vp_tap(uint32_t p)                      /* a deferred pad let go bef
     } else if (p == 7u) {
         if (!vp.bp_used) {
             vpg.byp = (uint8_t)((vpg.byp + 1u) % VB_N);
-            if (vpg.byp != VB_OFF && voc_dry % VOC_MIX_N == 0u)
-                voc_dry = 2;                            /* (its level at OFF: -12 dB, so the choice is heard) */
             vp_say("BYPASS", VP_BYP[vpg.byp], "");
         }
     } else {
