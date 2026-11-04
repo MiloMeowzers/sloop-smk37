@@ -904,7 +904,7 @@ UI_SMALL static void midi_entry(void)                              /* (top of ui
             st->flags &= (uint8_t)~(SF_CONT_ALL | SF_LEG);   /* (2.7: step entry: the step's own notes only) */
             st->time = ST_NOTE;
         }
-        if (t->p[P_VOICE]) {
+        if (TRK_VOICE(t)) {
             st->note[0] = (uint8_t)note;
             st->n = 1;
         } else if (st->n < 4u) {
@@ -941,7 +941,7 @@ UI_SMALL static void seq_entry(uint32_t pressed)
             st->flags &= (uint8_t)~(SF_CONT_ALL | SF_LEG);   /* (2.7: step entry: the step's own notes only) */
             st->time = ST_NOTE;
         }
-        if (t->p[P_CHORD] && !t->p[P_VOICE]) {            /* chord mode (2.4.1): the chord as it sounded (CHORD+,
+        if (t->p[P_CHORD] && !TRK_VOICE(t)) {            /* chord mode (2.4.1): the chord as it sounded (CHORD+,
                                                             * VLEAD), not only its root; (not played yet: built here) */
             uint8_t c[4];
             uint32_t m, j;
@@ -953,7 +953,7 @@ UI_SMALL static void seq_entry(uint32_t pressed)
             }
             for (j = 0; j < m && st->n < 4u; j++)
                 st->note[st->n++] = c[j];
-        } else if (t->p[P_VOICE]) {
+        } else if (TRK_VOICE(t)) {
             st->note[0] = (uint8_t)note;
             st->n = 1;
         } else if (st->n < 4u) {

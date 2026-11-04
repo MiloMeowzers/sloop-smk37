@@ -47,6 +47,9 @@ static const char *voc_trk_name(const track_t *t)      /* the name the UI shows 
 /* the audio track plays POLY without GLIDE, whatever the stored VOICE / GLIDE (an engine preset's: SUPERSAW's
  * UNISON put one note on all 8 voices of the shared budget, monophonic, gliding, the first stolen; 2026-10-30) */
 #define TRK_VMODE(t) (VOC_TRK_AUDIO(t) ? (uint32_t)V_POLY : (uint32_t)(t)->p[P_VOICE])
+/* (2026-11-04) the same for the sequencer and the UI (seq.c, ui_input.c, ui_layers.c: recording, ties, step entry):
+ * a chord recorded on the audio track was kept as a mono line when its stored VOICE was not POLY, one note held */
+#define TRK_VOICE(t) (VOC_TRK_AUDIO(t) ? V_POLY : (t)->p[P_VOICE])
 #define TRK_GLIDE(t) (VOC_TRK_AUDIO(t) ? 0 : (t)->p[P_GLIDE])
 /* the carrier's voices are its own, as the VSM201's synthesizer was another instrument: track 3's 8 outside the
  * budget the other parts share (not counted, never a victim of their notes, never shed: a saw costs little) */
@@ -57,6 +60,7 @@ _Static_assert(VOC_TRK == NPART - 1u, "the audio track is the last synth part");
 #define VOC_OWNENV e->ownenv
 #define VOC_NOSAW
 #define TRK_VMODE(t) ((uint32_t)(t)->p[P_VOICE])
+#define TRK_VOICE(t) ((t)->p[P_VOICE])
 #define TRK_GLIDE(t) ((t)->p[P_GLIDE])
 #define VOC_NPOOL NPART
 #define VOC_POOL_T(t)

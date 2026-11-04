@@ -521,7 +521,7 @@ static void step_add(track_t *t, uint32_t idx, uint32_t note, uint32_t vel, uint
 {
     step_t *s = &t->step[idx];
     uint32_t k;
-    if (s->time != ST_NOTE || !s->n || t->p[P_VOICE] != V_POLY) {
+    if (s->time != ST_NOTE || !s->n || TRK_VOICE(t) != V_POLY) {
         s->n = 0;                                   /* a fresh step */
         s->flags = 0;
         s->vel = 0;
@@ -739,7 +739,7 @@ UI_SMALL static uint32_t span_set(track_t *t, uint32_t i, const uint8_t *s, uint
         }
         if (sp_on(st)) {
             uint32_t add = 0;
-            if (t->p[P_VOICE] != V_POLY) {
+            if (TRK_VOICE(t) != V_POLY) {
                 span_why = 2;
                 break;
             }
@@ -854,12 +854,12 @@ UI_SMALL static void rec_note(track_t *t, uint32_t note, uint32_t vel, uint32_t 
     uint8_t ch[4], keep[4];
     uint32_t nc = 0, nk = 0, merged = 0;
     undo_mark(t, UNDO_REC(t));
-    if (t->p[P_VOICE] == V_POLY && !rat && hold && t->rh_n && st->time != ST_TIE && !(st->time == ST_NOTE && st->n) &&
+    if (TRK_VOICE(t) == V_POLY && !rat && hold && t->rh_n && st->time != ST_TIE && !(st->time == ST_NOTE && st->n) &&
         idx == ((t->rh_ties || t->rh_rs ? t->rh_last : t->rh_start) + 1u) % len) {
         nc = t->rh_n;                               /* (2.7.1) the step the hold goes on into, not tied yet: as a TIE */
         memcpy(ch, t->rh_note, nc);
         st->time = ST_TIE;
-    } else if (t->p[P_VOICE] == V_POLY && !rat && st->time == ST_TIE) {
+    } else if (TRK_VOICE(t) == V_POLY && !rat && st->time == ST_TIE) {
         nc = chain_notes(t, idx, ch);
     }
     if (nc) {
@@ -886,7 +886,7 @@ UI_SMALL static void rec_note(track_t *t, uint32_t note, uint32_t vel, uint32_t 
             chain_end(t, (idx + 1u) % len, keep, nk);
     } else {
         uint32_t last = t->rh_ties || t->rh_rs ? t->rh_last : t->rh_start;
-        int leg = t->p[P_VOICE] != V_POLY && !rat && hold && t->rh_n && !(t->rh_n == 1u && t->rh_note[0] == note) &&
+        int leg = TRK_VOICE(t) != V_POLY && !rat && hold && t->rh_n && !(t->rh_n == 1u && t->rh_note[0] == note) &&
                   idx != t->rh_start && (idx == (last + 1u) % len || (t->rh_ties && idx == last && st->time == ST_TIE));
         step_add(t, idx, note, vel, vel_lvl(vel), rat);
         if (leg)                                    /* (2.7.2) MONO / LEGATO: played over the note before, still held
@@ -956,7 +956,7 @@ UI_SMALL static int hold_merge(track_t *t, step_t *s)
             ;
         add += k == s->n;
     }
-    if (t->p[P_VOICE] != V_POLY || s->n > 4u || s->n + add > 4u || (s->flags & SF_SLIDE) || s->rat)
+    if (TRK_VOICE(t) != V_POLY || s->n > 4u || s->n + add > 4u || (s->flags & SF_SLIDE) || s->rat)
         return 0;                                   /* (ratchets, a slide: the step plays as written, the hold ends) */
     for (i = 0; i < t->rh_n; i++) {
         for (k = 0; k < s->n && s->note[k] != t->rh_note[i]; k++)
@@ -977,7 +977,7 @@ UI_SMALL static int hold_only(track_t *t, step_t *s, uint32_t idx)
         return 0;                                   /* (a TIE: the melody's note goes on with the hold, as recorded) */
     for (i = 0; i < n; i++)
         other |= !rh_held(t, c[i]);
-    if (!other || t->p[P_VOICE] != V_POLY || !t->rh_n)
+    if (!other || TRK_VOICE(t) != V_POLY || !t->rh_n)
         return 0;
     memset(s, 0, sizeof *s);
     for (i = 0; i < t->rh_n && i < 4u; i++) {
@@ -1056,7 +1056,7 @@ UI_SMALL static void rec_release(track_t *t, uint32_t note)
     early = early && into <= half + (lat < half ? lat : half);   /* (let go early in the hold's last step) */
     if (k) {                                        /* (2.7.1) others still held: this one ends, they go on */
         t->rh_n = (uint8_t)k;
-        if (t->p[P_VOICE] != V_POLY)
+        if (TRK_VOICE(t) != V_POLY)
             return;
         if (t->rh_offn < 4u)
             t->rh_off[t->rh_offn++] = (uint8_t)note;
@@ -1421,7 +1421,7 @@ static void ft_close(void)
             uint32_t d = ft_ev[i].d == FT_OPEN || ft_ev[i].t + ft_ev[i].d > T ? T - ft_ev[i].t : ft_ev[i].d;
             uint32_t idx = (ft_ev[i].t * len * 2u + T) / (2u * T) % len;
             uint32_t steps = (d * len * 2u + T) / (2u * T);
-            if (t->p[P_VOICE] == V_POLY) {            /* (2.8.3) POLY: on under the notes after it, as held (it used to
+            if (TRK_VOICE(t) == V_POLY) {            /* (2.8.3) POLY: on under the notes after it, as held (it used to
                                                        * stop at the next step with notes: a held C1 cut by the scale
                                                        * played over it, Sam on the FM-1). Inside the loop */
                 uint8_t nn = ft_ev[i].note;
@@ -1930,7 +1930,7 @@ static void input_on(track_t *t, uint32_t note, uint32_t vel)
         arp_add(t, note);                         /* (the arp records the notes it plays) */
         return;
     }
-    if (t->p[P_VOICE] != V_POLY && (((song.rec >> trk_index(t)) & 1u) || (ft_on && ft_trk == trk_index(t)))) {   /* (2.8.3) one
+    if (TRK_VOICE(t) != V_POLY && (((song.rec >> trk_index(t)) & 1u) || (ft_on && ft_trk == trk_index(t)))) {   /* (2.8.3) one
                                                   * note at a time (recording, or a free take): say so */
         const uint32_t *h = live_held[trk_index(t) % NTRK];
         if (h[0] | h[1] | h[2] | h[3])

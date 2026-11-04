@@ -142,7 +142,7 @@ UI_SMALL static void step_down(uint32_t w)
         memset(s, 0, sizeof *s);
         for (i = 0; i < n && i < 4u; i++)
             s->note[i] = pen_n ? pen_note[i] : last_note;
-        s->n = (uint8_t)(t->p[P_VOICE] == V_POLY ? n : 1u);
+        s->n = (uint8_t)(TRK_VOICE(t) == V_POLY ? n : 1u);
         s->time = ST_NOTE;
         s->vel = 100;
     }
