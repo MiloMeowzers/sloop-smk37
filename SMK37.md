@@ -492,6 +492,22 @@ more features) with the full sequence playing. The vocoder page itself costs not
   - the editor's tests cover the backup objects and its tabs.
 - **On the unit:** each build flashed, played and measured (sheds, `timing`) before the next.
 
+### Fixes and additions, 2026-11-04 to 11-06
+
+Each was measured on the unit before it was built (the console on the CDC port, the stems recorded on the computer and
+compared by syllabic modulation, brightness and harmonic sharpness):
+- **The audio in, polled at 5 kHz** while the stems run: about 0.9 % of its packets were lost before (crackles that
+  grew); none since.
+- **STEM RATE 16 BIT** (48 / 16, 44.1 / 16): fits a single-TT hub's budget with the audio in. Tested clean through
+  the hub at 44.1 / 16.
+- **The carrier's own envelope:** full while a key or step is held, at its velocity, whatever track 3's envelope.
+- **Track 3 always POLY** in the sequencer and step entry (`TRK_VOICE`, 3353be8): a recorded chord was kept as a mono
+  line when the stored VOICE was not POLY, so one note of each chord played back. The cause of the thin sequenced sound
+  and of the change heard when the sequence took over from the keys.
+- **SILENCE > MOD WHEEL** (ae4a5e1): VIBRATO, BRIDGE TILT or NOISE BLEND while track 3 is selected.
+- **AUTOCONTROL:** its rise restored (+18 dB, speech only), its instant cut kept; BYPASS's forced −12 dB removed.
+- CPU with all of these: ~1.1 sheds a second with the sequence and the voice, as before.
+
 ### Next steps: the harmoniser
 
 **Not built.** The harmoniser is the next stage of the vocoder build. Its spec is being written and nothing will be

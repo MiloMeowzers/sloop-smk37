@@ -22,6 +22,17 @@ Track 3's carrier is a fixed, named patch, **VOCODER**: you cannot load another 
 track 3 while AUDIO IN is on. Its filter is the carrier's own (below). The web editor shows track 3 as **VOCODER** and
 locks its engine and presets.
 
+**How the carrier plays.**
+- **Its own envelope.** Each carrier note sounds at full level for as long as its key or sequencer step is held (about
+  1.5 ms to open, 12 ms to close), at the note's velocity. Track 3's own envelope and level settings do not shape it,
+  so a played note and a sequenced one sound the same.
+- **Always POLY.** While AUDIO IN is on, track 3 plays, records and steps in its chords as POLY, whatever its stored
+  VOICE setting. A chord recorded into the sequencer, played or made by CHORD mode, plays back with all its notes.
+  Patterns recorded before build 3353be8 may hold one note of each chord: record them again.
+- **Chords are the vocoder.** One note gives the vocoder one saw's harmonics to shape; a chord of three or four gives
+  it about three times the level and the classic sound. The whisper sounds (s, t, f) come from the noise source and
+  stay the same whatever is played.
+
 ### How the sound flows
 
 ```mermaid
@@ -58,6 +69,7 @@ flowchart LR
 | SILENCE | BRIDGE | OFF (−48 .. 0 dB) | silence bridging: the carrier plays on through pauses in your voice |
 | | THRESHOLD | −42 dB (−54 .. −24) | where the speech / pause detector draws the line |
 | | AGC | OFF, PEAKS, LIGHT, FULL | the carrier's own level control (keeps big chords from overloading) |
+| | MOD WHEEL | VIBRATO, BRIDGE TILT, NOISE BLEND | what the mod wheel does while track 3 is selected: VIBRATO (±1 semitone at full); BRIDGE TILT (wheel up: TILT to +3 dB/oct, heard in pauses); NOISE BLEND (wheel up: the carrier back into the whisper sounds, less hiss). Not VIBRATO: no vibrato on track 3 |
 | BRIDGE TONE | TILT | +1.0 dB/oct (−3 .. +3) | the bridged sound's tilt |
 | | COLOUR | 100 % | how much of your voice's last shape stays on the bridge in a pause |
 | | BLEND | SUM, FILL | the bridge added to the vocoder, or filling in under it |
@@ -212,3 +224,7 @@ on the keyboard.
 | Harsh consonants | NOISE PINK or SOFT; NOISE BLEND lower |
 | Pumping or pops | AUTOCONTROL OFF, or leave it on: it no longer boosts in pauses |
 | Sound goes on in pauses | BRIDGING OFF, or BRIDGE lower |
+| Tremolo or wobble on track 3 | the mod wheel is up and track 3 is selected (the wheels act on the selected track, the sequencer's notes too): wheel down, or SILENCE > MOD WHEEL to another choice. The sound changes as K5 on the punch page selects tracks for the same reason |
+| The mod wheel reads near full half-way up | HOME > SYSTEM > HARDWARE CALIBRATION, both wheels through their full travel |
+| Sequenced chords thin, one note held | patterns recorded before 3353be8: record them again |
+| Audio in crackles through a USB hub | USB > STEM RATE: 48 / 16 BIT or 44.1 / 16 (a single-TT hub cannot fit 24-bit stems and the audio in), or a port of its own |
