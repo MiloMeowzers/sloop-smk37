@@ -11,7 +11,7 @@ name: SMK-37 build
 
 on:
   push:
-    branches: [ci, uac-in]          # (uac-in: the playback probe, on the private repository)
+    branches: [ci, uac-in, harmoniser]          # (uac-in: the playback probe, on the private repository)
   workflow_dispatch:
 
 env:

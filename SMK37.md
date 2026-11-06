@@ -511,7 +511,9 @@ compared by syllabic modulation, brightness and harmonic sharpness):
 ### Next steps: the harmoniser
 
 **Not built.** The harmoniser is the next stage of the vocoder build. Its spec is being written and nothing will be
-built before it is complete and signed off. What follows is the spec as it stands.
+built before it is complete and signed off. What follows is the spec as it stands. **The draft manual,
+[HARMONISER.md](HARMONISER.md),** describes the planned page, keys, menu and sequencer use (2026-11-06), to be checked
+before the build. The work is on the `harmoniser` branch, from the baseline `smk37-voc-baseline` (ae4a5e1).
 
 **What it is.** Your live voice (the same USB audio in as the vocoder) pitch-shifted into harmony voices that **keep
 the voice's own timbre**. The vocoder replaces the voice's timbre with the carrier's; the harmoniser keeps it. The two
