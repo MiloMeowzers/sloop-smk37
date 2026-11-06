@@ -59,7 +59,7 @@ flowchart LR
   VO["USB voice<br/>(VOICE level)"] --> IM(("input<br/>mix"))
   SN["HARM sends<br/>from the other tracks<br/>(FADER BANK E)"] --> IM
   IM --> IL["INPUT LEVEL<br/>5 LEDs"] --> SUM(("+"))
-  IL --> TRK["pitch tracker<br/>(the sung note)"]
+  IL --> TRK["pitch tracker<br/>(the input's note)"]
   SUM --> MEM["MEMORY<br/>400 ms<br/>(REPEAT: input cut,<br/>the memory loops)"]
   MEM --> V1["V1 MAIN<br/>function, ratio,<br/>MAIN delay"]
   MEM --> V2["V2 MAIN"]
@@ -77,7 +77,7 @@ flowchart LR
 ```
 
 - **INPUT:** the USB voice and the other tracks' HARM sends, mixed, then INPUT LEVEL and its meter, and the pitch
-  tracker, which follows the note you sing ([section 6](#6-the-input-routing)).
+  tracker, which follows the note in the input, whatever is fed in ([section 6](#6-the-input-routing)).
 - **The feedback** returns the MAIN and DELAY ONLY outputs, through LOW / HIGH EQ, into the memory alongside the
   input, after INPUT LEVEL (so INPUT LEVEL does not change it), as on the H949 ([section 8](#8-feedback)).
 - **The memory** holds the last 400 ms. **REPEAT** cuts the input and loops what is in it
@@ -119,8 +119,8 @@ panel's indicator LEDs beneath it.
   - in **DELAY** the pitch is unity but the readout still shows the ratio set, its decimal point flashing: switching
     back to a pitch function takes that ratio at once (the H949's preset trick);
   - in **REPEAT** the readout stays, the REP LED lights.
-  - Beside it: **KEYS**, **MAN** or **K+M** (the control method: section 5.1), **ALG 1** / **ALG 2**, and the **sung
-    note** the tracker hears (`A3`, or `--` when it hears none).
+  - Beside it: **KEYS**, **MAN** or **K+M** (the control method: section 5.1), **ALG 1** / **ALG 2**, and the **input's
+    note** the tracker hears (`A3`, or `--` when it hears none; `T2` beside it when NOTE FROM takes a track's notes).
 - **The function LEDs**, as the H949's: one of four lit per voice, **red** for the pitch functions (NORM, EXTEND,
   SHARP, FLAT) or **green** for the delay functions (DELAY, RANDOM, FLANGE, REVERSE). **REP** lit while REPEAT holds.
 - **The voice strips:** V1, V2, V3 each with its interval (`+M3`, `-P5`, `U`, `+8va`, `-15ma`; MICRO in cents while
@@ -340,23 +340,39 @@ carrier's cutoff while vocoding; the HARMONY track has no filter):
 
 - **FREE:** the sizes above, always; the keys give every other interval.
 - **SCALE** (HOME > HARMONY > INTERVALS): the intervals follow the HARMONY track's key and SCALE, **counted from the
-  note you are singing**: the pitch tracker hears it (shown beside the readout), and a 3rd is the scale's 3rd above
-  that note. Sing C in C major and a 3rd up is E (+4); sing D and it is F (+3). Keys off the scale snap to it. With the
-  track's SCALE off, as FREE.
-- **The tracker** (Stage 1): it follows your sung note about every 10 ms; between notes, in consonants and in silence
-  it keeps the last note it heard, so the harmony does not jump. A note sung between two scale notes counts from the
-  nearer. In FREE the tracker is not needed: the intervals are fixed sizes.
+  note being played into the harmoniser**: the pitch tracker hears it (shown beside the readout), and a 3rd is the
+  scale's 3rd above that note. A C in C major and a 3rd up is E (+4); a D and it is F (+3). Keys off the scale snap to
+  it. With the track's SCALE off, as FREE.
+- **The tracker** (Stage 1) follows **the harmoniser's input**, whatever it is: your voice, a sent synth line, track
+  3's live audio (an instrument, a sample, a record), the drums. It reads the note about every 10 ms; between notes, in
+  consonants, noise and silence it keeps the last note it heard, so the harmony does not jump. A note between two scale
+  notes counts from the nearer. In FREE the tracker is not needed: the intervals are fixed sizes.
+- **What it can track:** one clear note at a time: a voice, a bass, a lead, a monophonic instrument. A chord, a full mix
+  or the drums have no single note: it holds the last one it found, or locks onto the strongest. For those, use FREE,
+  or take the note from a track (below).
+- **NOTE FROM** (HOME > HARMONY): **INPUT** (the default: the tracker, on the whole input mix), **VOICE** (the tracker on
+  the USB voice alone, whatever else is sent), or **T1 / T2 / T3** (the notes that track is playing, from its keys and
+  sequencer: exact, nothing to track; the highest note of a chord). So a synth line sent into the harmoniser can be
+  harmonised in the scale from its own notes, and the voice can follow a chord track's top line.
 - Your own ratio tables (just intonation, the owner's chromatic, harmonic and circle-of-fifths modes): Stage 2.
 
 ## 6. The input routing
 
-The H949 had one input. Here the harmoniser's input is a small mixer: your voice, and any of the other tracks, as a
-studio would feed an H949 from an aux send.
+The H949 had one input. Here the harmoniser's input is a small mixer: the USB voice, and any of the other tracks, as a
+studio would feed an H949 from an aux send. Anything can go in: voices, synths, live instruments or samples over USB,
+the drums.
+
+| Source | Sent by | Notes |
+|---|---|---|
+| **The USB voice** | VOICE: the HARMONY track's own column on bank E | always available, whatever track 3 does |
+| **T1 or T2**, whichever is not the HARMONY track | its HARM send, bank E | the synth's output, after its own filter and effects |
+| **T3, live audio** | its HARM send, bank E | **in AUDIO mode only**: the USB audio as track 3 plays it (its fader, mute and AUTOCONTROL). In VOCODER mode track 3's send is off (dimmed on bank E) |
+| **The drums (T4)** | its HARM send, bank E | pitched, reversed, repeated and fed-back drums |
 
 ```mermaid
 flowchart LR
   USB["USB voice in"] -->|"VOICE level<br/>(bank E, the HARMONY track's fader)"| MIX(("+"))
-  TA["the other tracks<br/>(the other synth, T3, drums)"] -->|"HARM send<br/>(bank E, each track's fader)<br/>after its fader"| MIX
+  TA["the other tracks<br/>T1 or T2 (whichever is not HARMONY),<br/>T3 live audio (AUDIO mode), the drums"] -->|"HARM send<br/>(bank E, each track's fader)<br/>after its fader"| MIX
   MIX --> IL["INPUT LEVEL<br/>(G2 K1) and the LEDs"] --> H["the harmoniser"]
 ```
 
@@ -368,9 +384,10 @@ flowchart LR
 - **The sends are taken after the track's fader and mute** (as the reverb and delay sends), so muting a track takes it
   out of the harmony too. HOME > HARMONY > SEND POINT: **POST** (the default) or **PRE** (before the fader: turn a
   track's fader down and hear only its harmony).
-- **Track 3:** its send carries what track 3 plays: the voice dry (AUDIO) or **vocoded** (VOCODER): a harmonised
-  vocoder. The USB voice reaches the harmoniser on its own, through VOICE, whatever track 3 does.
-- **The drums** can be sent too: pitched, reversed or repeated drums.
+- **Track 3** sends only in AUDIO mode (live audio). In VOCODER mode its send is off; the USB voice still reaches the
+  harmoniser through VOICE.
+- **VOICE and track 3's send carry the same audio** in AUDIO mode: VOICE straight from USB, track 3's send after its
+  fader, mute and AUTOCONTROL. Use one or the other.
 - **Mono:** the sends and the voice are summed to mono, as the H949's one input.
 - **No loops:** the harmoniser's output is not sent back into itself through the sends (its own feedback does that), and
   the reverb and delay returns cannot be sent.
@@ -385,8 +402,8 @@ flowchart LR
   three greens and never LIMIT**; the IN / OUT pad shows the same, orange and red when hot (section 4.4).
 - **In REPEAT the LEDs work backwards**, as the H949's: they go out as the input gets louder, showing it is being
   ignored.
-- **The pitch tracker** listens to this mix. For SCALE intervals to follow your voice, sing over sends that are low,
-  or send tracks with SCALE on FREE.
+- **The pitch tracker** listens to this mix (or to what NOTE FROM chooses: section 5). With several sources in, set
+  NOTE FROM to the one whose notes the harmony should follow.
 - **IN / OUT** (G2 bottom 7): OUT, the input straight to the outputs, the harmoniser bypassed.
 - The feedback joins after INPUT LEVEL, so turning the input down does not change the feedback.
 
@@ -480,6 +497,7 @@ As the H949's REVERSE function (G2, FUNCTION SELECT OUT, F4), per voice or for A
 | TRACK | OFF, T1, T2 | which track is the HARMONY track |
 | SEND POINT | POST, PRE | where the other tracks' HARM sends are taken (section 6) |
 | PEDAL | MOMENTARY, LATCH | the footswitch's REPEAT |
+| NOTE FROM | INPUT, VOICE, T1, T2, T3 | where SCALE takes its note: the tracker on the input or the voice, or a track's played notes (section 5) |
 | INTERVALS | SCALE, FREE | the intervals in the track's key and scale, or fixed sizes |
 | NO KEY | SILENT, HOLD | the voices with nothing held |
 | OUTPUT | MIX, MAIN \| DLY, DRY \| WET | the split (also G3) |
@@ -509,7 +527,7 @@ web editor's **Harmony** tab comes later.
 | The voice sounds frozen | REPEAT latched: tap it off |
 | Words come out backwards | a voice on REVERSE (green F4 LED): FUNCTION SELECT IN, NORM |
 | A growing howl or spiral | FB levels down, HIGH EQ and LOW EQ to the centre; FB LIMIT SAFE |
-| Wrong interval in a key | INTERVALS SCALE and the track's key; the sung note shown beside the readout (`--`: the tracker hears none; sends louder than the voice confuse it) |
+| Wrong interval in a key | INTERVALS SCALE and the track's key; the input's note shown beside the readout (`--`: the tracker hears none; several sources or chords confuse it: NOTE FROM VOICE or a track, or FREE) |
 | A track is harmonised that should not be | its HARM send (FADER BANK E) |
 | A warble or flutter | the splice: most on low voices and big intervals down; EXTEND on sustained sounds (Stage 2) |
 | One side of the stereo only | OUTPUT on MAIN \| DLY or DRY \| WET: MIX for both sides |
@@ -518,8 +536,8 @@ web editor's **Harmony** tab comes later.
 
 Settled (the owner, 2026-11-07): the H949's switch rows are the button grid, with the control method group; the pitch
 on bank B and the feedback (the voices' sum, as the H949) on bank D, the HARMONY track's filter and delay send unused;
-the pads as level meters; REPEAT and feedback in Stage 1; **the pitch tracker in Stage 1** (SCALE counts from the sung
-note); the 16 interval pads kept; the defaults; the splits.
+the pads as level meters; REPEAT and feedback in Stage 1; **the pitch tracker in Stage 1** (SCALE counts from the input's
+note); the sources (the USB voice, T1 or T2, T3 in AUDIO mode, the drums); the 16 interval pads kept; the defaults; the splits.
 
 1. ~~REPEAT on NOTE REPEAT~~: **settled (the owner, 2026-11-07):** NOTE REPEAT's usual job (the LFO / voice controls)
    does not exist on the HARMONY track. Still to check on the unit: whether the PEDAL jack can be read.
