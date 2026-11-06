@@ -521,8 +521,8 @@ on bank B and the feedback (the voices' sum, as the H949) on bank D, the HARMONY
 the pads as level meters; REPEAT and feedback in Stage 1; **the pitch tracker in Stage 1** (SCALE counts from the sung
 note); the 16 interval pads kept; the defaults; the splits.
 
-1. **REPEAT on NOTE REPEAT and the PEDAL jack** (section 9), with the G2 pad: right? The pedal depends on the jack being
-   readable: to check on the unit.
+1. ~~REPEAT on NOTE REPEAT~~: **settled (the owner, 2026-11-07):** NOTE REPEAT's usual job (the LFO / voice controls)
+   does not exist on the HARMONY track. Still to check on the unit: whether the PEDAL jack can be read.
 2. **The input routing** (section 6): FADER BANK E for the HARM sends and the VOICE level; POST by default with a PRE
    option; track 3's send carrying the vocoder. Right?
 3. **The memory and the tracker:** REPEAT and the feedback need the 400 ms memory (~35 KB of RAM at 44.1 kHz 16 bit,
