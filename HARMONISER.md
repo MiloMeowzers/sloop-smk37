@@ -44,8 +44,7 @@ Its sound comes from the method: a memory read by two heads moving at the pitch 
    filter's place: the HARMONY track has no filter). The centre is unison (`1.000`), the bottom two octaves down, the top one octave up, and the readout
    follows it as the H949's did its MANUAL knob ([section 5.1](#51-the-control-method-and-the-pitch-fader)).
 7. **K8** is **WET / DRY**: all the way down is your voice unshifted, all the way up the harmony alone.
-8. **REPEAT** is the **NOTE REPEAT** button (and a footswitch on the PEDAL jack): hold it to capture and loop what
-   you just sang ([section 9](#9-repeat-the-note-repeat)).
+8. **REPEAT** is the **NOTE REPEAT** button: hold it to capture and loop what you just sang ([section 9](#9-repeat-the-note-repeat)).
 9. **FEEDBACK** is the HARMONY track's fader on **FADER BANK D** (its delay send's place: the HARMONY track has no
    delay send): bring it up for the H949's spirals and echoes ([section 8](#8-feedback)).
 
@@ -143,8 +142,8 @@ to go on, **hold PATCH** for the HOME menu, **<** and **>** (or SELECT) step thr
 | **G2 PANEL** | the H949's front-panel switch row (the button grid): FUNCTION SELECT and the four function switches, VOICE, the control method (MANUAL, KEYS & MIDI); the MAIN OUTPUT (MSEC) switches, IN / OUT, REPEAT | 1 (part), 2 |
 | **G3 OUTPUTS** | the output sources, SPLIT, ALGORITHM, FB LIMIT; the DELAY ONLY (MSEC) switches | 1 (part), 2 |
 
-- **REPEAT is on the NOTE REPEAT button** while the page is open, whatever the group, and on a footswitch; also on
-  G2, as the H949's panel had it ([section 9](#9-repeat-the-note-repeat)).
+- **REPEAT is on the NOTE REPEAT button** while the page is open, whatever the group; also on G2, as the H949's
+  panel had it ([section 9](#9-repeat-the-note-repeat)).
 - **PITCH and FEEDBACK are on faders** (FADER BANK B and D, the HARMONY track's column), whatever the group.
 - **Every pad that carries a signal is also its level meter** ([section 4.4](#44-the-pads-as-level-meters)).
 - The pads keep their usual jobs everywhere else. On this page they play the harmoniser. **Hold = momentary, tap =
@@ -221,7 +220,7 @@ Switches with no job in the current function are drawn dim.
   CV + MAN.
 - **IN / OUT** (bottom 7): the H949's LINE IN / OUT. OUT bypasses the harmoniser: the input passes straight to the
   outputs, as it is. While IN, the pad is the **input level meter** (section 4.4).
-- **REPEAT** (bottom 8, the H949's panel button; also NOTE REPEAT and the footswitch): hold = momentary, tap = latch.
+- **REPEAT** (bottom 8, the H949's panel button; also NOTE REPEAT): hold = momentary, tap = latch.
   [Section 9](#9-repeat-the-note-repeat).
 
 | K1 | K2 | K3 | K4 | K5 | K6 | K7 | K8 |
@@ -359,7 +358,7 @@ carrier's cutoff while vocoding; the HARMONY track has no filter):
 | **USB IN** | heard | the tracker on the USB audio alone, whatever else is sent (your voice, or an instrument over USB) |
 | **T1 / T2** | played | the notes the synth track plays, from its keys and sequencer; a chord's highest note |
 | **T3** | played | track 3's notes from its keys and sequencer. In VOCODER mode these are **the vocoder's carrier keys**: the harmony follows the chord you play the vocoder with |
-| **DRUMS** | played | each tonal drum hit's own pitch (its sound's note with TUNE): kicks, toms, 808s, bells, metal. Tone-less hits (closed hat, shaker, clap, noise) are skipped: the last note holds |
+| **DRUMS** | played or heard | **a synthesised kit** (808 and the others): each tonal hit's own pitch (its sound's note with TUNE): kicks, toms, 808s, bells, metal; tone-less hits (closed hat, shaker, clap, noise) skipped, the last note held. **A sample kit:** a sample's pitch is in its recording, which the kit does not know, so the tracker listens to the drums' send instead (heard). Later: a PITCH per lane in the web editor's DRUM KIT (a note, or none), so a sample kit plays as exactly as a synthesised one |
 
   So a synth line sent in is harmonised from its own notes; your voice can follow the vocoder's keys or a chord track's
   top line; sent drums are harmonised from the drums' own tuning.
@@ -464,12 +463,10 @@ is being held back.
 ## 9. REPEAT (the note repeat)
 
 As the H949's REPEAT (**Stage 1**): **press REPEAT and whatever is in the memory at that instant is captured and loops
-for as long as REPEAT is held** (or latched). Three ways to press it:
+for as long as REPEAT is held** (or latched). Two ways to press it:
 - **The NOTE REPEAT button** (printed on the SMK-37; SLOOP's LFO button), while the HARMONY page is open, whatever the
   group. Hold = momentary, tap = latch; its light is on while REPEAT holds. (The HARMONY track has no synth LFO, so the
   button's usual job is not missed there.)
-- **A footswitch on the PEDAL jack**, as the H949 was often worked from the floor: pressed = REPEAT, or HOME > HARMONY >
-  PEDAL: LATCH (each press toggles). If the jack can be read by the firmware: to check on the unit.
 - **The REPEAT pad** on G2 (bottom 8), as the H949's panel button, which also meters the loop.
 - **The input is cut off** while REPEAT is on (the input LEDs work backwards to show it).
 - **The voices keep playing the captured memory**: pads, keys and the sequencer still change their intervals, so a
@@ -505,7 +502,6 @@ As the H949's REVERSE function (G2, FUNCTION SELECT OUT, F4), per voice or for A
 |---|---|---|
 | TRACK | OFF, T1, T2 | which track is the HARMONY track |
 | SEND POINT | POST, PRE | where the other tracks' HARM sends are taken (section 6) |
-| PEDAL | MOMENTARY, LATCH | the footswitch's REPEAT |
 | NOTE FROM | INPUT, USB IN, T1, T2, T3, DRUMS | where SCALE takes its note: the tracker on the input or the USB audio, or a track's played notes (T3 in VOCODER mode: the carrier keys; DRUMS: the tonal hits' pitch) (section 5) |
 | INTERVALS | SCALE, FREE | the intervals in the track's key and scale, or fixed sizes |
 | NO KEY | SILENT, HOLD | the voices with nothing held |
@@ -549,7 +545,7 @@ the pads as level meters; REPEAT and feedback in Stage 1; **the pitch tracker in
 note); the sources (the USB voice, T1 or T2, T3 in AUDIO mode, the drums); the 16 interval pads kept; the defaults; the splits.
 
 1. ~~REPEAT on NOTE REPEAT~~: **settled (the owner, 2026-11-07):** NOTE REPEAT's usual job (the LFO / voice controls)
-   does not exist on the HARMONY track. Still to check on the unit: whether the PEDAL jack can be read.
+   does not exist on the HARMONY track. (A footswitch on the PEDAL jack: later, nothing to test it with yet.)
 2. **The input routing** (section 6): FADER BANK E for the HARM sends and the VOICE level; POST by default with a PRE
    option; track 3's send carrying the vocoder. Right?
 3. **The memory and the tracker:** REPEAT and the feedback need the 400 ms memory (~35 KB of RAM at 44.1 kHz 16 bit,
