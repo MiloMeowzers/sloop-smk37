@@ -35,11 +35,16 @@ Its sound comes from the method: a memory read by two heads moving at the pitch 
    reads **HARMONY**.
 3. Select the HARMONY track and tap **PATCH** until the header reads **HARMONY**: the big red PITCH RATIO readout
    fills the top of the screen ([section 3](#3-the-screen)).
-4. Sing or speak and watch the **input LEDs** under the readout: aim for all three green, never the red LIMIT. **K1**
-   on the PANEL group is INPUT LEVEL.
+4. Sing or speak and watch the **input LEDs** under the readout, and the **IN / OUT pad** (G2), which lights as a level
+   meter: aim for its colour at full brightness, never **orange or red** ([section 4.4](#44-the-pads-as-level-meters)).
+   **K1** on the PANEL group is INPUT LEVEL.
 5. Press a pad on the **INTERVALS** group: the top row harmonises up, the bottom row down. The readout shows the
    voice's ratio (`1.260` for a major 3rd up). Or play keys: a key's distance from **C4** is its voice's interval.
-6. **K8** is **WET / DRY**: all the way down is your voice unshifted, all the way up the harmony alone.
+6. Or take the **pitch dial**: tap **MANUAL** (G2), then move the HARMONY track's fader on **FADER BANK B** (where its
+   filter would be). The centre is unison (`1.000`), the bottom two octaves down, the top one octave up, and the readout
+   follows it as the H949's did its MANUAL knob ([section 5.1](#51-the-control-method-and-the-pitch-fader)).
+7. **K8** is **WET / DRY**: all the way down is your voice unshifted, all the way up the harmony alone.
+8. **REPEAT** is the bottom-right pad on every group: hold it to capture and loop what you just sang.
 
 Track 3 still plays the voice too (AUDIO or VOCODER, as you set it). For the harmony alone, turn track 3's fader down
 or mute it; to sing over a vocoded chord, leave it up.
@@ -88,7 +93,7 @@ panel's indicator LEDs beneath it.
  ┌──────────────────────────────────────┐
  │  G2 PANEL          (or: K3 FB MAIN 64%)│  header: the group, or what is being turned
  │ V1  ┌─┐   ┌─┐ ┌─┐ ┌─┐                │
- │ KBD │ │ . │ │ │ │ │ │   8.888 style,    │  the PITCH RATIO readout: 4 digits,
+ │ KEYS│ │ . │ │ │ │ │ │   8.888 style,    │  the PITCH RATIO readout: 4 digits,
  │ ALG1│ │   │ │ │ │ │ │   red LED         │  about 40 x 66 px each, unlit
  │     └─┘   └─┘ └─┘ └─┘                │  segments faintly visible
  │ NORM EXT SHRP FLAT│DLY RND FLG REV  REP│  the function LEDs (red | green), REPEAT
@@ -106,7 +111,7 @@ panel's indicator LEDs beneath it.
   - in **DELAY** the pitch is unity but the readout still shows the ratio set, its decimal point flashing: switching
     back to a pitch function takes that ratio at once (the H949's preset trick);
   - in **REPEAT** the readout stays, the REP LED lights.
-  - Beside it: **KBD** or **MAN** (the control mode: keys and pads, or the MANUAL knob) and **ALG 1** / **ALG 2**.
+  - Beside it: **KEYS**, **MAN** or **K+M** (the control method: section 5.1) and **ALG 1** / **ALG 2**.
 - **The function LEDs**, as the H949's: one of four lit per voice, **red** for the pitch functions (NORM, EXTEND,
   SHARP, FLAT) or **green** for the delay functions (DELAY, RANDOM, FLANGE, REVERSE). **REP** lit while REPEAT holds.
 - **The voice strips:** V1, V2, V3 each with its interval (`+M3`, `-P5`, `U`, `+8va`, `-15ma`; MICRO in cents while
@@ -125,19 +130,23 @@ to go on, **hold PATCH** for the HOME menu, **<** and **>** (or SELECT) step thr
 
 | Group | Its pads are | Stage |
 |---|---|---|
-| **G1 INTERVALS** | the HK940's interval keys: 8 up, 8 down | 1 |
-| **G2 PANEL** | the H949's front-panel switch row: FUNCTION SELECT and the four function switches, ALGORITHM, REPEAT, IN / OUT; the MAIN OUTPUT (MSEC) switches | 1 (part), 2 |
-| **G3 OUTPUTS** | the DELAY ONLY (MSEC) switches, the output mutes and the split modes | 2 (part in 1) |
+| **G1 INTERVALS** | the HK940's interval keys: 8 up, 7 down, and REPEAT | 1 |
+| **G2 PANEL** | the H949's front-panel switch row (the button grid): FUNCTION SELECT and the four function switches, VOICE, the control method (MANUAL, KEYS & MIDI); the MAIN OUTPUT (MSEC) switches, IN / OUT, REPEAT | 1 (part), 2 |
+| **G3 OUTPUTS** | the output sources, SPLIT, ALGORITHM, FB LIMIT; the DELAY ONLY (MSEC) switches, REPEAT | 1 (part), 2 |
 
-The pads keep their usual jobs everywhere else. On this page they play the harmoniser. **Hold = momentary, tap =
-latch**, as on the punch-in page, for every pad that turns something on.
+- **REPEAT is on every group**, always the **bottom-right pad**, so it is under your hand whatever the page shows.
+- **Every pad that carries a signal is also its level meter** ([section 4.4](#44-the-pads-as-level-meters)).
+- The pads keep their usual jobs everywhere else. On this page they play the harmoniser. **Hold = momentary, tap =
+  latch**, as on the punch-in page, for every pad that turns something on.
 
 ### 4.1 G1 INTERVALS (Stage 1)
 
 | Pad | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
 | **Top (up)** | unison | 2nd | 3rd | 4th | 5th | 6th | 7th | octave |
-| **Bottom (down)** | 2nd | 3rd | 4th | 5th | 6th | 7th | octave | two octaves |
+| **Bottom (down)** | 2nd | 3rd | 4th | 5th | 6th | 7th | octave | **REPEAT** |
+
+Two octaves down (×0.25) is on the keys (C2) and at the bottom of the pitch fader.
 
 - **Press a pad:** it takes the next free voice (V1, V2, V3); a fourth replaces the oldest. Held: momentary; tapped:
   latched until tapped again.
@@ -159,8 +168,8 @@ latch**, as on the punch-in page, for every pad that turns something on.
 
 | Pad | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
-| **Top** | FUNCTION SELECT | F1 | F2 | F3 | F4 | ALGORITHM 1 / 2 | REPEAT | IN / OUT |
-| **Bottom** | 6.25 ms | 12.5 ms | 25 ms | 50 ms | 100 ms | 200 ms | VOICE | CONTROL |
+| **Top** | FUNCTION SELECT | F1 | F2 | F3 | F4 | VOICE | **MANUAL** | **KEYS & MIDI** |
+| **Bottom** | 6.25 ms | 12.5 ms | 25 ms | 50 ms | 100 ms | 200 ms | IN / OUT | **REPEAT** |
 
 **The function switches, as the H949's.** FUNCTION SELECT flips the meaning of F1–F4, and one of the four is active,
 its pad lit in the LED's colour:
@@ -178,9 +187,9 @@ its pad lit in the LED's colour:
   1.001). For doubling and chorus. Stage 1.
 - **DELAY:** the voice becomes a plain delay at unity pitch, its time the sum of the six MAIN switches (0–393.75 ms).
   The readout keeps the ratio set (see section 3). Stage 2.
-- **RANDOM:** the voice's delay wanders pseudo-randomly between 0 and 25 ms at a constant rate (MANUAL sets the
+- **RANDOM:** the voice's delay wanders pseudo-randomly between 0 and 25 ms at a constant rate (G2 K2, RATE, sets the
   rate), so its pitch drifts slightly too: automatic double tracking, less mechanical than a fixed delay. Stage 2.
-- **FLANGE:** the voice's delay swept between 0 and 10 ms (MANUAL sets the rate), mixed with the dry: flanging
+- **FLANGE:** the voice's delay swept between 0 and 10 ms (G2 K2, RATE, sets the rate), mixed with the dry: flanging
   without an outside mix. Stage 2.
 - **REVERSE:** the memory read backwards in segments of **400 ms** (or 200 / 100 / 50 ms with the MAIN switches,
   below), pitched by the voice's interval (no MICRO, as the H949). Stage 2. [Section 10](#10-reverse).
@@ -196,43 +205,74 @@ its pad lit in the LED's colour:
 Switches with no job in the current function are drawn dim.
 
 **The other pads:**
-- **ALGORITHM 1 / 2** (top 6): 1, the crossfaded splice (Stage 1, the only one); 2, the H910's hard splice (Stage 2).
-  The H949 needed algorithm 2 for clean RANDOM and FLANGE; here both work on either.
-- **REPEAT** (top 7): hold = momentary, tap = latch. [Section 9](#9-repeat-the-note-repeat).
-- **IN / OUT** (top 8): the H949's LINE IN / OUT. OUT bypasses the harmoniser: the input passes straight to the
-  outputs, as it is. Lit green while IN.
-- **VOICE** (bottom 7): which voice the function and MAIN switches act on: **ALL** (the default: the three together,
-  as one H949), V1, V2, V3. Tap steps; the pad takes the voice's colour (white for ALL).
-- **CONTROL** (bottom 8): **KBD** (the keys, pads and sequencer set the intervals, as the HK940) or **MAN** (the MANUAL
-  knob sets the readout voice's ratio continuously, ×0.25 to ×2.0, as turning the H949's MANUAL).
+- **VOICE** (top 6): which voice the function and MAIN switches (and MANUAL) act on: **ALL** (the default: the three
+  together, as one H949), V1, V2, V3. Tap steps; the pad takes the voice's colour (white for ALL).
+- **MANUAL** and **KEYS & MIDI** (top 7, 8): the control method, the H949's CONTROL MODE switch group
+  ([section 5.1](#51-the-control-method-and-the-pitch-fader)). One lit, or both (press them together) for the H949's
+  CV + MAN.
+- **IN / OUT** (bottom 7): the H949's LINE IN / OUT. OUT bypasses the harmoniser: the input passes straight to the
+  outputs, as it is. While IN, the pad is the **input level meter** (section 4.4).
+- **REPEAT** (bottom 8, as on every group): hold = momentary, tap = latch. [Section 9](#9-repeat-the-note-repeat).
 
 | K1 | K2 | K3 | K4 | K5 | K6 | K7 | K8 |
 |---|---|---|---|---|---|---|---|
-| INPUT LEVEL | MANUAL | FB MAIN LEVEL | FB DLY ONLY LEVEL | LOW EQ | HIGH EQ | DLY ONLY LEVEL | WET / DRY |
+| INPUT LEVEL | RATE | FB MAIN LEVEL | FB DLY ONLY LEVEL | LOW EQ | HIGH EQ | DLY ONLY LEVEL | WET / DRY |
 
-**MANUAL** (K2), as the H949's knob: the ratio in MAN (and the MICRO range in SHARP / FLAT), the rate in RANDOM and
-FLANGE. In KBD it does nothing in NORM.
+- **RATE** (K2): the H949's MANUAL knob in its other jobs, the rate in RANDOM and FLANGE. The pitch itself is on the
+  fader (section 5.1).
+- **The feedback** (K3–K6) is on the panel group in Stage 1 ([section 8](#8-feedback)).
 
-Stage 1 plays NORM, SHARP, FLAT, ALGORITHM 1, IN / OUT, VOICE, CONTROL, INPUT LEVEL, MANUAL and WET / DRY; the rest is
-drawn dim.
+Stage 1 plays NORM, SHARP, FLAT, VOICE, MANUAL, KEYS & MIDI, IN / OUT, REPEAT, INPUT LEVEL, the feedback with its EQ, the
+DELAY ONLY level and WET / DRY; the rest is drawn dim.
 
-### 4.3 G3 OUTPUTS (Stage 2; the mutes and pans in Stage 1)
+### 4.3 G3 OUTPUTS (Stage 1: the sources, pans, DELAY ONLY, FB LIMIT; Stage 2: the splits, ALGORITHM 2)
 
 | Pad | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
-| **Top** | DRY on / off | V1 on / off | V2 on / off | V3 on / off | DLY ONLY on / off | MIX | MAIN \| DLY | DRY \| WET |
-| **Bottom** | 6.25 ms | 12.5 ms | 25 ms | 50 ms | 100 ms | 200 ms | FB LIMIT | — |
+| **Top** | DRY on / off | V1 on / off | V2 on / off | V3 on / off | DLY ONLY on / off | SPLIT | ALGORITHM 1 / 2 | FB LIMIT |
+| **Bottom** | 6.25 ms | 12.5 ms | 25 ms | 50 ms | 100 ms | 200 ms | — | **REPEAT** |
 
-- **Top 1–5:** each output source on or off (lit in its colour while it plays, its brightness the level, as the
-  vocoder page's channel pads).
-- **Top 6–8: the split** ([section 7](#7-the-outputs-and-the-splits)): one of three is lit.
+- **Top 1–5:** each output source on or off; each is that source's **level meter** (section 4.4).
+- **SPLIT** (top 6): tap steps MIX → MAIN | DLY → DRY | WET ([section 7](#7-the-outputs-and-the-splits)); its colour is
+  the split's, and it meters the **HARMONY track's output** (what reaches the mix and the stem).
+- **ALGORITHM 1 / 2** (top 7): 1, the crossfaded splice (Stage 1, the only one); 2, the H910's hard splice (Stage 2).
+  The H949 needed algorithm 2 for clean RANDOM and FLANGE; here both work on either.
+- **FB LIMIT** (top 8): **SAFE** (the default) or **H949** ([section 8](#8-feedback)); it meters the **feedback loop**.
 - **Bottom 1–6: the DELAY ONLY (MSEC) switches**, as the H949's: the DELAY ONLY time is their sum, 0 to 393.75 ms. It
   has no effect on the MAIN functions and they none on it.
-- **FB LIMIT** (bottom 7): **SAFE** (the default) or **H949** ([section 8](#8-feedback)).
 
 | K1 | K2 | K3 | K4 | K5 | K6 | K7 | K8 |
 |---|---|---|---|---|---|---|---|
 | DRY LEVEL | DLY ONLY LEVEL | PAN DRY | PAN V1 | PAN V2 | PAN V3 | PAN DLY ONLY | WET / DRY |
+
+### 4.4 The pads as level meters
+
+Pitch shifting, feedback and REPEAT all build level quickly, so **every pad that carries a signal shows its level**, in
+its own colour (its voice's, its source's or its function's) with two warning colours on top:
+
+| The pad | Means |
+|---|---|
+| dim, its colour | silent, or very low |
+| brighter, its colour (8 steps) | the level, rising: a safe level is full brightness in its own colour |
+| **orange** | **hot**: within 6 dB of clipping (−6 to −1 dBFS) |
+| **red** | **clipping**: within 1 dB of full scale, or a limiter working; held lit for a second so you see it |
+
+As the vocoder page's channel pads, with a short peak hold. **What each pad meters:**
+
+| Group | Pad | Its level |
+|---|---|---|
+| G1 | an interval pad in use | its voice's output |
+| G1, G2, G3 | REPEAT (bottom-right) | the captured loop, while REPEAT holds (dim otherwise) |
+| G2 | IN / OUT | the **input**, after INPUT LEVEL (the five input LEDs, on a pad: its colour, then orange, then red at LIMIT) |
+| G2 | the active function switch (F1–F4) | the MAIN output (the voices' sum) |
+| G3 | DRY, V1, V2, V3, DLY ONLY | each source |
+| G3 | SPLIT | the HARMONY track's output, after the split: what reaches the mix and the stem |
+| G3 | FB LIMIT | the **feedback loop**: orange as it nears unity gain, red while SAFE's limiter works (or, on H949, while the loop gain is over 1) |
+
+The other pads (the MSEC switches, VOICE, MANUAL, KEYS & MIDI, ALGORITHM) show their state, not a level.
+
+**On every group**, whatever its pads show, an input at LIMIT or a clipping output also flashes the screen's header red
+(**INPUT HOT**, **OUT CLIP**, **FB HOT**) for a second, and the input LEDs under the readout keep showing the input.
 
 ## 5. The keys and the intervals
 
@@ -246,6 +286,27 @@ The keys set intervals as notes, as on the HK940 (whose keys were laid out from 
 - **NO KEY: SILENT**, a voice sounds while its key or pad is held (or the pad latched); **HOLD**, the last intervals
   stay until new ones are played.
 - **Bend** on the HARMONY track bends all three voices by the track's bend range; the **mod wheel** adds vibrato.
+
+### 5.1 The control method and the pitch fader
+
+As the H949's CONTROL MODE switches (MANUAL, CV + MAN, KEYBOARD), two pads on G2, top 7 and 8:
+
+| Lit | The pitch comes from | As the H949's |
+|---|---|---|
+| **KEYS & MIDI** (the default) | the keys, the G1 interval pads, the sequencer, and **MIDI in** on the HARMONY track's channel (an outside keyboard or DAW): up to three intervals, one a voice | KEYBOARD (the HK940) |
+| **MANUAL** | **the pitch fader**: the VOICE-selected voice's ratio, continuously (with VOICE on ALL: V1; V2 and V3 keep their intervals) | MANUAL |
+| **both** (press the two together) | the keys set the intervals, and the fader **moves all of them together** (the whole harmony transposed, continuously) | CV + MAN |
+
+**The pitch fader** is the HARMONY track's fader on **FADER BANK B**, in place of its filter (as track 3's fader is the
+carrier's cutoff while vocoding; the HARMONY track's filter is not used):
+- **The centre is unison**, `1.000`, held by the fader's dead zone.
+- **Down:** to ×0.25 at the bottom (two octaves); **up:** to ×2.0 at the top (one octave), so each half is even in
+  semitones (24 below, 12 above), finer near the centre.
+- In **MANUAL** the readout shows the fader's ratio as it moves. In **both**, the offset (`+3.5` semitones and so on)
+  shows in the header, the readout the readout voice's resulting ratio.
+- A fader takes over once moved, as SLOOP's faders do. In KEYS & MIDI alone, the fader does nothing (its screen label
+  reads **PITCH (MAN)**).
+- **SCALE** does not snap the fader: it is continuous, as the H949's knob.
 
 | Pad | FREE (semitones) | Ratio (the H949's table) | SCALE |
 |---|---|---|---|
@@ -264,7 +325,7 @@ The keys set intervals as notes, as on the HK940 (whose keys were laid out from 
 | bottom 5, 6th down | −9 | 0.595 | the scale's 6th below |
 | bottom 6, 7th down | −10 | 0.561 | the scale's 7th below |
 | bottom 7, octave down | −12 | 0.500 | −12 |
-| bottom 8, two octaves down | −24 | 0.250 | −24 |
+| two octaves down (C2; the fader's bottom) | −24 | 0.250 | −24 |
 
 - **FREE:** the sizes above, always; the keys give every other interval.
 - **SCALE** (HOME > HARMONY > INTERVALS): the intervals follow the HARMONY track's key and SCALE; keys off the scale
@@ -283,7 +344,7 @@ The keys set intervals as notes, as on the HK940 (whose keys were laid out from 
   average is low. **Set INPUT LEVEL so the voice lights all three greens and never LIMIT.**
 - **In REPEAT the LEDs work backwards**, as the H949's: they go out as the input gets louder, to show it is being
   ignored while still showing its level.
-- **IN / OUT** (G2 top 8): OUT, the input straight to the outputs, the harmoniser bypassed.
+- **IN / OUT** (G2 bottom 7): OUT, the input straight to the outputs, the harmoniser bypassed.
 - The feedback joins after INPUT LEVEL, so turning the input down does not change the feedback.
 
 ## 7. The outputs and the splits
@@ -310,7 +371,9 @@ sources, **DRY, V1, V2, V3, DELAY ONLY**, and the HARMONY track's stereo output,
 
 ## 8. Feedback
 
-As the H949's FEEDBACK CONTROL GROUP: part of the two outputs returns to the memory's input.
+As the H949's FEEDBACK CONTROL GROUP: part of the two outputs returns to the memory's input. **Stage 1**, with its EQ
+and FB LIMIT: it is half the H949's sound. Watch the **FB LIMIT pad** (G3): orange as the loop nears unity, red while it
+is being held back.
 
 - **FB MAIN LEVEL** (G2 K3): the MAIN output (the three voices' sum) back to the input.
 - **FB DLY ONLY LEVEL** (G2 K4): the DELAY ONLY output back to the input.
@@ -330,8 +393,9 @@ As the H949's FEEDBACK CONTROL GROUP: part of the two outputs returns to the mem
 
 ## 9. REPEAT (the note repeat)
 
-As the H949's REPEAT: **press REPEAT and whatever is in the memory at that instant is captured and loops for as long
-as REPEAT is held** (or latched).
+As the H949's REPEAT (**Stage 1**): **press REPEAT and whatever is in the memory at that instant is captured and loops
+for as long as REPEAT is held** (or latched). It is the **bottom-right pad on every group**, and meters the loop while
+it holds.
 - **The input is cut off** while REPEAT is on (the input LEDs work backwards to show it).
 - **The voices keep playing the captured memory**: pads, keys and the sequencer still change their intervals, so a
   captured word or note can be played as a harmony, a chord, or a melody of repeats. With a voice on REVERSE, the
@@ -386,6 +450,9 @@ web editor's **Harmony** tab comes later.
 | Symptom | Check |
 |---|---|
 | No harmony | AUDIO IN ON; TRACK set; IN / OUT on IN; the input LEDs lit; a pad or key held (or NO KEY HOLD); WET / DRY not 0 %; the sources on (G3); the track's fader |
+| Pads orange or red | that signal is hot or clipping (section 4.4): the IN / OUT pad, INPUT LEVEL down; a voice's pad, its LEVEL; SPLIT, the levels or WET / DRY; FB LIMIT, the feedback |
+| The pitch fader does nothing | the control method is KEYS & MIDI: tap MANUAL (or both); the fader is on FADER BANK B |
+| Keys or MIDI do nothing | the control method is MANUAL alone: tap KEYS & MIDI; MIDI in on the HARMONY track's channel |
 | The LEDs dark | INPUT LEVEL; the computer's output to the SMK-37; REPEAT on (the LEDs work backwards) |
 | Red LIMIT flashing | INPUT LEVEL down |
 | Only my dry voice, twice | track 3 also plays the voice: its fader down |
@@ -398,13 +465,17 @@ web editor's **Harmony** tab comes later.
 
 ## 12. Open points to settle before Stage 1
 
-1. **The button grid:** the H949's front-panel switch row (FUNCTION SELECT, the four function switches, the two MSEC
-   groups, ALGORITHM, REPEAT, IN / OUT) is G2 and G3 here; the intervals the HK940 gave are G1. Is that what was meant?
-2. **The 16 interval pads** (section 4.1): two octaves down on bottom 8, or a 9th?
+1. ~~The button grid~~: **settled (the owner, 2026-11-07):** the H949's switch rows (G2, G3), with the control method
+   group (MANUAL, KEYS & MIDI); REPEAT a pad on every group; feedback in Stage 1; the pitch dial on the fader; the
+   pads as level meters.
+2. **G1's last pad** is REPEAT now, so two octaves down moved to the keys and the fader. Right?
 3. **SCALE without a tracker:** counted from the key's root in Stage 1, or the tracker in Stage 1?
-4. **The memory:** REPEAT, REVERSE, EXTEND and the delays need the H949's 400 ms: ~35 KB of RAM at 44.1 kHz 16 bit
-   (~18 KB at 22 kHz, the band limited to ~10 kHz against the H949's 15 kHz). Stage 1 alone needs ~100 ms (~9 KB).
-   Measure, then decide whether Stage 1 takes the full memory.
-5. **Defaults:** voice LEVEL −6 dB, WET / DRY 50 %, NO KEY SILENT, VOICE ALL, FB LIMIT SAFE, keys C2–C5.
+4. **The memory:** REPEAT and feedback in Stage 1 need the H949's 400 ms: ~35 KB of RAM at 44.1 kHz 16 bit (~18 KB at
+   22 kHz, the band limited to ~10 kHz against the H949's 15 kHz). Measure the free RAM and CPU first.
+5. **Defaults:** voice LEVEL −6 dB, WET / DRY 50 %, NO KEY SILENT, VOICE ALL, KEYS & MIDI, FB LIMIT SAFE, keys C2–C5.
+   The meter's colours: orange from −6 dBFS, red from −1 dBFS, held a second.
 6. **The outputs:** are MIX, MAIN | DLY and DRY | WET the splits wanted? DELAY ONLY on a track of its own (Stage 3)?
 7. **Feedback:** MAIN as the voices' sum (as one H949), or a feedback level per voice?
+8. **Feedback on a fader too?** It is on G2's knobs (K3, K4). The HARMONY track's FADER BANK D (its delay send) could
+   be FB MAIN instead, for riding the feedback by hand as the pitch is ridden on bank B; the track's delay send would
+   then be on the menu only.
