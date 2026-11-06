@@ -120,7 +120,7 @@ panel's indicator LEDs beneath it.
     back to a pitch function takes that ratio at once (the H949's preset trick);
   - in **REPEAT** the readout stays, the REP LED lights.
   - Beside it: **KEYS**, **MAN** or **K+M** (the control method: section 5.1), **ALG 1** / **ALG 2**, and the **input's
-    note** the tracker hears (`A3`, or `--` when it hears none; `T2` beside it when NOTE FROM takes a track's notes).
+    note** the tracker hears (`A3`, or `--` when it hears none; `T2`, `T3` or `DR` beside it when NOTE FROM takes a track's notes).
 - **The function LEDs**, as the H949's: one of four lit per voice, **red** for the pitch functions (NORM, EXTEND,
   SHARP, FLAT) or **green** for the delay functions (DELAY, RANDOM, FLANGE, REVERSE). **REP** lit while REPEAT holds.
 - **The voice strips:** V1, V2, V3 each with its interval (`+M3`, `-P5`, `U`, `+8va`, `-15ma`; MICRO in cents while
@@ -350,10 +350,19 @@ carrier's cutoff while vocoding; the HARMONY track has no filter):
 - **What it can track:** one clear note at a time: a voice, a bass, a lead, a monophonic instrument. A chord, a full mix
   or the drums have no single note: it holds the last one it found, or locks onto the strongest. For those, use FREE,
   or take the note from a track (below).
-- **NOTE FROM** (HOME > HARMONY): **INPUT** (the default: the tracker, on the whole input mix), **VOICE** (the tracker on
-  the USB voice alone, whatever else is sent), or **T1 / T2 / T3** (the notes that track is playing, from its keys and
-  sequencer: exact, nothing to track; the highest note of a chord). So a synth line sent into the harmoniser can be
-  harmonised in the scale from its own notes, and the voice can follow a chord track's top line.
+- **NOTE FROM** (HOME > HARMONY): where SCALE takes its note. Two kinds: **heard** (the tracker, on audio) and
+  **played** (a track's own notes: exact, nothing to track, no CPU):
+
+| NOTE FROM | Kind | The note |
+|---|---|---|
+| **INPUT** (the default) | heard | the tracker on the whole input mix |
+| **USB IN** | heard | the tracker on the USB audio alone, whatever else is sent (your voice, or an instrument over USB) |
+| **T1 / T2** | played | the notes the synth track plays, from its keys and sequencer; a chord's highest note |
+| **T3** | played | track 3's notes from its keys and sequencer. In VOCODER mode these are **the vocoder's carrier keys**: the harmony follows the chord you play the vocoder with |
+| **DRUMS** | played | each tonal drum hit's own pitch (its sound's note with TUNE): kicks, toms, 808s, bells, metal. Tone-less hits (closed hat, shaker, clap, noise) are skipped: the last note holds |
+
+  So a synth line sent in is harmonised from its own notes; your voice can follow the vocoder's keys or a chord track's
+  top line; sent drums are harmonised from the drums' own tuning.
 - Your own ratio tables (just intonation, the owner's chromatic, harmonic and circle-of-fifths modes): Stage 2.
 
 ## 6. The input routing
@@ -497,7 +506,7 @@ As the H949's REVERSE function (G2, FUNCTION SELECT OUT, F4), per voice or for A
 | TRACK | OFF, T1, T2 | which track is the HARMONY track |
 | SEND POINT | POST, PRE | where the other tracks' HARM sends are taken (section 6) |
 | PEDAL | MOMENTARY, LATCH | the footswitch's REPEAT |
-| NOTE FROM | INPUT, VOICE, T1, T2, T3 | where SCALE takes its note: the tracker on the input or the voice, or a track's played notes (section 5) |
+| NOTE FROM | INPUT, USB IN, T1, T2, T3, DRUMS | where SCALE takes its note: the tracker on the input or the USB audio, or a track's played notes (T3 in VOCODER mode: the carrier keys; DRUMS: the tonal hits' pitch) (section 5) |
 | INTERVALS | SCALE, FREE | the intervals in the track's key and scale, or fixed sizes |
 | NO KEY | SILENT, HOLD | the voices with nothing held |
 | OUTPUT | MIX, MAIN \| DLY, DRY \| WET | the split (also G3) |
@@ -527,7 +536,7 @@ web editor's **Harmony** tab comes later.
 | The voice sounds frozen | REPEAT latched: tap it off |
 | Words come out backwards | a voice on REVERSE (green F4 LED): FUNCTION SELECT IN, NORM |
 | A growing howl or spiral | FB levels down, HIGH EQ and LOW EQ to the centre; FB LIMIT SAFE |
-| Wrong interval in a key | INTERVALS SCALE and the track's key; the input's note shown beside the readout (`--`: the tracker hears none; several sources or chords confuse it: NOTE FROM VOICE or a track, or FREE) |
+| Wrong interval in a key | INTERVALS SCALE and the track's key; the input's note shown beside the readout (`--`: the tracker hears none; several sources or chords confuse it: NOTE FROM USB IN or a track, or FREE) |
 | A track is harmonised that should not be | its HARM send (FADER BANK E) |
 | A warble or flutter | the splice: most on low voices and big intervals down; EXTEND on sustained sounds (Stage 2) |
 | One side of the stereo only | OUTPUT on MAIN \| DLY or DRY \| WET: MIX for both sides |
