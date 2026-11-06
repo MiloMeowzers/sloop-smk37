@@ -42,6 +42,7 @@ enum {
     TS_P1, TS_P2, TS_P3,  /* (the UI build, 2026-11-02) the chain's first part, tracks 1..3 (fx.c mix_part_run, heard): DIST,
                            * INSERT, SLICER, FILTER */
     TS_M1, TS_M2, TS_M3,  /* .. its loop: LEVEL, the mute / duck, STEM FX (tp_x), the stem, the sends, PAN */
+    TS_HARM,     /* (2026-11-07) the harmoniser's probe (smk_harm.h hp_block, core 0, inside pre_in) */
     TS_N
 };
 static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wait", "pre_go", "ana", "units",
@@ -49,7 +50,7 @@ static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wa
                                           "ev_midi", "ev_s1", "ev_s2", "ev_s3", "ev_sd", "ev_arp", "u1", "u2", "u3", "ud",
                                           "c1",
                                           "c1_u1", "c1_u2", "c1_u3", "c1_ud", "c1_stem", "voc", "rest", "t5", "all",
-                                          "eng1", "eng2", "eng3", "pre1", "pre2", "pre3", "mix1", "mix2", "mix3"};
+                                          "eng1", "eng2", "eng3", "pre1", "pre2", "pre3", "mix1", "mix2", "mix3", "harm"};
 static struct {
     uint32_t t, ut[2];                                  /* the section's start; the unit's, each core */
     uint32_t cur[TS_N];                                 /* this half's */

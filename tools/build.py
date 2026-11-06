@@ -206,7 +206,8 @@ HOT_TEXT = ["fm1_alnk0_irq", "mix_tail_wait", "cpu1_wait", "tp_pos", "uac6_room"
             "fm6_penv_advance", "fm6_block", "fm6_sync", "fm6_note_on", "fm6_done", "phase_render", "pd_setup",
             "sample_render", "sample_next", "slice_render", "drawbar_render", "grain_render", "phys_render",
             "slicer_track", "drums_mix", "ds_filter", "slicer_drums", "tp_x", "cpu1_units_job", "cpu1_stems_job",
-            "cpu1_tail_job", "uac6_tap_ch", "uac_tap48", "uac_render_start", "fm1_timer5_irq", "uac_service", "uin_rx"]
+            "cpu1_tail_job", "uac6_tap_ch", "uac_tap48", "uac_render_start", "fm1_timer5_irq", "uac_service", "uin_rx",
+            "hp_block"]   # (the harmoniser probe, smk_harm.h: measured where the harmoniser's code will sit)
 
 
 def build_app():

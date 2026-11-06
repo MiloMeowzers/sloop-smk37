@@ -1043,6 +1043,9 @@ static TAILINL void djf_process(int32_t *l, int32_t *r, uint32_t n)
 #include "punch.c"            /* PUNCH-IN FX on the whole mix (FX held + a white key) */
 #if BOARD_SMK37
 #include "smk_tpunch.h"       /* SMK-37 STEM FX: the rhythmic punch-ins on the stems */
+#if SMK_UAC_IN_PROBE
+#include "smk_harm.h"         /* the vocoder build: the harmoniser's measurement probe (console hprobe) */
+#endif
 /* a silent track while a stems' punch-in plays: its ring's replay, panned and sent as mix_part_run does (the level and
  * mute are in what the ring recorded) */
 static void tp_silent_mix(track_t *t, uint32_t k, uint32_t n, mixacc_t *mx)
@@ -1628,6 +1631,13 @@ static void mix_block(int32_t *out, uint32_t n)
 #if SMK_UAC_IN_PROBE
     if (VOC_AUDIO_ON && n <= CTL)
         uin_block(voc_in, n);                           /* the audio track's input, before either core's units run */
+#if BOARD_SMK37
+    if (hp.on && !tp_on && VOC_AUDIO_ON && n <= CTL) {            /* the harmoniser's probe (smk_harm.h): its time in "harm" too */
+        TIM_VOC_T(th);
+        hp_block(n);
+        TIM_ADD(TS_HARM, TIM_NOW() - th);
+    }
+#endif
 #endif
     TIM_MARK(TS_PIN);
 #if BOARD_SMK37

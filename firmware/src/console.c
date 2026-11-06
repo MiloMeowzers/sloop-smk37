@@ -471,6 +471,58 @@ static void con_bled(const char *p)
 }
 #endif
 
+#ifdef SMK_HARM_PROBE
+/* the vocoder build: the harmoniser's measurement probe (smk_harm.h) */
+/* the console: hprobe [on | off] */
+static void hp_console(int on)
+{
+    if (on == 1 && !hp.on) {
+        if (tp_on) {
+            con_puts("hprobe: STEM FX lends the memory out now; STEM FX off first\r\n");
+            return;
+        }
+        sl_mem_lent = 1;                                /* SLICER STUT records nothing (its memory is the probe's) */
+        memset(hp_ring, 0, HP_LEN * sizeof hp_ring[0]);
+        memset(hp.ph, 0, sizeof hp.ph);
+        hp.ph[1] = (int32_t)(HP_SEG << 14), hp.ph[2] = (int32_t)(HP_SEG << 15);
+        hp.w = hp.t = 0, hp.fb = hp.lpl = hp.lph = 0, hp.lag = 0, hp.per = 0, hp.frames = hp.voiced = 0, hp.peak = 0;
+        hp.on = 1;
+    } else if (on == 0 && hp.on) {
+        hp.on = 0;
+        sl_mem_lent = tp_on;
+    }
+    con_puts("hprobe ");
+    con_puts(hp.on ? "on" : "off");
+    if (hp.on) {
+        uint32_t per = hp.per, f10 = 0, note = 0, q = 32703u, k;   /* C1, milli-Hz */
+        if (per) {
+            f10 = (uint32_t)(11025u * 2560u / per);     /* deci-Hz */
+            for (k = 24u; k < 108u; k++, q = (uint32_t)((uint64_t)q * 69433u >> 16)) {   /* the nearest note */
+                uint32_t up = (uint32_t)((uint64_t)q * 67456u >> 16);   /* a quarter tone up (x 2^(1/24)) */
+                if (f10 * 100u < up) {
+                    note = k;
+                    break;
+                }
+            }
+        }
+        con_puts(" f0 ");
+        con_dec((int32_t)(f10 / 10u));
+        con_putc('.');
+        con_dec((int32_t)(f10 % 10u));
+        con_puts(" Hz note ");
+        con_dec((int32_t)note);
+        con_puts(" frames ");
+        con_dec((int32_t)hp.frames);
+        con_puts(" voiced ");
+        con_dec((int32_t)hp.voiced);
+        con_puts(" peak ");
+        con_dec(hp.peak);
+        hp.peak = 0;
+    }
+    con_puts("\r\n");
+}
+#endif
+
 static void con_exec(const char *p)
 {
     if (con_word(&p, "help") || con_word(&p, "?"))
@@ -496,6 +548,10 @@ static void con_exec(const char *p)
         con_leds();
     else if (con_word(&p, "bled"))
         con_bled(p);
+#endif
+#ifdef SMK_HARM_PROBE
+    else if (con_word(&p, "hprobe"))
+        hp_console(con_word(&p, "on") ? 1 : con_word(&p, "off") ? 0 : -1);
 #endif
     else if (con_word(&p, "memr"))
         con_memr(p);
