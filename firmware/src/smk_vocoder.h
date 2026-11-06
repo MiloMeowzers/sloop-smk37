@@ -94,6 +94,12 @@ static uint8_t voc_norm;                 /* NORMAL: 0 OFF (the default: the band
                                           * VSM201's NORMAL weights, VOC_B0S: lows +4.7 dB, top -6 dB; vocoder-ui-spec.md
                                           * §7a: it took the presence the owner missed) */
 #define VOC_COLOUR_N 11u
+/* MOD WHEEL (VOCODER) (2026-11-06, the owner: the wheel's vibrato does not suit the carrier): 0 VIBRATO (the default, as
+ * before), 1 BRIDGE TILT (wheel up: from TILT to +3 dB an octave), 2 NOISE BLEND (wheel up: from NOISE BLEND to the
+ * carrier, no noise); while track 3 is selected, as the wheels act (voice.c sets voc_mw); kept (project.c rsv[0]) */
+#define VOC_MWA_N 3u
+static uint8_t voc_mwa;
+static uint8_t voc_mw;                   /* (the wheel on the vocoder, 0 .. 127: 0 unless assigned and track 3 selected) */
 #define VOC_REST_N 2205u                 /* COLOUR 0: the bands rest after 50 ms below THRESHOLD (44.1 kHz samples): ~6 of
                                           * the envelopes' release (~8 ms), each band then ~50 dB under where it began */
 /* SILENCE > AGC: the carrier AGC's ceiling (mean |x|, the track's scale; vocoder-ui-spec.md §7a). OFF (the default,
@@ -137,6 +143,17 @@ typedef struct {
 static vocpg_t vpg = {0, {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50},
                       {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50},
                       {0}, {0}, VB_SPEECH, VS_SUM, VS_SUM, 0, 1, 0};
+/* TILT and NOISE BLEND as the mod wheel moves them (MOD WHEEL (VOCODER)): the wheel down, the menu's */
+static uint32_t voc_tilt_now(void)
+{
+    uint32_t tl = voc_tilt % VOC_TILT_N;
+    return voc_mwa == 1u ? tl + (VOC_TILT_N - 1u - tl) * voc_mw / 127u : tl;
+}
+static uint32_t voc_nzc_now(void)
+{
+    uint32_t nz = vpg.nzc > 100u ? 100u : vpg.nzc;
+    return voc_mwa == 2u ? nz + (100u - nz) * voc_mw / 127u : nz;
+}
 static uint8_t voc_emsel;                /* VOCODER EMPHASIS (with NORMAL): the channels' emphasis on NORMAL's weights */
 /* the channels' gains from their positions (a pot's: the square): EMPHASIS Q12, 50 = 1.0 (4096), 100 = 4.0 (+12 dB),
  * 0 = OFF; ADDITION Q15, 100 = 1.0, 50 = 0.25 (-12 dB) */
@@ -419,13 +436,13 @@ static void voc_process(int32_t *b, uint32_t n)
     uint32_t fill = voc_blend & 1u, mode, ramp = 0, any = 0;
     int32_t uvt = vm == VV_UNVOICED ? 32767 : vm == VV_VOICED ? 0 :                 /* the noise's share wanted */
                   voc_ab[voc_aw ^ 1u].unvoiced && (!br || voc_ab[voc_aw ^ 1u].speech)
-                      ? 32767 - (((int32_t)(vpg.nzc > 100u ? 100u : vpg.nzc) * 20971) >> 6) : 0;   /* (AUTO: NOISE BLEND, x 327.67) */
+                      ? 32767 - (((int32_t)voc_nzc_now() * 20971) >> 6) : 0;   /* (AUTO: NOISE BLEND, x 327.67) */
     voc.blocks++;
     voc_chan_block();
     {   /* BRIDGE TONE: the bridge per band (TILT), the envelopes' share in a pause (COLOUR: full in speech), each
          * ramped over the block from where the last one ended (the pause value moves block by block: a step there is a
          * click, loudest where the carrier is strongest, the low bands a negative TILT lifts) */
-        const uint16_t *tq = VOC_TILT_Q12[voc_tilt % VOC_TILT_N];
+        const uint16_t *tq = VOC_TILT_Q12[voc_tilt_now()];
         int32_t col = voc_colour >= VOC_COLOUR_N - 1u ? 32767 : (int32_t)voc_colour * 3277, to;
         if (m < 1)
             m = 1;

@@ -43,7 +43,7 @@ enum { MI_COLOR, MI_ZOOM,
                                                     * the audio track, track 3; live, not kept) */
        MI_VCUT, MI_VRES, MI_VVM, MI_VPINK,         /* CARRIER > CUTOFF, RESO (the saws' low-pass), VOICE, NOISE (the
                                                     * VSM201's voice mode, its pink filter); live, not kept */
-       MI_VBR, MI_VTHR, MI_VAGC,                   /* SILENCE > BRIDGE, THRESHOLD (the VSM201's silence bridging), AGC (the
+       MI_VBR, MI_VTHR, MI_VAGC, MI_VMWA,          /* SILENCE > BRIDGE, THRESHOLD (the VSM201's silence bridging), AGC (the
                                                     * carrier's; kept, project.c) */
        MI_VTILT, MI_VCOL, MI_VBLEND, MI_VNORM,     /* BRIDGE TONE > TILT, COLOUR, BLEND, NORMAL (the whole output's: the
                                                     * VSM201's weights; smk_vocoder.h; kept, project.c) */
@@ -82,7 +82,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "STEM FX", "FADE", "XFADE", "CURVE",
 #if SMK_UAC_IN_PROBE
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
-                                              "BRIDGE", "THRESHOLD", "AGC", "TILT", "COLOUR", "BLEND", "RESPONSE",
+                                              "BRIDGE", "THRESHOLD", "AGC", "MOD WHEEL", "TILT", "COLOUR", "BLEND", "RESPONSE",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -307,6 +307,11 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_VPINK:                                    /* the unvoiced replacement: WHITE, PINK (dim: VOICED only) */
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && voc_vmode % VV_N != VV_VOICED ? C_HI : C_DIM;
         return voc_pink == 2u ? "SOFT" : voc_pink ? "PINK" : "WHITE";
+    case MI_VMWA: {                                   /* MOD WHEEL (VOCODER): what the wheel does on track 3 */
+        static const char *const N[VOC_MWA_N] = {"VIBRATO", "BRIDGE TILT", "NOISE BLEND"};
+        *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
+        return N[voc_mwa % VOC_MWA_N];
+    }
     case MI_VAGC: {                                   /* the carrier AGC's ceiling */
         static const char *const N[VOC_AGC_N] = {"OFF", "PEAKS", "LIGHT", "FULL"};
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
@@ -436,7 +441,7 @@ UI_SMALL static void draw_menu(void)
            (uint32_t)UIN_TEST * 1000117u + voc_cut * 1000121u + voc_res * 1000133u + (uint32_t)VOC_AUDIO_ON * 1000151u +
            voc_vmode * 1000159u + voc_pink * 1000171u + voc_bridge * 1000183u + voc_thr * 1000187u +
            voc_tilt * 1000193u + voc_colour * 1000199u + voc_blend * 1000211u + voc_agc * 1000213u +
-           voc_norm * 1000231u + voc_emsel * 1000249u;
+           voc_norm * 1000231u + voc_emsel * 1000249u + voc_mwa * 1000253u;
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
@@ -719,6 +724,10 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_VPINK:                                     /* right PINK, left WHITE; OCT+ toggles */
         voc_pink = (uint8_t)(s > 0 ? (voc_pink + 1u < VOC_NOISE_N ? voc_pink + 1u : voc_pink)   /* WHITE, PINK, SOFT */
                              : s < 0 ? (voc_pink ? voc_pink - 1u : 0u) : (voc_pink + 1u) % VOC_NOISE_N);
+        break;
+    case MI_VMWA:                                      /* VIBRATO, BRIDGE TILT, NOISE BLEND (stops at the ends); OCT+ round */
+        voc_mwa = (uint8_t)(s > 0 ? (voc_mwa + 1u < VOC_MWA_N ? voc_mwa + 1u : voc_mwa)
+                                  : s < 0 ? (voc_mwa ? voc_mwa - 1u : 0u) : (voc_mwa + 1u) % VOC_MWA_N);
         break;
     case MI_VAGC:                                      /* OFF, PEAKS, LIGHT, FULL (stops at the ends); OCT+ OFF */
         voc_agc = (uint8_t)(s > 0 ? (voc_agc + 1u < VOC_AGC_N ? voc_agc + 1u : voc_agc)

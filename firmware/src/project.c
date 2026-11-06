@@ -1062,6 +1062,7 @@ static int vocset_take(const uint8_t *b, uint32_t n)
         voc_tilt = (uint8_t)(s.tilt % VOC_TILT_N), voc_colour = (uint8_t)(s.colour % VOC_COLOUR_N);
         voc_blend = (uint8_t)(s.blend & 1u), voc_agc = (uint8_t)(s.agc % VOC_AGC_N), voc_norm = (uint8_t)(s.norm & 1u);
         voc_emsel = (uint8_t)(s.emsel & voc_norm);
+        voc_mwa = (uint8_t)(s.rsv[0] % VOC_MWA_N);
         if (s.pcur.have)
             vpg_put(&s.pcur);
         if (s.cur.have) {
@@ -1089,6 +1090,7 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocv_get(&vocset.cur);
     vocset.tilt = voc_tilt, vocset.colour = voc_colour, vocset.blend = voc_blend, vocset.agc = voc_agc;
     vocset.norm = voc_norm, vocset.emsel = voc_emsel, vocset.pcur = vpg;
+    vocset.rsv[0] = voc_mwa;                       /* MOD WHEEL (VOCODER) (2026-11-06: the spare byte, 0: VIBRATO) */
 }
 static void vocset_save(void)
 {

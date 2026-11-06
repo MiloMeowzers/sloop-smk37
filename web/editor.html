@@ -7865,6 +7865,7 @@ const OB = {
     ["res", 9, "CARRIER RESO", Array.from({ length: 128 }, (_, i) => [i, String(i)]), 0],
     ["vm", 10, "VOICE", ["AUTO", "VOICED", "UNVOICED"], 0], ["pink", 11, "NOISE", ["WHITE", "PINK", "SOFT"], 0],
     ["agc", 67, "AGC", ["OFF", "PEAKS", "LIGHT", "FULL"], 0],
+    ["mwa", 70, "MOD WHEEL", ["VIBRATO", "BRIDGE TILT", "NOISE BLEND"], 0],
     ["br", 12, "BRIDGE", [[0, "OFF"], ...OB_DB(-48, 0, 3, " DB").map(([i, n]) => [i + 1, n])], 0],
     ["thr", 13, "THRESHOLD", [-54, -48, -42, -36, -30, -24].map((x, i) => [i, `${x} DB`]), 2],
     ["tilt", 64, "TILT", OB_DB(-3, 3, 0.5, " DB/OCT"), 8],

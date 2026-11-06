@@ -73,6 +73,11 @@ _Static_assert(VOC_TRK == NPART - 1u, "the audio track is the last synth part");
 #define SMK_VIB_K (SMK_VIB_HZ * 179u)          /* phase per TIMER4 tick: 2^32 / 24e6 = 178.96 */
 static volatile int32_t perf_bend;
 static volatile int32_t perf_modw;
+#if SMK_UAC_IN_PROBE
+#define SMK_VIBW(t) (VOC_TRK_AUDIO(t) && voc_mwa ? 0 : perf_modw)   /* (MOD WHEEL (VOCODER) assigned: no vibrato on it) */
+#else
+#define SMK_VIBW(t) perf_modw
+#endif
 #endif
 /* engines that play recorded material (a position, not a phase): no phases kept or spread */
 #if FELUCCA_SLICE
@@ -978,7 +983,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
                 uint32_t ph = fm1_ticks() * SMK_VIB_K;
                 int32_t tri = (int32_t)((ph >> 15) & 0xFFFFu);
                 tri = (ph & 0x80000000u ? 0xFFFF - tri : tri) - 32768;   /* triangle, +-32767 */
-                q += perf_bend + ((tri * perf_modw) >> 10);
+                q += perf_bend + ((tri * SMK_VIBW(t)) >> 10);
             }
 #endif
             pitch = (q >> 8) + tune;
@@ -1014,6 +1019,9 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     if (vst) {                                          /* VOCODER: the carrier vocoded (silence without notes: the
                                                          * chain runs on) */
         TIM_VOC_T(tv);
+#if BOARD_SMK37
+        voc_mw = (uint8_t)(voc_mwa && t == TSEL ? clamp(perf_modw, 0, 127) : 0);   /* (MOD WHEEL (VOCODER)) */
+#endif
         voc_process(out, n);
         TIM_VOC(tv);
         nr = 1u;
