@@ -60,6 +60,24 @@ UI_SMALL static void sloop_splash(void)
     if (v[0] == 'S' && v[1] == 'L' && v[5] == ' ')
         v += 6;                                         /* "SLOOP 1.0" -> "1.0" under the wordmark */
     cv_begin(240, 36, C_BLACK);
+#ifdef SMK_BUILD_ID
+    {   /* SMK-37: the version, the commit built and the variant ("2.8.4  aa42b0e  VOCODER"): which build is on it */
+        static char b[40];
+        uint32_t k = 0, i;
+        const char *parts[3] = {v, SMK_BUILD_ID, SMK_UAC_IN_PROBE ? "VOCODER" : ""};
+        for (i = 0; i < 3u; i++) {
+            const char *q = parts[i];
+            if (!*q)
+                continue;
+            if (k && k < sizeof b - 3u)
+                b[k++] = ' ', b[k++] = ' ';
+            while (*q && k < sizeof b - 1u)
+                b[k++] = *q++;
+        }
+        b[k] = 0;
+        v = b;
+    }
+#endif
     cv_text(120 - text_w(&FONT_S, v) / 2, 0, &FONT_S, v, RGB(196, 196, 204));
     cv_text(120 - text_w(&FONT_S, "based on felucca") / 2, 18, &FONT_S, "based on felucca", RGB(96, 96, 104));
     cv_blit(0, 202);
