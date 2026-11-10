@@ -497,7 +497,8 @@ static void con_exec(const char *p)
         uint32_t a, b;
         if (con_word(&p, "dbg")) {
             if ((a = con_num(&p, &ok)), ok)
-                voc_dbg = (uint8_t)(a & 3u);             /* (bit 0 no HQ, bit 1 no two saws) */
+                voc_dbg = (uint8_t)(a & 7u);             /* (bit 0 no HQ, bit 1 no two saws, bit 2 two saws in
+                                                         * every SETUP) */
             con_kv("voc_dbg", voc_dbg);
         } else if (con_word(&p, "in")) {
             a = con_num(&p, &ok), b = con_num(&p, &ok2);

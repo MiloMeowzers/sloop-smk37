@@ -74,7 +74,8 @@ enum { UD_T3, UD_CARR, UD_T1, UD_T2, UD_N };                  /* the destination
 static uint8_t voc_setup, voc_inl, voc_inr;
 static uint8_t voc_gdel;                 /* GATE DELAY (external carrier): 0 .. 10, x 5 ms */
 static uint8_t voc_hq;                   /* the synthesis' rate now (latched at a reset, voc_state): 1 HQ */
-static uint8_t voc_dbg;                  /* (console "setup dbg N": bit 0 no HQ, bit 1 no two saws; 0 at boot) */
+static uint8_t voc_dbg;                  /* (console "setup dbg N": bit 0 no HQ, bit 1 no two saws, bit 2 two
+                                          * saws in every SETUP; 0 at boot) */
 static int16_t uin_dst[UD_N][VOC_MAXN];  /* this block's input a destination (usb.c uin_block); [UD_T3] is the voice */
 #define voc_in (uin_dst[UD_T3])
 #define UIN_DST 1                        /* (usb.c: the destinations are here) */
