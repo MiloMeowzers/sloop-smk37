@@ -1923,6 +1923,12 @@ static void uin_rx(void)
  * servo holds the ring's fill near UIN_MON_T: the step moves by 2 / 65536 a frame of error, at most +-1 % (on the unit
  * the codec's clock is ~0.3 % fast) */
 #define UIN_STEP0 ((uint32_t)(((uint64_t)48000u << 16) / FS))
+#ifndef UIN_DST                                         /* (a host test without the vocoder: one destination, unused) */
+enum { UD_N = 1 };
+static int16_t uin_dst[UD_N][32];
+static const uint8_t voc_inl = 0, voc_inr = 0;
+#define VOC_ROUTE(r) ((void)(r), 0u)
+#endif
 static uint8_t uin_rt_l, uin_rt_r;                      /* this block's routes (smk_vocoder.h VR_*: VR_OFF none) */
 static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
 {

@@ -76,6 +76,7 @@ static uint8_t voc_gdel;                 /* GATE DELAY (external carrier): 0 .. 
 static uint8_t voc_hq;                   /* the synthesis' rate now (latched at a reset, voc_state): 1 HQ */
 static int16_t uin_dst[UD_N][VOC_MAXN];  /* this block's input a destination (usb.c uin_block); [UD_T3] is the voice */
 #define voc_in (uin_dst[UD_T3])
+#define UIN_DST 1                        /* (usb.c: the destinations are here) */
 #define VOC_SETUP_ON (VOC_AUDIO_ON ? voc_setup % VSU_N : (uint32_t)VSU_FULL)
 #define VSU_SKIP(s) ((s) == VSU_DRUMS ? 3u : (s) == VSU_SYNTH ? (1u << NPART) : (s) == VSU_ALONE ? 3u | (1u << NPART) : 0u)
 #define VOC_ROUTE(r) (VOC_AUDIO_ON ? (r) % VR_N : (uint32_t)VR_T3)
