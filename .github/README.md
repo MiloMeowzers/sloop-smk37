@@ -1,6 +1,6 @@
 # Mewcoder
 
-SLOOP 2.8.4 with a vocoder, for the M-Vave SMK-37 Elite: **your voice in over USB audio** on track 3, played dry or
+SLOOP 2.8.4 with a vocoder, for the M-Vave SMK-37 Elite: **your voice, or any sound you choose, in over USB audio** on track 3, played dry or
 through a **20-channel vocoder** modelled on the Sennheiser VSM201, played from the keys and the sequencer. One of the
 two builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/sloop-smk37).
 
@@ -15,7 +15,7 @@ two builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/sloop-smk37
 
 ## What you get
 
-- **An audio track:** track 3 plays the computer's audio (your microphone) dry or vocoded.
+- **An audio track:** track 3 plays the computer's audio (your microphone, an instrument, any recording) dry or vocoded.
 - **The vocoder:** 20 channels, per-channel emphasis, speech addition, silence bridging, voiced / unvoiced detection.
 - **The carrier:** a saw played from the keys and the sequencer. Play chords: that is the classic sound.
 - **The vocoder page:** the 20 channels on the knobs and pads (PATCH on the tracks screen).
