@@ -720,7 +720,9 @@ static void __attribute__((noinline)) voc_process_hq(int32_t *b, uint32_t n)   /
 
 /* voice.c track_render, track 3, at its start: the state to render this block. A change fades the old state out first
  * (voc_fade), then switches (the vocoder starts afresh) and fades the new one in */
-#define VOC_HQ_WANT(req) ((req) == 1u + VM_SAW && VOC_SETUP_ON != VSU_FULL)   /* (HQ: every SETUP but FULL) */
+/* HQ: every SETUP but FULL, and only once the units it turns off have stopped (fx.c voc_setup_block: they come back only
+ * once HQ is off): the two never run together (2026-11-11: FULL's units and HQ at once, the switch broke up) */
+#define VOC_HQ_WANT(req) ((req) == 1u + VM_SAW && VOC_SETUP_ON != VSU_FULL && !voc_skip_wait &&                           voc_skip == VSU_SKIP(VOC_SETUP_ON))
 static uint32_t voc_state(void)
 {
     uint32_t req = VOC_AUDIO_ON ? 1u + voc_mode % VM_N : 0u, hq = VOC_HQ_WANT(req);

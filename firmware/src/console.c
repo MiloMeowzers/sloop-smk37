@@ -491,6 +491,23 @@ static void con_exec(const char *p)
 #if SMK_TIMING
     else if (con_word(&p, "timing"))
         con_timing();
+    else if (con_word(&p, "setup")) {                    /* setup N (0 FULL .. 3 VOC ALONE), setup in L R (0 TRACK 3,
+                                                         * 1 CARRIER, 2 T1, 3 T2, 4 OFF): as HOME > SETUP, not saved */
+        int ok, ok2;
+        uint32_t a, b;
+        if (con_word(&p, "in")) {
+            a = con_num(&p, &ok), b = con_num(&p, &ok2);
+            if (ok && ok2 && a < VR_N && b < VR_N)
+                voc_inl = (uint8_t)a, voc_inr = (uint8_t)b;
+        } else if ((a = con_num(&p, &ok)), ok && a < VSU_N) {
+            voc_setup = (uint8_t)a;
+        }
+        con_kv("voc_setup", voc_setup);
+        con_kv("voc_hq", voc_hq);
+        con_kv("voc_skip", voc_skip);
+        con_kv("voc_inl", voc_inl);
+        con_kv("voc_inr", voc_inr);
+    }
 #endif
 #if BOARD_SMK37
     else if (con_word(&p, "smk"))

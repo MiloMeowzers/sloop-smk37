@@ -1243,12 +1243,13 @@ static uint32_t voc_setup_block(void)
         for (k = 0; k < VOC_TRK; k++)
             if ((want & ~(uint32_t)voc_skip_want) >> k & 1u)
                 trk_all_off(&trk[k]);
-        voc_skip &= (uint8_t)want;
         voc_skip_want = (uint8_t)want;
         voc_skip_wait = VOC_SKIP_WAIT;
     }
     if (voc_skip_wait && !--voc_skip_wait)
-        voc_skip = voc_skip_want;
+        voc_skip |= voc_skip_want;                      /* (off: after their release) */
+    if (!voc_hq)
+        voc_skip &= voc_skip_want;                      /* (back on: once the vocoder is at 22.05 again, faded) */
     skip = voc_skip;
     for (k = 0; k < VOC_TRK; k++)
         if (VOC_TRK_IN(k) || voc_tin_g[k])
