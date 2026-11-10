@@ -495,7 +495,11 @@ static void con_exec(const char *p)
                                                          * 1 CARRIER, 2 T1, 3 T2, 4 OFF): as HOME > SETUP, not saved */
         int ok, ok2;
         uint32_t a, b;
-        if (con_word(&p, "in")) {
+        if (con_word(&p, "dbg")) {
+            if ((a = con_num(&p, &ok)), ok)
+                voc_dbg = (uint8_t)(a & 3u);             /* (bit 0 no HQ, bit 1 no two saws) */
+            con_kv("voc_dbg", voc_dbg);
+        } else if (con_word(&p, "in")) {
             a = con_num(&p, &ok), b = con_num(&p, &ok2);
             if (ok && ok2 && a < VR_N && b < VR_N)
                 voc_inl = (uint8_t)a, voc_inr = (uint8_t)b;

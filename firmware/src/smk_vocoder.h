@@ -74,6 +74,7 @@ enum { UD_T3, UD_CARR, UD_T1, UD_T2, UD_N };                  /* the destination
 static uint8_t voc_setup, voc_inl, voc_inr;
 static uint8_t voc_gdel;                 /* GATE DELAY (external carrier): 0 .. 10, x 5 ms */
 static uint8_t voc_hq;                   /* the synthesis' rate now (latched at a reset, voc_state): 1 HQ */
+static uint8_t voc_dbg;                  /* (console "setup dbg N": bit 0 no HQ, bit 1 no two saws; 0 at boot) */
 static int16_t uin_dst[UD_N][VOC_MAXN];  /* this block's input a destination (usb.c uin_block); [UD_T3] is the voice */
 #define voc_in (uin_dst[UD_T3])
 #define UIN_DST 1                        /* (usb.c: the destinations are here) */
@@ -723,7 +724,7 @@ static void __attribute__((noinline)) voc_process_hq(int32_t *b, uint32_t n)   /
  * (voc_fade), then switches (the vocoder starts afresh) and fades the new one in */
 /* HQ: every SETUP but FULL, and only once the units it turns off have stopped (fx.c voc_setup_block: they come back only
  * once HQ is off): the two never run together (2026-11-11: FULL's units and HQ at once, the switch broke up) */
-#define VOC_HQ_WANT(req) ((req) == 1u + VM_SAW && VOC_SETUP_ON != VSU_FULL && !voc_skip_wait &&                           voc_skip == VSU_SKIP(VOC_SETUP_ON))
+#define VOC_HQ_WANT(req) ((req) == 1u + VM_SAW && VOC_SETUP_ON != VSU_FULL && !(voc_dbg & 1u) && !voc_skip_wait && \n                          voc_skip == VSU_SKIP(VOC_SETUP_ON))
 static uint32_t voc_state(void)
 {
     uint32_t req = VOC_AUDIO_ON ? 1u + voc_mode % VM_N : 0u, hq = VOC_HQ_WANT(req);

@@ -1060,7 +1060,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         if (vsaw) {
             if (vext)
                 voc_xheld |= v->gate;                   /* (the external carrier: the notes only gate it) */
-            else if (VOC_SETUP_ON == VSU_ALONE)
+            else if (VOC_SETUP_ON == VSU_ALONE && !(voc_dbg & 2u))
                 voc_saw2(v, out, n, &m);                /* (HQ+: two saws) */
             else
                 voc_saw(v, out, n, &m);                 /* the SAW carrier */
