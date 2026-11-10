@@ -892,6 +892,9 @@ static void smkset_fill(smkset_t *s)
     s->sqcarry = (uint8_t)(sq_carry != 0u);
     s->sqlb = (uint8_t)(sq_lb % SQ_LB_N);
     s->sqgrid = (uint8_t)(sq_grid % SQ_GRID_N);
+#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
+    s->spare = (uint8_t)(voc_gdel % 11u);          /* SETUP > GATE DELAY (the vocoder build; 0 in the others) */
+#endif
 }
 /* a record of n bytes (as read from flash, or the editor's restore, backup object 12): 1 taken (the settings set from
  * it), 0 not one (nothing changes) */
@@ -921,6 +924,9 @@ static int smkset_take(const uint8_t *b, uint32_t n)
             sq_carry = (uint8_t)(s.sqcarry & 1u);
             sq_lb = (uint8_t)(s.sqlb < SQ_LB_N ? s.sqlb : 1u);
             sq_grid = (uint8_t)(s.sqgrid < SQ_GRID_N ? s.sqgrid : 0u);
+#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
+            voc_gdel = (uint8_t)(s.spare <= 10u ? s.spare : 0u);
+#endif
         }
         knob_layout_apply();
     }
@@ -1063,6 +1069,9 @@ static int vocset_take(const uint8_t *b, uint32_t n)
         voc_blend = (uint8_t)(s.blend & 1u), voc_agc = (uint8_t)(s.agc % VOC_AGC_N), voc_norm = (uint8_t)(s.norm & 1u);
         voc_emsel = (uint8_t)(s.emsel & voc_norm);
         voc_mwa = (uint8_t)(s.rsv[0] % VOC_MWA_N);
+        voc_setup = (uint8_t)(s.rsv[1] & 3u);          /* SETUP, IN L, IN R (2026-11-11: the last spare byte; 0: FULL,
+                                                        * TRACK 3, TRACK 3, as before) */
+        voc_inl = (uint8_t)(((s.rsv[1] >> 2) & 7u) % VR_N), voc_inr = (uint8_t)(((s.rsv[1] >> 5) & 7u) % VR_N);
         if (s.pcur.have)
             vpg_put(&s.pcur);
         if (s.cur.have) {
@@ -1091,6 +1100,7 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocset.tilt = voc_tilt, vocset.colour = voc_colour, vocset.blend = voc_blend, vocset.agc = voc_agc;
     vocset.norm = voc_norm, vocset.emsel = voc_emsel, vocset.pcur = vpg;
     vocset.rsv[0] = voc_mwa;                       /* MOD WHEEL (VOCODER) (2026-11-06: the spare byte, 0: VIBRATO) */
+    vocset.rsv[1] = (uint8_t)(voc_setup % VSU_N | (voc_inl % VR_N) << 2 | (voc_inr % VR_N) << 5);
 }
 static void vocset_save(void)
 {

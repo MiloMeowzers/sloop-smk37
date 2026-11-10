@@ -17,7 +17,6 @@ enum {
     TS_TW,       /* .. waiting for the block before's tail (core 1), its output finished (audio.c mix_done) */
     TS_PGO,      /* .. the sums cleared, the throws, the analysis's buffers flipped, core 1's job handed over */
     TS_ANA,      /* the vocoder's analysis */
-    TS_HQ0,      /* (the HQ probe, console "hq load": the modelled 44.1 kHz extra on core 0) */
     TS_UNITS,    /* core 0's units (U1..UD) */
     TS_STEM,     /* core 0's share of the stems */
     TS_WAIT,     /* waiting for core 1, adding its sums, the stems committed */
@@ -43,22 +42,14 @@ enum {
     TS_P1, TS_P2, TS_P3,  /* (the UI build, 2026-11-02) the chain's first part, tracks 1..3 (fx.c mix_part_run, heard): DIST,
                            * INSERT, SLICER, FILTER */
     TS_M1, TS_M2, TS_M3,  /* .. its loop: LEVEL, the mute / duck, STEM FX (tp_x), the stem, the sends, PAN */
-    TS_HQ1,      /* (the HQ probe: the modelled 44.1 kHz extra on track 3's core, inside voc) */
     TS_N
 };
-static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wait", "pre_go", "ana", "hq0", "units",
+static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wait", "pre_go", "ana", "units",
                                           "stem", "wait", "tail_go", "fx", "post", "ev_xport", "ev_trk", "ev_keys",
                                           "ev_midi", "ev_s1", "ev_s2", "ev_s3", "ev_sd", "ev_arp", "u1", "u2", "u3", "ud",
                                           "c1",
                                           "c1_u1", "c1_u2", "c1_u3", "c1_ud", "c1_stem", "voc", "rest", "t5", "all",
-                                          "eng1", "eng2", "eng3", "pre1", "pre2", "pre3", "mix1", "mix2", "mix3", "hq1"};
-/* the HQ measurement (vocoder-ui-spec.md §7i-2; console "hq"): what each SETUP frees and what 44.1 kHz would cost.
- * hq_skip: units not rendered at all (fx.c mix_block; bit 0 T1, 1 T2, 3 the drums; track 3 never). hq_load: the vocoder's
- * work at 44.1 modelled by running its band-passes a second time a 22.05 kHz sample on dummy state (smk_vocoder.h
- * hq_bank): 1 the synthesis' second pass on track 3's core (44.1 whole there), 2 on core 0 (split across the cores);
- * the analysis' second pass on core 0 in both. Nothing heard; 0 / 0 at boot */
-static uint8_t hq_skip, hq_load;
-#define HQ_SKIP ((uint32_t)hq_skip)
+                                          "eng1", "eng2", "eng3", "pre1", "pre2", "pre3", "mix1", "mix2", "mix3"};
 static struct {
     uint32_t t, ut[2];                                  /* the section's start; the unit's, each core */
     uint32_t cur[TS_N];                                 /* this half's */
@@ -104,7 +95,6 @@ static void tim_half(uint32_t all, uint32_t t5, uint32_t over)   /* audio.c, eac
     memset(tim.cur, 0, sizeof tim.cur);
 }
 #else
-#define HQ_SKIP 0u
 #define TIM_START() ((void)0)
 #define TIM_MARK(s) ((void)0)
 #define TIM_ADD(s, t) ((void)0)

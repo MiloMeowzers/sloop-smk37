@@ -207,7 +207,7 @@ HOT_TEXT = ["fm1_alnk0_irq", "mix_tail_wait", "cpu1_wait", "tp_pos", "uac6_room"
             "sample_render", "sample_next", "slice_render", "drawbar_render", "grain_render", "phys_render",
             "slicer_track", "drums_mix", "ds_filter", "slicer_drums", "tp_x", "cpu1_units_job", "cpu1_stems_job",
             "cpu1_tail_job", "uac6_tap_ch", "uac_tap48", "uac_render_start", "fm1_timer5_irq", "uac_service", "uin_rx",
-            "hq_bank"]   # (the HQ probe, smk_vocoder.h: measured where the vocoder's code sits)
+            "voc_process_hq"]   # (HQ: the vocoder's 44.1 kHz synthesis, with the hot code)
 
 
 def build_app():

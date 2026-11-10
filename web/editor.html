@@ -7855,9 +7855,14 @@ const OB = {
     ["sfilt", 13, "STEM FILTER", ["FULL", "LIGHT"], 0], ["xfl", 14, "PUNCH XFADE", ["2.9 MS", "1.5 MS", "5.8 MS"], 0],
     ["lin", 15, "PUNCH CURVE", ["EQUAL", "LINEAR"], 0], ["sqcarry", 16, "FLIP RETURN", ["SLIP", "CARRY"], 0],
     ["sqlb", 17, "LOOP BACK", ["2 bars", "1 bar", "1/2 bar", "1/4", "1/8", "1/16"], 1],
-    ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0]] },
+    ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0],
+    ["gdel", 19, "GATE DELAY (VOCODER)", Array.from({ length: 11 }, (_, i) => [i, `${i * 5} MS`]), 0]] },
   vocoder: { id: 14, len: 472, magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
-    ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0], ["mode", 4, "T3", ["AUDIO", "VOCODER"], 0],
+    ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0],
+    ["vsetup", 71, "SETUP", ["FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"], 0],
+    ["vinl", 71, "IN L", ["TRACK 3", "CARRIER", "T1", "T2", "OFF"], 0],
+    ["vinr", 71, "IN R", ["TRACK 3", "CARRIER", "T1", "T2", "OFF"], 0],
+    ["mode", 4, "T3", ["AUDIO", "VOCODER"], 0],
     ["lvl", 5, "LEVEL", OB_DB(-12, 18, 3, " DB"), 4],
     ["resp", -1, "RESPONSE", ["FLAT", "NORMAL", "EMPHASIS"], 0],
     ["dry", 6, "DRY", ["OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"], 0], ["hf", 7, "HF", ["OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"], 2],
@@ -7876,6 +7881,7 @@ const OB = {
     ["nzc", 151, "NOISE BLEND", Array.from({ length: 21 }, (_, i) => [100 - i * 5, `${i * 5} %`]).reverse(), 0]] },
 };
 const OB_PG = 72;                                     /* vocset_t pcur: mute (4), emph[20], add[20], brg[10], fn[20], byp .. */
+const OB_BITS = { vsetup: [0, 3], vinl: [2, 7], vinr: [5, 7] };   /* vocset rsv[1] (byte 71): SETUP, IN L, IN R */
 const obOpts = (f) => f[3].map((x, i) => (Array.isArray(x) ? x : [i, x]));
 const obResp = (d) => (d[68] & 1 ? (d[69] & 1 ? 2 : 1) : 0);
 const obBendGet = (d, f) => {                         /* smk_wheel.h: 0 the default (down: as up), 0x80 none, else semitones */
@@ -7886,11 +7892,13 @@ function obGet(k, f) {
   const d = OB[k].d;
   if (f[0] === "resp") return obResp(d);
   if (f[0] === "bup" || f[0] === "bdn") return obBendGet(d, f);
+  if (OB_BITS[f[0]]) { const [sh, m] = OB_BITS[f[0]]; return Math.min((d[f[1]] >> sh) & m, f[2] === "SETUP" ? 3 : 4); }
   return d[f[1]];
 }
 function obSet(k, f, v) {
   const d = OB[k].d;
   if (f[0] === "resp") { d[68] = v ? 1 : 0; d[69] = v === 2 ? 1 : 0; }
+  else if (OB_BITS[f[0]]) { const [sh, m] = OB_BITS[f[0]]; d[f[1]] = (d[f[1]] & ~(m << sh)) | ((v & m) << sh); }
   else if (f[0] === "bup" || f[0] === "bdn") {
     const up = f[0] === "bup" ? v : obBendGet(d, OB.smk.fields[2]), dn = f[0] === "bdn" ? v : obBendGet(d, OB.smk.fields[3]);
     d[6] = up === 7 ? 0 : up || 0x80;

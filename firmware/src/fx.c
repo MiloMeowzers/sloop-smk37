@@ -257,7 +257,7 @@ static uint8_t stem_layout;              /* this start's (main.c): 0 STEREO, non
 static uint8_t stem_feed;                /* this render: the host records the stems (audio.c) */
 static int32_t stem_syn[NPART][CTL], stem_drum[CTL];
 #if SMK_UAC_IN_PROBE
-static void uin_block(int16_t *dst, uint32_t n);   /* (usb.c: the computer's audio for this block, mono, the engines'
+static void uin_block(uint32_t n);                     /* (usb.c: the computer's audio for this block, mono, the engines'
                                                     * rate; voice.c smk_vocoder.h: the audio track) */
 #endif
 static int32_t stem_stage[6][CTL];       /* the last block's channels, in the layout's order */
@@ -1230,6 +1230,36 @@ static void mix_drums(uint32_t n, mixacc_t *mx)
     click_render(mx->l, mx->r, n);                        /* the metronome: its own voice (drums.c), any kit, any mute */
 }
 
+#if SMK_UAC_IN_PROBE
+_Static_assert(TRK_DRUM == NPART && U_DRUMS == 1u << TRK_DRUM, "the SETUP's mask: bit k track k, the drums' bit theirs");
+/* the SETUP (smk_vocoder.h, HOME > SETUP), once a block on core 0 before the units are shared out: a track it turns off
+ * gets no new notes at once (voice.c trk_note_on), its notes released, and stops rendering VOC_SKIP_WAIT blocks later
+ * (its release mostly heard); one turned on again renders at once. Returns the units not rendered this block: T1 / T2
+ * playing an input render (voice.c voc_tin_block), as they do while that fades */
+static uint32_t voc_setup_block(void)
+{
+    uint32_t want = VSU_SKIP(VOC_SETUP_ON), k, skip;
+    if (want != voc_skip_want) {
+        for (k = 0; k < VOC_TRK; k++)
+            if ((want & ~(uint32_t)voc_skip_want) >> k & 1u)
+                trk_all_off(&trk[k]);
+        voc_skip &= (uint8_t)want;
+        voc_skip_want = (uint8_t)want;
+        voc_skip_wait = VOC_SKIP_WAIT;
+    }
+    if (voc_skip_wait && !--voc_skip_wait)
+        voc_skip = voc_skip_want;
+    skip = voc_skip;
+    for (k = 0; k < VOC_TRK; k++)
+        if (VOC_TRK_IN(k) || voc_tin_g[k])
+            skip &= ~(1u << k);
+    return skip;
+}
+#define VOC_SETUP_BLOCK() voc_setup_block()
+#else
+#define VOC_SETUP_BLOCK() 0u
+#endif
+
 /* the units of mask into the set mx, in their order */
 static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
 {
@@ -1599,7 +1629,7 @@ static void mix_tail_go(int32_t *out, uint32_t n)
 
 static void mix_block(int32_t *out, uint32_t n)
 {
-    uint32_t i, c1;
+    uint32_t i, c1, uskip;
 #if !MIX_PIPE
     int32_t m0, m1, *mix_l = acc[0].l, *mix_r = acc[0].r;
 #else
@@ -1627,7 +1657,8 @@ static void mix_block(int32_t *out, uint32_t n)
     TIM_MARK(TS_PEV);
 #if SMK_UAC_IN_PROBE
     if (VOC_AUDIO_ON && n <= CTL)
-        uin_block(voc_in, n);                           /* the audio track's input, before either core's units run */
+        uin_block(n);                                   /* the input, split to its destinations (smk_vocoder.h uin_dst),
+                                                         * before either core's units run */
 #endif
     TIM_MARK(TS_PIN);
 #if BOARD_SMK37
@@ -1674,7 +1705,8 @@ static void mix_block(int32_t *out, uint32_t n)
         voc_ana_flip();                                 /* (before core 1's job: it reads the other one) */
     }
 #endif
-    c1 = (cpu1_on() ? units_split() : 0) & ~HQ_SKIP;    /* core 1's units this block */
+    uskip = VOC_SETUP_BLOCK();                          /* (the vocoder build's SETUP: the units it turns off) */
+    c1 = (cpu1_on() ? units_split() : 0) & ~uskip;      /* core 1's units this block */
 #if BOARD_SMK37
     {   /* SMK-37: the stems' last block shared out too (stem_k channels on core 1, the rest here, stem_balance) */
         uint32_t sdo = stem_staged && stem_room && stem_room(stem_sn), sk = 0, tw = cpu1_ticks(), tu, tc;
@@ -1696,17 +1728,9 @@ static void mix_block(int32_t *out, uint32_t n)
             voc_analyse(n);                             /* the vocoder's analysis, while core 1 renders track 3 */
 #endif
         TIM_MARK(TS_ANA);
-#if SMK_TIMING
-        if (hq_load && VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && n <= CTL) {   /* (the HQ probe: the analysis' second
-                                                         * pass; with load 2 the synthesis' too) */
-            hq_bank(0, n / 2u);
-            if (hq_load == 2u)
-                hq_bank(1, n / 2u);
-        }
-        TIM_MARK(TS_HQ0);
-#endif
-        mix_units(U_ALL & ~c1 & ~HQ_SKIP, n, &acc[0], part_buf[0]);   /* this core's units, meanwhile (HQ_SKIP: the
-                                                         * HQ probe's units not rendered at all) */
+        mix_units(U_ALL & ~c1 & ~uskip, n, &acc[0], part_buf[0]);   /* this core's units, meanwhile */
+        if (uskip & U_DRUMS)
+            click_render(acc[0].l, acc[0].r, n);        /* (the drums off: the metronome still, mix_drums's last) */
         TIM_MARK(TS_UNITS);
         tu = cpu1_ticks();
         if (sdo && sk < 6u)

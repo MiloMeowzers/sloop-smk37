@@ -278,6 +278,11 @@ static void con_status(void)
     con_kv("uin_on", UIN_ON);                            /* USB > AUDIO IN: the audio received is played (usb.c) */
     con_kv("uin_test", UIN_TEST);                        /* .. TEST: the stems carry the probe's test signals */
     con_kv("voc_mode", voc_mode);                        /* VOCODER > MODE: 0 AUDIO (dry), 1 VOCODER (smk_vocoder.h) */
+    con_kv("voc_setup", voc_setup);                      /* SETUP: 0 FULL, 1 VOC + DRUMS, 2 VOC + SYNTH, 3 VOC ALONE */
+    con_kv("voc_hq", voc_hq);                            /* the synthesis at 44.1 kHz now */
+    con_kv("voc_skip", voc_skip);                        /* the units off now (bit 0 T1, 1 T2, 3 the drums) */
+    con_kv("voc_inl", voc_inl);                          /* IN L / IN R: 0 TRACK 3, 1 CARRIER, 2 T1, 3 T2, 4 OFF */
+    con_kv("voc_inr", voc_inr);
     con_kv("voc_cur", voc_cur);                          /* the audio track's state: 0 engine, 1 AUDIO, 2 VOCODER */
     con_kv("voc_blocks", (int32_t)voc.blocks);           /* blocks vocoded since the last status */
     con_kv("voc_peak_in", voa.peak_in);                  /* the voice's |peak|, Q15, since the last status */
@@ -486,29 +491,6 @@ static void con_exec(const char *p)
 #if SMK_TIMING
     else if (con_word(&p, "timing"))
         con_timing();
-    else if (con_word(&p, "hq")) {                       /* the HQ measurement (smk_timing.h): hq skip MASK (bit 0 T1,
-                                                         * 1 T2, 3 the drums: not rendered), hq load 0|1|2 */
-        int ok;
-        uint32_t v;
-        if (con_word(&p, "skip")) {
-            v = con_num(&p, &ok);
-            if (!ok || v > 15u || (v & 4u)) {
-                con_puts("usage: hq skip MASK (1 T1, 2 T2, 8 drums; track 3 never)\r\n");
-                return;
-            }
-            hq_skip = (uint8_t)v;
-        } else if (con_word(&p, "load")) {
-            v = con_num(&p, &ok);
-            if (!ok || v > 2u) {
-                con_puts("usage: hq load 0|1|2 (1 synthesis x2 on track 3's core, 2 on core 0)\r\n");
-                return;
-            }
-            hq_load = (uint8_t)v;
-        }
-        con_kv("hq_skip", hq_skip);
-        con_kv("hq_load", hq_load);
-        con_kv("cpu1_units", cpu1_units);
-    }
 #endif
 #if BOARD_SMK37
     else if (con_word(&p, "smk"))

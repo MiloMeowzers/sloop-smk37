@@ -15,6 +15,37 @@ static uint32_t vage;                                   /* voice ages: one clock
 #include "smk_timing.h"       /* SMK-37, the vocoder build's console: where an audio half's time goes (TIM_*) */
 #if SMK_UAC_IN_PROBE
 #include "smk_vocoder.h"      /* SMK-37: the audio track (track 3) and the vocoder (the vocoder build) */
+/* the external carrier (IN L / IN R = CARRIER, vocoder-ui-spec.md §7j): the channel in place of the saws, gated by
+ * track 3's notes as the built-in carrier is (any held: open in ~1.5 ms; all let go: GATE DELAY, then closed in ~12 ms:
+ * the synth comes back through the DAW late). Its notes go out as MIDI on track 3's channel (seq.c, GLO > MIDI) */
+static void voc_ext_carrier(int32_t *out, uint32_t n)
+{
+    uint32_t i;
+    int32_t a = voc_xgate, tgt;
+    if (voc_xheld)
+        voc_xhold = (int32_t)(voc_gdel % 11u) * 5 * 441 / 10;   /* (x 5 ms, 44.1 samples a ms) */
+    for (i = 0; i < n && i < VOC_MAXN; i++) {
+        tgt = voc_xheld || voc_xhold > 0 ? 32767 : 0;
+        if (!voc_xheld && voc_xhold > 0)
+            voc_xhold--;
+        a += (tgt - a) >> (tgt > a ? 6 : 9);
+        out[i] += mulq15(mulq15(uin_dst[UD_CARR][i], a), VOICE_FS) << 1;
+    }
+    voc_xgate = a;
+    voc_xheld = 0;
+}
+/* T1 / T2 playing an input (VOC_TRK_IN): the channel, dry, faded in and out (~5 ms) as the route or the SETUP changes */
+static void voc_tin_block(uint32_t k, int32_t *out, uint32_t n)
+{
+    uint32_t i;
+    int32_t g = voc_tin_g[k & 1u], tgt = VOC_TRK_IN(k) ? 32767 : 0;
+    const int16_t *x = uin_dst[UD_T1 + (k & 1u)];
+    for (i = 0; i < n && i < VOC_MAXN; i++) {
+        g = g < tgt ? (g + 148 > tgt ? tgt : g + 148) : (g - 148 < tgt ? tgt : g - 148);
+        out[i] = (int32_t)(((int64_t)VOC_VS(x[i]) * g) >> 15);
+    }
+    voc_tin_g[k & 1u] = g;
+}
 /* the carrier: a plain band-limited saw for one of track 3's voices, at its pitch, through a resonant low-pass
  * (CARRIER > CUTOFF, RESO; the track's ENV > FLT and LFO > FLT in m->cutoff; state v->s[0..1]) and its amplitude
  * envelope (the track's ADSR), at a voice's level (as eng_analog.c) */
@@ -28,10 +59,21 @@ static void voc_saw(voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
     int32_t tgt = v->gate ? 16384 + (int32_t)v->vel * 129 : 0;
     tsvf_t f;
     tsvf_coef(&f, ((int32_t)voc_cut << 8) + m->cutoff, voc_res);
-    for (i = 0; i < n; i++, ph += m->inc) {
-        int32_t s = clamp(tsvf_lp(&f, osc_saw(ph, m->inc), &ic1, &ic2), -32767, 32767);
-        a += (tgt - a) >> (tgt > a ? 6 : 9);
-        out[i] += mulq15(mulq15(s, v->stage == 4u ? amp_at(m, i) : a), VOICE_FS) << 1;
+    if (VOC_SETUP_ON == VSU_ALONE) {                    /* HQ+ (SETUP VOC ALONE, 2026-11-11: "the single carrier is
+                                                         * thin"): two saws, -3.4 and +3.4 cents, each at half */
+        uint32_t i1 = m->inc - (m->inc >> 9), i2 = m->inc + (m->inc >> 9), ph2 = v->ph[1];
+        for (i = 0; i < n; i++, ph += i1, ph2 += i2) {
+            int32_t s = clamp(tsvf_lp(&f, (osc_saw(ph, i1) + osc_saw(ph2, i2)) >> 1, &ic1, &ic2), -32767, 32767);
+            a += (tgt - a) >> (tgt > a ? 6 : 9);
+            out[i] += mulq15(mulq15(s, v->stage == 4u ? amp_at(m, i) : a), VOICE_FS) << 1;
+        }
+        v->ph[1] = ph2;
+    } else {
+        for (i = 0; i < n; i++, ph += m->inc) {
+            int32_t s = clamp(tsvf_lp(&f, osc_saw(ph, m->inc), &ic1, &ic2), -32767, 32767);
+            a += (tgt - a) >> (tgt > a ? 6 : 9);
+            out[i] += mulq15(mulq15(s, v->stage == 4u ? amp_at(m, i) : a), VOICE_FS) << 1;
+        }
     }
     v->ph[0] = ph;
     v->s[0] = ic1, v->s[1] = ic2, v->s[2] = a;
@@ -549,6 +591,10 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
     uint32_t any = 0, i, mode = TRK_VMODE(t);
     if (trk_silent(t))
         return;                                         /* MUTE, or another track soloed */
+#if SMK_UAC_IN_PROBE
+    if (voc_skip_want >> ((uint32_t)(t - trk) & 7u) & 1u)
+        return;                                         /* the SETUP has the track off (or it plays an input) */
+#endif
     vis_hit |= (uint8_t)(1u << ((uint32_t)(t - trk) & 3u));
     vis_note[(uint32_t)(t - trk) & 3u] = (uint8_t)note;
     if (is_drum(t)) {                                   /* the drum track: GM drums (drums.c) */
@@ -876,7 +922,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     int32_t bendq;
     int16_t pe_new[8];
 #if SMK_UAC_IN_PROBE
-    uint32_t vst = 0u, vsaw;
+    uint32_t vst = 0u, vsaw, vext;
     if (t == &trk[VOC_TRK]) {                           /* the audio track: its state */
         uint32_t was = voc_cur;
         vst = voc_state();
@@ -891,10 +937,16 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             }
     }
     vsaw = vst == 1u + VM_SAW;
+    vext = vsaw && VOC_EXT_CARR;
 #endif
     for (i = 0; i < n; i++)
         out[i] = 0;
 #if SMK_UAC_IN_PROBE
+    if ((uint32_t)(t - trk) < VOC_TRK && (VOC_TRK_IN((uint32_t)(t - trk)) || voc_tin_g[t - trk])) {
+        voc_tin_block((uint32_t)(t - trk), out, n);   /* T1 / T2 an audio track: an input, no engine (the SETUP has
+                                                         * it off; its chain runs) */
+        return 1u;
+    }
     if (vst == 1u + VM_OFF) {                           /* AUDIO IN on, MODE AUDIO: the computer's audio, dry */
         voc_dry_block(out, n);
         voc_fade(out, n);
@@ -999,9 +1051,12 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             m.cutoff += (m.envq15 * 24) >> 7;
         m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7);
 #if SMK_UAC_IN_PROBE
-        if (vsaw)
-            voc_saw(v, out, n, &m);                     /* the SAW carrier */
-        else
+        if (vsaw) {
+            if (vext)
+                voc_xheld |= v->gate;                   /* (the external carrier: the notes only gate it) */
+            else
+                voc_saw(v, out, n, &m);                 /* the SAW carrier */
+        } else
 #endif
         {
             TIM_VOC_T(te);                              /* (SMK_TIMING: the engine alone, smk_timing.h TS_E1..) */
@@ -1016,21 +1071,19 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         t->xf--;
     }
 #if SMK_UAC_IN_PROBE
+    if (vext)
+        voc_ext_carrier(out, n);                        /* IN L / IN R = CARRIER: the channel, gated */
     if (vst) {                                          /* VOCODER: the carrier vocoded (silence without notes: the
                                                          * chain runs on) */
         TIM_VOC_T(tv);
 #if BOARD_SMK37
         voc_mw = (uint8_t)(voc_mwa && t == TSEL ? clamp(perf_modw, 0, 127) : 0);   /* (MOD WHEEL (VOCODER)) */
 #endif
-        voc_process(out, n);
+        if (voc_hq)
+            voc_process_hq(out, n);                     /* (HQ: the SETUP's, 44.1 kHz) */
+        else
+            voc_process(out, n);
         TIM_VOC(tv);
-#if SMK_TIMING
-        if (hq_load == 1u) {                            /* (the HQ probe: the synthesis' second pass on this core) */
-            TIM_VOC_T(th);
-            hq_bank(1, n / 2u);
-            TIM_ADD(TS_HQ1, TIM_NOW() - th);
-        }
-#endif
         nr = 1u;
     }
     if (t == &trk[VOC_TRK])

@@ -727,7 +727,37 @@ UI_SMALL static void layer_title(const char *name, const char *sub, uint16_t col
     *cache = sig;
     cv_begin(240, 40, C_BLACK);
     cv_text(4, 2, &FONT_L, name, col);
+#if BOARD_SMK37
+    {   /* the line beside the name stops short of the readout (2026-11-11: the stem punch-in page's ran under FADE) */
+        const char *t = ui.msg_t ? ui.msg : sub, *p;
+        int32_t xs = 4 + (int32_t)text_w(&FONT_L, name) + 10, xr = 240, w;
+        char sb[32];
+        if (hdr_r[0]) {
+            const char *v = hdr_r;
+            char lab[12];
+            for (p = hdr_r; *p; p++)
+                if (*p == ' ')
+                    v = p + 1;
+            str_cpy(lab, hdr_r, v > hdr_r ? (uint32_t)(v - hdr_r) : 1u);
+            xr = 236 - (int32_t)text_w(&FONT_L, v) - (lab[0] ? 6 + (int32_t)text_w(&FONT_S, lab) : 0);
+        }
+        w = (xr - 6 - xs) / 8;                            /* (FONT_S: 8 wide) */
+        str_cpy(sb, t, w <= 0 ? 1u : w + 1 > (int32_t)sizeof sb ? (uint32_t)sizeof sb : (uint32_t)w + 1u);
+        for (p = sb; *p; p++)
+            ;
+        if (t[p - sb]) {                                  /* (cut: at the last word that fits whole) */
+            char *q = sb + (p - sb);
+            while (q > sb && *q != ' ')
+                q--;
+            while (q > sb && q[-1] == ' ')
+                q--;
+            *q = 0;
+        }
+        cv_text(xs, 18, &FONT_S, sb, ui.msg_t ? C_WHITE : TE_G3);
+    }
+#else
     cv_text(4 + text_w(&FONT_L, name) + 10, 18, &FONT_S, ui.msg_t ? ui.msg : sub, ui.msg_t ? C_WHITE : TE_G3);
+#endif
 #if BOARD_SMK37
     /* SMK-37: the readout (FX: the fade) large in the layer's colour, its label small beside it, and LOCK a badge at the
      * top centre, so a locked layer still shows the readout (the owner: the fade was too easy to miss under LOCK) */
