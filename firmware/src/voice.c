@@ -1024,6 +1024,13 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
 #endif
         voc_process(out, n);
         TIM_VOC(tv);
+#if SMK_TIMING
+        if (hq_load == 1u) {                            /* (the HQ probe: the synthesis' second pass on this core) */
+            TIM_VOC_T(th);
+            hq_bank(1, n / 2u);
+            TIM_ADD(TS_HQ1, TIM_NOW() - th);
+        }
+#endif
         nr = 1u;
     }
     if (t == &trk[VOC_TRK])

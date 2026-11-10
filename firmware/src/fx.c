@@ -1674,7 +1674,7 @@ static void mix_block(int32_t *out, uint32_t n)
         voc_ana_flip();                                 /* (before core 1's job: it reads the other one) */
     }
 #endif
-    c1 = cpu1_on() ? units_split() : 0;                 /* core 1's units this block */
+    c1 = (cpu1_on() ? units_split() : 0) & ~HQ_SKIP;    /* core 1's units this block */
 #if BOARD_SMK37
     {   /* SMK-37: the stems' last block shared out too (stem_k channels on core 1, the rest here, stem_balance) */
         uint32_t sdo = stem_staged && stem_room && stem_room(stem_sn), sk = 0, tw = cpu1_ticks(), tu, tc;
@@ -1696,7 +1696,17 @@ static void mix_block(int32_t *out, uint32_t n)
             voc_analyse(n);                             /* the vocoder's analysis, while core 1 renders track 3 */
 #endif
         TIM_MARK(TS_ANA);
-        mix_units(U_ALL & ~c1, n, &acc[0], part_buf[0]);   /* this core's units, meanwhile */
+#if SMK_TIMING
+        if (hq_load && VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && n <= CTL) {   /* (the HQ probe: the analysis' second
+                                                         * pass; with load 2 the synthesis' too) */
+            hq_bank(0, n / 2u);
+            if (hq_load == 2u)
+                hq_bank(1, n / 2u);
+        }
+        TIM_MARK(TS_HQ0);
+#endif
+        mix_units(U_ALL & ~c1 & ~HQ_SKIP, n, &acc[0], part_buf[0]);   /* this core's units, meanwhile (HQ_SKIP: the
+                                                         * HQ probe's units not rendered at all) */
         TIM_MARK(TS_UNITS);
         tu = cpu1_ticks();
         if (sdo && sk < 6u)

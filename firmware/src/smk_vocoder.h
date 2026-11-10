@@ -422,6 +422,28 @@ static void voc_chan_block(void)
     voc_bap = voc_ga;
 }
 
+#if SMK_TIMING
+/* the HQ probe (smk_timing.h hq_load): m more samples through the 20 band-passes and their envelopes, as the analysis
+ * and the synthesis run them, on dummy state (s 0 the analysis' twin on core 0, 1 the synthesis' on either core): the
+ * time 44.1 kHz would add. The input a cheap moving signal; the result kept in hq_sink so the work stays */
+static struct { voc_bq b[VOC_NB]; int32_t env[VOC_NB]; uint32_t ph; } hq_st[2];
+static volatile int32_t hq_sink;
+static void hq_bank(uint32_t s, uint32_t m)
+{
+    uint32_t i, k;
+    int64_t sum = 0;
+    for (i = 0; i < m; i++) {
+        int32_t x = (int32_t)((hq_st[s].ph += 0x01234567u) >> 9) - (1 << 22);
+        for (k = 0; k < VOC_NB; k++) {
+            int32_t y = voc_band(x, VOC_B0[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], &hq_st[s].b[k]);
+            hq_st[s].env[k] = voc_env(hq_st[s].env[k], y);
+            sum += (int64_t)y * hq_st[s].env[k];
+        }
+    }
+    hq_sink = (int32_t)(sum >> 32);
+}
+#endif
+
 /* the carrier block b (the track's scale, n even) becomes the vocoded block, in place */
 static void voc_process(int32_t *b, uint32_t n)
 {
