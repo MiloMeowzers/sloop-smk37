@@ -120,6 +120,8 @@ jobs:
           for m in pro elite mke; do
             p=out/sloop-smk37$( [ $m = pro ] || echo "-$m" ).fwsc
             python3 web/make_site.py "$p" "$v" "out/installer-$m" > /dev/null
+            case $m in pro) n="SMK-37 Pro";; elite) n="SMK-37 Elite";; mke) n="MKE-P37";; esac
+            python3 .github/smk_site.py "out/installer-$m" stems "$n"   # (the SMK-37 and this build's words, not the FM-1's)
             ls "out/installer-$m/webapp/installer/index.html" "out/installer-$m/firmware/"*.fwsc
           done
           cp .github/serve-installer.ps1 out/
@@ -144,6 +146,7 @@ jobs:
           echo "$mv" > "$out/mewcoder-version.txt"
           cp build/sloop-smk37-elite.fwsc "$out/sloop-smk37-elite-vocoder.fwsc"
           python3 web/make_site.py build/sloop-smk37-elite.fwsc "$mv" "$out/installer-mewcoder" > /dev/null
+          python3 "$GITHUB_WORKSPACE/.github/smk_site.py" "$out/installer-mewcoder" mewcoder "SMK-37 Elite"
           ls "$out/installer-mewcoder/webapp/installer/index.html" "$out/installer-mewcoder/webapp/editor/index.html"
           cp "$out/installer-mewcoder/webapp/editor/sloop-editor.html" "$out/sloop-editor-$mv.html"
           (cd "$out" && sha256sum sloop-smk37-elite-vocoder.fwsc | tee -a packages.sha256)
