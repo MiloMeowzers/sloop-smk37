@@ -1729,8 +1729,11 @@ static void mix_block(int32_t *out, uint32_t n)
 #endif
         TIM_MARK(TS_ANA);
         mix_units(U_ALL & ~c1 & ~uskip, n, &acc[0], part_buf[0]);   /* this core's units, meanwhile */
-        if (uskip & U_DRUMS)
+        if (uskip & U_DRUMS) {
+            dg_ran = 0;                                 /* (2026-11-11: left set from the drums' last block, the stems
+                                                         * copied drum_buf's stale block every block: a full-scale buzz) */
             click_render(acc[0].l, acc[0].r, n);        /* (the drums off: the metronome still, mix_drums's last) */
+        }
         TIM_MARK(TS_UNITS);
         tu = cpu1_ticks();
         if (sdo && sk < 6u)
