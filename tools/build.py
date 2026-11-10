@@ -226,6 +226,13 @@ def build_app():
         flags.append(f'-DFELUCCA_DATA_FAMILY="{fam}"')
     if VERSION:
         flags.append(f'-DFELUCCA_VERSION="{VERSION}"')
+    if BOARD != "fm1":       # SMK-37: the commit built, on the splash and ABOUT (the FM-1 build gets no new flag)
+        try:
+            bid = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], cwd=SRC, capture_output=True,
+                                 text=True, timeout=20).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            bid = ""
+        flags.append(f'-DSMK_BUILD_ID="{bid if re.fullmatch(r"[0-9a-f]{7}", bid) else "local"}"')
     tc_all(("cc", "-c", FW / "crt0.S", "-o", OUT / "crt0.o"),
            ("cc", "-c", FW / "hal" / "fm1_vec.S", "-o", OUT / "fm1_vec.o"),
            ("cc", "-c", FW / "hal" / "fm1_isr.S", "-o", OUT / "fm1_isr.o"),
