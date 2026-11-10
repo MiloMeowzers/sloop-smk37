@@ -3421,7 +3421,7 @@ function makeMockDevice(opt = {}) {
     daw: { on: 0, ch: 1, local: 0, user: 0, rel: 0, map: DAW.defaults() },   /* SMK-37 (opt.daw): DAW mode */
     smkset: Uint8Array.from([0x53, 0x4B, 0x53, 0x54, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),   /* project.c smkset_t */
     vocset: (() => {                                   /* project.c vocset_t, the defaults (opt.voc) */
-      const v = new Uint8Array(472);
+      const v = new Uint8Array(476);
       v.set([0x56, 0x4F, 0x43, 0x53, 0, 4, 0, 2, 127, 0, 0, 0, 0, 2, 1, 0], 0);
       v.set([8, 10, 0, 0], 64);
       v.fill(50, 76, 116);
@@ -3863,7 +3863,7 @@ function makeMockDevice(opt = {}) {
             }
             else if (id === 0) { const o = js(); st.tracks = o.tracks; st.sel = o.sel; st.g = o.g; }
             else if (id >= 12 && id <= 14) {                /* SMK-37 (editor.c: stopped only; 13 taken, not modelled) */
-              if (id !== 13 && P.len !== (id === 12 ? 20 : 472)) throw 0;
+              if (id !== 13 && P.len !== (id === 12 ? 20 : 476)) throw 0;
               if (st.playing) rc = 3;
               else if (id === 12) st.smkset = P.buf.slice();
               else if (id === 14) st.vocset = P.buf.slice();
@@ -7839,7 +7839,7 @@ $("dawfile").addEventListener("change", async (e) => {
   sayK("dawOpened");
 });
 
-/* SMK-37: its settings (backup object 12, project.c smkset_t, 20 bytes) and the vocoder build's (14, vocset_t, 472
+/* SMK-37: its settings (backup object 12, project.c smkset_t, 20 bytes) and the vocoder build's (14, vocset_t, 476
    bytes), read with BK_LIST / BK_GET and written back whole with BK_PUT (the firmware checks them as at power-on, takes
    them and saves). A field: [key, byte offset, label, options [[value, name]], default] */
 const OB_DB = (a, b, st, z) => Array.from({ length: (b - a) / st + 1 }, (_, i) => [i, `${a + i * st > 0 ? "+" : ""}${a + i * st}${z}`]);
@@ -7857,7 +7857,7 @@ const OB = {
     ["sqlb", 17, "LOOP BACK", ["2 bars", "1 bar", "1/2 bar", "1/4", "1/8", "1/16"], 1],
     ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0],
     ["gdel", 19, "GATE DELAY (VOCODER)", Array.from({ length: 11 }, (_, i) => [i, `${i * 5} MS`]), 0]] },
-  vocoder: { id: 14, len: 472, magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
+  vocoder: { id: 14, len: 476, magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
     ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0],
     ["vsetup", 71, "SETUP", ["FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"], 0],
     ["vinl", 71, "IN L", ["TRACK 3", "CARRIER", "T1", "T2", "OFF"], 0],
@@ -7875,7 +7875,9 @@ const OB = {
     ["thr", 13, "THRESHOLD", [-54, -48, -42, -36, -30, -24].map((x, i) => [i, `${x} DB`]), 2],
     ["tilt", 64, "TILT", OB_DB(-3, 3, 0.5, " DB/OCT"), 8],
     ["colour", 65, "COLOUR", Array.from({ length: 11 }, (_, i) => [i, `${i * 10} %`]), 10],
-    ["blend", 66, "BLEND", ["SUM", "FILL"], 0]],
+    ["blend", 66, "BLEND", ["SUM", "FILL"], 0],
+    ["eatt", 472, "ATTACK", ["3 MS", "5 MS", "8 MS", "12 MS", "20 MS", "30 MS"], 0],
+    ["erel", 473, "RELEASE", ["8 MS", "15 MS", "25 MS", "40 MS", "60 MS", "100 MS"], 0]],
   page: [["byp", 146, "BYPASS", ["OFF", "REPLACEMENT", "SPEECH"], 2], ["brsel", 147, "BRIDGING", ["OFF", "SUM", "INDIVIDUAL"], 1],
     ["addsel", 148, "ADDITION", ["OFF", "SUM", "INDIVIDUAL"], 1], ["actl", 149, "AUTOCONTROL", ["OFF", "ON"], 0],
     ["nzc", 151, "NOISE BLEND", Array.from({ length: 21 }, (_, i) => [100 - i * 5, `${i * 5} %`]).reverse(), 0]] },

@@ -261,6 +261,22 @@ static inline int32_t voc_sec(int32_t x, int32_t b0, int32_t *x1, int32_t *x2, i
     *x2 = *x1, *x1 = x, *y2 = *y1, *y1 = y;
     return y;
 }
+/* ENVELOPE > ATTACK, RELEASE (2026-11-11, the owner: "syllable edges are very sharp"): the 20 bands' envelopes only (the
+ * detectors keep theirs); index 0 the VSM201-fast times as before (VOC_ENV_ATT / REL), bit for bit. One-pole Q16 a
+ * 22.05 kHz sample: 1 - exp(-1 / (t x 22050)) */
+#define VOC_EATT_N 6u
+#define VOC_EREL_N 6u
+static const uint16_t VOC_EATT_K[VOC_EATT_N] = {VOC_ENV_ATT, 592, 370, 247, 148, 99};   /* 3, 5, 8, 12, 20, 30 ms */
+static const uint16_t VOC_EREL_K[VOC_EREL_N] = {VOC_ENV_REL, 198, 119, 74, 50, 30};     /* 8, 15, 25, 40, 60, 100 ms */
+static uint8_t voc_eatt, voc_erel;
+static inline int32_t voc_env_k(int32_t e, int32_t y, int32_t ka, int32_t kr)   /* voc_env with its times given */
+{
+    int32_t t = y < 0 ? -y : y, d;
+    if (t > (1 << 23))
+        t = 1 << 23;
+    d = t - e;
+    return e + (int32_t)(((int64_t)d * (d > 0 ? ka : kr)) >> 16);
+}
 static inline int32_t voc_env(int32_t e, int32_t y)      /* full-wave rectified (y Q19), one-pole: attack / release */
 {
     int32_t t = y < 0 ? -y : y, d;
@@ -319,6 +335,7 @@ static void voc_analyse(uint32_t n)
     uint32_t afast = vpg.addsel != VS_IND && !(mu >> VOC_HF0), act = vpg.actl & 1u;   /* (SUM, none of its bands
                                                                  * muted: the speech addition as before) */
     int32_t pin = voa.peak_in, ag[VOC_NB], acg = act ? voc_acg : 4096;
+    int32_t eka = VOC_EATT_K[voc_eatt % VOC_EATT_N], ekr = VOC_EREL_K[voc_erel % VOC_EREL_N];   /* (ENVELOPE) */
     int32_t ga = voa.acg_now, dga = (acg - ga) / (int32_t)(n >= 2u ? n / 2u : 1u);   /* (AUTOCONTROL ramped over the
                                                          * block from the last one's: 2026-11-11, a step a block popped) */
     uint32_t aon = act || ga != 4096;
@@ -348,7 +365,7 @@ static void voc_analyse(uint32_t n)
             continue;                                    /* (a pause: the bands at rest, voc_ab cleared below) */
         for (k = 0; k < VOC_NB; k++) {
             int32_t ya = voc_band(v, VOC_B0[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], &voa.a[k]);
-            voa.env[k] = voc_env(voa.env[k], ya);        /* (ya: Q19) */
+            voa.env[k] = voc_env_k(voa.env[k], ya, eka, ekr);   /* (ya: Q19; ENVELOPE's times) */
             voc_ab[voc_aw].env[j][k] = voa.env[k] >> 4;  /* (Q15) */
             if (afast) {
                 if (k >= VOC_HF0)

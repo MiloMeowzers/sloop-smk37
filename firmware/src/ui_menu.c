@@ -47,7 +47,8 @@ enum { MI_COLOR, MI_ZOOM,
                                                     * VSM201's voice mode, its pink filter); live, not kept */
        MI_VBR, MI_VTHR, MI_VAGC, MI_VMWA,          /* SILENCE > BRIDGE, THRESHOLD (the VSM201's silence bridging), AGC (the
                                                     * carrier's; kept, project.c) */
-       MI_VTILT, MI_VCOL, MI_VBLEND, MI_VNORM,     /* BRIDGE TONE > TILT, COLOUR, BLEND, NORMAL (the whole output's: the
+       MI_VTILT, MI_VCOL, MI_VBLEND, MI_VNORM,
+       MI_VEATT, MI_VEREL,                         /* ENVELOPE > ATTACK, RELEASE (the bands' envelopes; kept, project.c) */     /* BRIDGE TONE > TILT, COLOUR, BLEND, NORMAL (the whole output's: the
                                                     * VSM201's weights; smk_vocoder.h; kept, project.c) */
 #endif
 #endif
@@ -86,6 +87,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "SETUP", "IN L", "IN R", "GATE DELAY",
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
                                               "BRIDGE", "THRESHOLD", "AGC", "MOD WHEEL", "TILT", "COLOUR", "BLEND", "RESPONSE",
+                                              "ATTACK", "RELEASE",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -97,13 +99,14 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
 #if SMK_UAC_IN_PROBE
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_SEQ, MS_PLAY,
-       MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_ENV, MS_SEQ,
+       MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "VOCODER", "CARRIER",
-                                              "SILENCE", "BRIDGE TONE", "SEQ", "PLAY", "MIDI", "DAW", "SYSTEM"};
+                                              "SILENCE", "BRIDGE TONE", "ENVELOPE", "SEQ", "PLAY", "MIDI", "DAW",
+                                              "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VMODE,
-                                               MI_VCUT, MI_VBR, MI_VTILT, MI_ADV, MI_VEL, MI_TRS, MI_DMAP, MI_SYS0,
-                                               MI_COUNT};
+                                               MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_ADV, MI_VEL, MI_TRS, MI_DMAP,
+                                               MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
 #else
 enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
@@ -115,7 +118,7 @@ static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, M
 #endif
 _Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_VOC0 - MI_SFX <= 4 &&
 #if SMK_UAC_IN_PROBE
-               MI_VMODE - MI_VOC0 <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_ADV - MI_VTILT <= 4 &&
+               MI_VMODE - MI_VOC0 <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_ADV - MI_VEATT <= 4 &&
 #else
                MI_ADV - MI_VOC0 <= 4 &&
 #endif
@@ -302,6 +305,16 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         *c = usb_layout_now() && stem_fx ? C_HI : C_DIM;
         return tp_lin ? "LINEAR" : "EQUAL";
 #if SMK_UAC_IN_PROBE
+    case MI_VEATT: {                                  /* the bands' envelopes' attack (dim: not vocoding) */
+        static const char *const N[VOC_EATT_N] = {"3 MS", "5 MS", "8 MS", "12 MS", "20 MS", "30 MS"};
+        *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
+        return N[voc_eatt % VOC_EATT_N];
+    }
+    case MI_VEREL: {                                  /* .. their release */
+        static const char *const N[VOC_EREL_N] = {"8 MS", "15 MS", "25 MS", "40 MS", "60 MS", "100 MS"};
+        *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
+        return N[voc_erel % VOC_EREL_N];
+    }
     case MI_VSETUP: {                                 /* the tracks beside the audio track, and HQ (dim: AUDIO IN off) */
         static const char *const N[VSU_N] = {"FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"};
         *c = VOC_AUDIO_ON ? C_HI : C_DIM;
@@ -479,7 +492,7 @@ UI_SMALL static void draw_menu(void)
            voc_vmode * 1000159u + voc_pink * 1000171u + voc_bridge * 1000183u + voc_thr * 1000187u +
            voc_tilt * 1000193u + voc_colour * 1000199u + voc_blend * 1000211u + voc_agc * 1000213u +
            voc_norm * 1000231u + voc_emsel * 1000249u + voc_mwa * 1000253u + voc_setup * 1000273u +
-           voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u;   /* (2026-11-11: SETUP's four: without them
+           voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u + voc_eatt * 1000313u + voc_erel * 1000333u;   /* (2026-11-11: SETUP's four: without them
                                                          * the screen did not follow the knob) */
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
@@ -759,6 +772,13 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         tp_lin = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !tp_lin);
         break;
 #if SMK_UAC_IN_PROBE
+    case MI_VEATT:                                     /* 3 .. 30 ms (stops at the ends); OCT+ back to 3 ms */
+    case MI_VEREL: {                                   /* 8 .. 100 ms (stops at the ends); OCT+ back to 8 ms */
+        uint8_t *x = i == MI_VEATT ? &voc_eatt : &voc_erel;
+        uint32_t m = i == MI_VEATT ? VOC_EATT_N : VOC_EREL_N, v = *x % m;
+        *x = (uint8_t)(s > 0 ? (v + 1u < m ? v + 1u : v) : s < 0 ? (v ? v - 1u : 0u) : 0u);
+        break;
+    }
     case MI_VSETUP:                                    /* FULL .. VOC ALONE (stops at the ends); OCT+ back to FULL; at
                                                         * once (fx.c voc_setup_block: the tracks off after their release,
                                                         * the vocoder faded and restarted at its rate) */
