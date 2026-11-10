@@ -9,8 +9,11 @@
  *   PX_OCT generalised: H949 ALGORITHM 1, segment NORM 25 ms), interpolated (ring_q16 style);
  * - DELAY ONLY, one tap;
  * - the feedback: the voices' sum and DELAY ONLY, through the LOW / HIGH shelves (two one-poles), soft-limited;
- * - the tracker: a YIN difference function on the memory at 11.025 kHz (window HP_TW, lags 1 .. HP_TLN), HP_TLB lags
- *   a block, the threshold search online (no divide but one a frame), a frame every ~10 ms.
+ * - the tracker (probe 2, 2026-11-10): a YIN difference function on the DRY input (its own ring at 11.025 kHz, a
+ *   4-sample mean: not the memory, where the feedback's x0.5 voice made it read an octave down), window HP_TW, lags
+ *   1 .. HP_TLN, HP_TLB lags a block (the normalised curve kept a lag, one hardware divide each), searched at the frame's
+ *   end: the first dip under 0.15, its bottom, an octave check (a dip near half the lag nearly as deep wins), a parabola.
+ *   Its own time in "trk" (inside "harm").
  * The output goes nowhere: its peak is kept for the console (so the work cannot be optimised away) */
 #define SMK_HARM_PROBE 1
 #define HP_LEN 9216u                 /* the memory: 22.05 kHz samples, ~418 ms (the H949's 400 + a margin) */
@@ -22,9 +25,14 @@
 #define HP_TLMIN 16u
 #define HP_TLB 10u                   /* .. lags a block (a frame: 15 blocks, ~10 ms) */
 #define HP_TB (HP_TW + HP_TLN + 1u)  /* .. the snapshot */
-_Static_assert(HP_LEN <= NTRK * SL_LEN, "the harmoniser's memory fits the SLICER STUT recordings' part of smk_fxpool");
+#define HP_TRN 512u                  /* the tracker's dry ring (11.025 kHz, a power of two), in the pool after the memory */
+_Static_assert(HP_LEN + HP_TRN + HP_TB <= NTRK * SL_LEN, "the memory, the dry ring and the snapshot fit the SLICER STUT "
+                                                          "recordings' part of smk_fxpool");
+_Static_assert(HP_TB < HP_TRN, "the snapshot fits the dry ring");
 _Static_assert(2u * HP_TB + HP_SEG + HP_D0 < HP_LEN && HP_DLY + 2u < HP_LEN, "the reads stay in the memory");
 static int16_t *const hp_ring = smk_fxpool;
+static int16_t *const hp_tring = smk_fxpool + HP_LEN;            /* the dry input, 11.025 kHz */
+static int16_t *const hp_tb = smk_fxpool + HP_LEN + HP_TRN;      /* the frame's snapshot, scaled */
 static const int32_t HP_DINC[3] = {-8520, -16318, 16384};   /* (1 - ratio) x 32768: x1.260, x1.498, x0.500 (Q16
                                                              * storage samples an output sample) */
 static struct {
@@ -33,12 +41,11 @@ static struct {
     int32_t half;                    /* the pair's first sample */
     int32_t ph[3];                   /* each voice's segment phase, Q16 storage samples, 0 .. HP_SEG << 16 */
     int32_t fb, lpl, lph;            /* the feedback for the next write; the shelves' one-poles */
-    int16_t tb[HP_TB];               /* the tracker's snapshot (11.025 kHz) */
+    uint32_t tw;                     /* the dry ring's write count */
+    int32_t dacc;                    /* .. the 4-sample sum */
     uint32_t lag;                    /* the next lag (0: take a snapshot) */
     uint32_t sum;                    /* the running sum of d (lags 1 ..) */
-    uint32_t d1, d2;                 /* d of the two lags before */
-    uint32_t bn, bd;                 /* the best normalised d so far, as num / den (num = d x lag, den = the sum) */
-    uint32_t blag, found;            /* its lag; the threshold met (then the first dip's bottom) */
+    uint16_t cm[HP_TLN + 1u];        /* the normalised d, Q12 (4096 = 1), each lag */
     volatile uint32_t per;           /* the last frame's period, 11.025 kHz samples Q8 (0: no pitch) */
     volatile uint32_t frames, voiced;
     volatile int32_t peak;           /* the output's peak since the console read it */
@@ -57,30 +64,67 @@ static inline int32_t hp_read(int32_t wq, int32_t d)
     return a + (((b - a) * (int32_t)(((uint32_t)p >> 1) & 0x7FFFu)) >> 15);
 }
 
-/* the tracker's frame: the snapshot of the newest HP_TB samples at 11.025 kHz (every other stored sample), scaled so
- * the squared differences fit 32 bits (the peak to under 1024) */
+/* the tracker's frame: the newest HP_TB samples of the dry ring, scaled so the squared differences fit 32 bits (the
+ * peak under 1024) */
 static void hp_snap(void)
 {
-    uint32_t j, s = 0;
-    int32_t i = (int32_t)hp.w - 1 - 2 * (int32_t)(HP_TB - 1u), pk = 0;
-    if (i < 0)
-        i += (int32_t)HP_LEN;
+    uint32_t j, s = 0, i = hp.tw - HP_TB;
+    int32_t pk = 0;
     for (j = 0; j < HP_TB; j++) {
-        int32_t x = hp_ring[i], ax = x < 0 ? -x : x;
-        hp.tb[j] = (int16_t)x;
+        int32_t x = hp_tring[(i + j) & (HP_TRN - 1u)], ax = x < 0 ? -x : x;
+        hp_tb[j] = (int16_t)x;
         pk = ax > pk ? ax : pk;
-        i += 2;
-        if (i >= (int32_t)HP_LEN)
-            i -= (int32_t)HP_LEN;
     }
     while ((pk >> s) >= 1024)
         s++;
     for (j = 0; j < HP_TB; j++)
-        hp.tb[j] = (int16_t)(hp.tb[j] >> s);
-    hp.sum = 0, hp.d1 = hp.d2 = 0, hp.bn = 1, hp.bd = 0, hp.blag = 0, hp.found = 0;
+        hp_tb[j] = (int16_t)(hp_tb[j] >> s);
+    hp.sum = 0;
 }
 
-/* HP_TLB lags of the frame; at its last lag, its period (a parabola through the dip, one divide) */
+/* the frame's end: its period from the normalised curve (Q8 lags, 0: none) */
+static uint32_t hp_pick(void)
+{
+    uint32_t t, best = 0, h, k;
+    const uint16_t *cm = hp.cm;
+    for (t = HP_TLMIN; t < HP_TLN; t++)              /* the first dip under 0.15, to its bottom */
+        if (cm[t] < 614u) {
+            while (t + 1u < HP_TLN && cm[t + 1u] < cm[t])
+                t++;
+            best = t;
+            break;
+        }
+    if (!best) {                                      /* none: the deepest, if under 0.35 */
+        uint32_t m = 1434u;
+        for (t = HP_TLMIN; t < HP_TLN; t++)
+            if (cm[t] < m)
+                m = cm[t], best = t;
+        if (!best)
+            return 0;
+    }
+    if (best + 1u >= HP_TLN)                          /* at the lags' end: below the range (~77 Hz), not a pitch */
+        return 0;
+    for (k = 3u; k >= 2u; k--) {                      /* the octave check: a dip near lag / 3, lag / 2 nearly as deep */
+        h = (best + k / 2u) / k;
+        if (h > HP_TLMIN && h + 1u < HP_TLN) {
+            uint32_t c = h;
+            c = cm[h - 1u] < cm[c] ? h - 1u : c;
+            c = cm[h + 1u] < cm[c] ? h + 1u : c;
+            if (cm[c] < 614u && cm[c] <= cm[best] + 410u && cm[c] <= cm[c - 1u] && cm[c] <= cm[c + 1u]) {
+                best = c;
+                break;
+            }
+        }
+    }
+    {   /* a parabola through the dip */
+        int32_t a = cm[best - 1u], b = cm[best], c = best + 1u <= HP_TLN ? cm[best + 1u] : b, den = a - 2 * b + c, fr = 0;
+        if (den > 0)
+            fr = ((a - c) * 128) / den;
+        return (best << 8) + (uint32_t)clamp(fr, -128, 128);
+    }
+}
+
+/* HP_TLB lags of the frame; at its end, the period */
 static void hp_lags(void)
 {
     uint32_t k, j;
@@ -92,34 +136,17 @@ static void hp_lags(void)
             continue;
         }
         for (j = 0; j < HP_TW; j++) {
-            int32_t e = hp.tb[j] - hp.tb[j + tau];
+            int32_t e = hp_tb[j] - hp_tb[j + tau];
             d += (uint32_t)(e * e);
         }
         d >>= 8;                                        /* (<= 2.1M: d x lag and the sum fit 32 bits) */
         hp.sum += d;
-        if (tau >= HP_TLMIN && !hp.found && hp.sum) {   /* the normalised d = d x lag / sum, compared as fractions */
-            uint32_t num = d * tau;
-            if ((uint64_t)num * 20u < (uint64_t)hp.sum * 3u) {   /* under 0.15: the threshold met */
-                if (hp.blag && hp.blag == tau - 1u && (uint64_t)num * hp.bd >= (uint64_t)hp.bn * hp.sum)
-                    hp.found = 1;                       /* rising again: the dip's bottom is the lag before */
-                else
-                    hp.bn = num, hp.bd = hp.sum, hp.blag = tau;
-            } else if (hp.blag && hp.blag == tau - 1u && (uint64_t)hp.bn * 20u < (uint64_t)hp.bd * 3u) {
-                hp.found = 1;                           /* back over the threshold after a dip */
-            } else if (!hp.bd || (uint64_t)num * hp.bd < (uint64_t)hp.bn * hp.sum) {
-                hp.bn = num, hp.bd = hp.sum, hp.blag = tau;   /* (the global best, if no dip meets the threshold) */
-            }
-            if (hp.found && hp.blag + 1u == tau) {      /* the parabola: d at lag - 1 (d2), lag (d1), lag + 1 (d) */
-                int32_t a = (int32_t)hp.d2, b = (int32_t)hp.d1, c = (int32_t)d, den = a - 2 * b + c, fr = 0;
-                if (den > 0)
-                    fr = ((a - c) * 128) / den;         /* Q8 / 2 x 2: the offset in 1/256 lag */
-                hp.per = (hp.blag << 8) + (uint32_t)clamp(fr, -128, 128);
-            }
+        {   /* the normalised d = d x lag / sum, Q12 (one hardware divide) */
+            uint32_t sh = hp.sum >> 12, c = sh ? d * tau / sh : 65535u;
+            hp.cm[tau] = (uint16_t)(c > 65535u ? 65535u : c);
         }
-        hp.d2 = hp.d1, hp.d1 = d;
         if (++hp.lag > HP_TLN) {                         /* the frame's end */
-            if (!hp.found)                              /* no dip under the threshold: voiced if the best is under 0.35 */
-                hp.per = hp.blag && (uint64_t)hp.bn * 20u < (uint64_t)hp.bd * 7u ? hp.blag << 8 : 0u;
+            hp.per = hp_pick();
             hp.frames++;
             hp.voiced += hp.per != 0u;
             hp.lag = 0;
@@ -134,6 +161,12 @@ static void __attribute__((noinline)) hp_block(uint32_t n)
     int32_t pk = hp.peak;
     for (i = 0; i < n; i++) {
         int32_t x = voc_in[i], vs = 0, dl, y, wq;
+        hp.dacc += x;                                   /* the tracker's dry ring: a 4-sample mean, 11.025 kHz */
+        if ((hp.t & 3u) == 3u) {
+            hp_tring[hp.tw & (HP_TRN - 1u)] = (int16_t)(hp.dacc >> 2);
+            hp.tw++;
+            hp.dacc = 0;
+        }
         if (!(hp.t & 1u)) {
             hp.half = x;
         } else {                                        /* a pair: one stored sample, the feedback in, soft-limited */
@@ -174,5 +207,9 @@ static void __attribute__((noinline)) hp_block(uint32_t n)
         hp.t++;
     }
     hp.peak = pk;
-    hp_lags();
+    {
+        TIM_VOC_T(tt);
+        hp_lags();
+        TIM_ADD(TS_TRK, TIM_NOW() - tt);
+    }
 }
