@@ -1231,7 +1231,8 @@ static void mix_drums(uint32_t n, mixacc_t *mx)
 }
 
 #if SMK_UAC_IN_PROBE
-_Static_assert(TRK_DRUM == NPART && U_DRUMS == 1u << TRK_DRUM, "the SETUP's mask: bit k track k, the drums' bit theirs");
+_Static_assert(TRK_DRUM == NPART && U_DRUMS == 1u << TRK_DRUM && U_DRUMS == VSU_UDR,
+               "the SETUP's mask: bit k track k, the drums' bit theirs");
 /* the SETUP (smk_vocoder.h, HOME > SETUP), once a block on core 0 before the units are shared out: a track it turns off
  * gets no new notes at once (voice.c trk_note_on), its notes released, and stops rendering VOC_SKIP_WAIT blocks later
  * (its release mostly heard); one turned on again renders at once. Returns the units not rendered this block: T1 / T2

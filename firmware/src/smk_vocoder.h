@@ -78,7 +78,8 @@ static int16_t uin_dst[UD_N][VOC_MAXN];  /* this block's input a destination (us
 #define voc_in (uin_dst[UD_T3])
 #define UIN_DST 1                        /* (usb.c: the destinations are here) */
 #define VOC_SETUP_ON (VOC_AUDIO_ON ? voc_setup % VSU_N : (uint32_t)VSU_FULL)
-#define VSU_SKIP(s) ((s) == VSU_DRUMS ? 3u : (s) == VSU_SYNTH ? (1u << NPART) : (s) == VSU_ALONE ? 3u | (1u << NPART) : 0u)
+#define VSU_UDR 8u                       /* (the drums' bit: fx.c U_DRUMS, asserted there) */
+#define VSU_SKIP(s) ((s) == VSU_DRUMS ? 3u : (s) == VSU_SYNTH ? VSU_UDR : (s) == VSU_ALONE ? 3u | VSU_UDR : 0u)
 #define VOC_ROUTE(r) (VOC_AUDIO_ON ? (r) % VR_N : (uint32_t)VR_T3)
 /* track k (0, 1) plays an input: the SETUP has it off and IN L or IN R goes to it */
 #define VOC_TRK_IN(k) ((VSU_SKIP(VOC_SETUP_ON) >> (k) & 1u) && \
