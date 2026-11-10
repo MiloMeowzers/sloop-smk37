@@ -22,10 +22,10 @@ HEAD = {
               [("6", "USB audio stems to the DAW"), ("27", "punch-in effects, on every stem"),
                ("16", "pads: the stem punch-in page"), ("DAW", "mode, with your own CC map")]),
     "mewcoder": (f"Mewcoder for the {model}",
-                 "SLOOP 2.8.4 with your voice in over USB audio on track 3, played dry or through a 20-channel vocoder "
+                 "SLOOP 2.8.4 with your voice, or any sound you choose, in over USB audio on track 3, played dry or through a 20-channel vocoder "
                  "modelled on the Sennheiser VSM201, played from the keys and the sequencer. A lean build: the built-in "
                  "samples and some engines make room for it.",
-                 [("20", "vocoder channels"), ("USB", "your voice in, on track 3"),
+                 [("20", "vocoder channels"), ("USB", "your voice or any sound in"),
                   ("POLY", "the carrier: play chords"), ("6", "USB audio stems out")]),
 }
 title, lead, tiles = HEAD[build]

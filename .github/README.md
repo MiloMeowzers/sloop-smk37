@@ -22,7 +22,7 @@ mode. Every engine and the built-in samples. For the SMK-37 Pro, Elite, MKE-P37 
 
 ![The vocoder page: the 20 channels on the knobs and pads](/assets/screens/smk37-vocoder-page.png)
 
-SLOOP 2.8.4 with **your voice in over USB audio** on track 3, played dry or through a **20-channel vocoder** modelled
+SLOOP 2.8.4 with **your voice, or any sound you choose, in over USB audio** on track 3, played dry or through a **20-channel vocoder** modelled
 on the Sennheiser VSM201, played from the keys and the sequencer. A lean build: some engines and the built-in samples
 make room for it. For the SMK-37 Elite. **In development:** a harmoniser modelled on the Eventide H949.
 
