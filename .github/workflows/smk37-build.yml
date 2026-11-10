@@ -4,9 +4,12 @@
 #   2. this branch for the SMK-37 Pro, Elite and MKE (one package each)
 #   3. this branch for the FM-1, last (the tests read the FM-1 binaries): byte-identical to the baseline, or the run fails
 #   4. the host and web tests: no failure that the baseline does not have, or the run fails
-# The packages, their SHA-256 and the logs are the run's artifact. Nothing is installed anywhere. On a public repository
-# the run also publishes the installer sites (Pro, Elite, MKE) and the editor on GitHub Pages, behind a model picker
-# (.github/pages/index.html), once every check above has passed.
+# The same run builds the second build, Mewcoder (the Elite vocoder package, from the mewcoder branch: uac-in on the
+# private repository), with its own installer site and editor. The packages, their SHA-256 and the logs are the run's
+# artifact. Nothing is installed anywhere. On a public repository the run also publishes both builds' installer sites
+# and editors on GitHub Pages (.github/pages/index.html: Audio stems with its model picker, and Mewcoder at mewcoder/),
+# once every check above has passed. To refresh Mewcoder's site after a push to mewcoder, run this workflow on ci by
+# hand (Actions > SMK-37 build > Run workflow).
 name: SMK-37 build
 
 on:
@@ -125,6 +128,26 @@ jobs:
           # the editor of this branch, one file for the disk (the same for every model): open it in Chrome / Edge
           cp out/installer-pro/webapp/editor/sloop-editor.html "out/sloop-editor-$v.html"
 
+      - name: Mewcoder (the Elite vocoder build, from its own branch) and its installer site
+        run: |
+          # the mewcoder branch (uac-in on the private repository) in a worktree of its own, built as that branch's own
+          # CI builds it (the console build, SMK_UAC_IN_PROBE, SMK_VOC_LEAN); its installer and editor from its own web/
+          ref=${{ github.event.repository.private && 'uac-in' || 'mewcoder' }}
+          git fetch -q origin "$ref"
+          git worktree add ../mewcoder FETCH_HEAD
+          out="$GITHUB_WORKSPACE/out"
+          cd ../mewcoder
+          BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_IN_PROBE=1 SMK_VOC_LEAN=1 FELUCCA_SLICE=1 \
+            sh build.sh > "$out/build-mewcoder.log" 2>&1 || { tail -50 "$out/build-mewcoder.log"; exit 1; }
+          tail -3 "$out/build-mewcoder.log"
+          mv="2.8.4-mewcoder-$(git rev-parse --short HEAD)"
+          echo "$mv" > "$out/mewcoder-version.txt"
+          cp build/sloop-smk37-elite.fwsc "$out/sloop-smk37-elite-vocoder.fwsc"
+          python3 web/make_site.py build/sloop-smk37-elite.fwsc "$mv" "$out/installer-mewcoder" > /dev/null
+          ls "$out/installer-mewcoder/webapp/installer/index.html" "$out/installer-mewcoder/webapp/editor/index.html"
+          cp "$out/installer-mewcoder/webapp/editor/sloop-editor.html" "$out/sloop-editor-$mv.html"
+          (cd "$out" && sha256sum sloop-smk37-elite-vocoder.fwsc | tee -a packages.sha256)
+
       - name: 3. FM-1, byte-identical to the baseline
         run: |
           sh build.sh > out/build-fm1.log 2>&1 || { tail -50 out/build-fm1.log; exit 1; }
@@ -154,8 +177,9 @@ jobs:
         run: |
           mkdir -p pages
           for m in pro elite mke; do cp -r "out/installer-$m" "pages/$m"; done
+          cp -r out/installer-mewcoder pages/mewcoder
           v="2.8.1-smk37-$(git rev-parse --short HEAD)"
-          sed "s|<footer>BUILD</footer>|<footer>Build $v</footer>|" .github/pages/index.html > pages/index.html
+          sed -e "s|STEMSBUILD|$v|" -e "s|MEWBUILD|$(cat out/mewcoder-version.txt)|" .github/pages/index.html > pages/index.html
           touch pages/.nojekyll
 
       - name: Upload the Pages site
