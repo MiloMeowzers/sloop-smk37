@@ -94,6 +94,25 @@ static uint32_t run(double secs, double (*voice)(uint32_t), double (*carrier)(ui
     }
     return n;
 }
+/* run() with the synthesis at 44.1 kHz (HQ: SETUP VOC + DRUMS, VOC + SYNTH, VOC ALONE) */
+static uint32_t run_hq(double secs, double (*voice)(uint32_t), double (*carrier)(uint32_t))
+{
+    uint32_t i = 0, n = (uint32_t)(FS * secs), k;
+    int32_t b[VOC_MAXN];
+    while (i < n) {
+        for (k = 0; k < VOC_MAXN; k++) {
+            voc_in[k] = (int16_t)lrint(voice(i + k));
+            b[k] = (int32_t)lrint(carrier(i + k));
+        }
+        voc_ana_flip();
+        voc_analyse(VOC_MAXN);
+        voc_process_hq(b, VOC_MAXN);
+        for (k = 0; k < VOC_MAXN && i + k < n; k++)
+            outbuf[i + k] = b[k];
+        i += VOC_MAXN;
+    }
+    return n;
+}
 static double rms_last(uint32_t n, double secs)
 {
     double s = 0;
@@ -537,6 +556,24 @@ int main(void)
         run(0.1, v1k, saw110);
         check("page: AUTOCONTROL off, back to 1.0", voc_acg == 4096);
         voc_norm = 0;
+    }
+    {   /* HQ (2026-11-11): the 44.1 kHz synthesis at the 22.05 kHz one's level, voiced and unvoiced (its band sum was
+         * truncated to 32 bits: noise on the unit, ~-10 dB here) */
+        static const char *const W[3] = {"voiced, NORMAL, bridge", "unvoiced WHITE", "unvoiced PINK"};
+        uint32_t c;
+        for (c = 0; c < 3u; c++) {
+            double o, h;
+            char what[96];
+            reset();
+            voc_norm = c == 0u, voc_vmode = c ? VV_UNVOICED : VV_AUTO, voc_pink = c == 2u;
+            voc_bridge = c == 0u ? 3u : 0u, vpg.brsel = c == 0u ? VS_SUM : VS_OFF;
+            o = rms_last(run(1.0, vowel, chord3), 0.5);
+            reset();
+            h = rms_last(run_hq(1.0, vowel, chord3), 0.5);
+            snprintf(what, sizeof what, "HQ: %s at the 22.05 kHz level (%+.2f dB)", W[c], db(h / o));
+            check(what, fabs(db(h / o)) < 1.0);
+        }
+        voc_norm = 0, voc_vmode = VV_AUTO, voc_pink = 0, voc_bridge = 0, vpg.brsel = VS_SUM;
     }
     printf(fails ? "VOCODER TEST FAILED (%d)\n" : "smk_vocoder: all ok\n", fails);
     return fails != 0;

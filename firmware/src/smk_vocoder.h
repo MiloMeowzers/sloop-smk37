@@ -583,7 +583,7 @@ static void voc_process(int32_t *b, uint32_t n)
  * 44.1 kHz, no 2:1 down and up: the carrier straight in, every sample through the bank (VOC_B0H ..), its envelopes the
  * analysis's at 22.05 kHz, each held two samples (they move at ~50 Hz), the speech addition up 2:1 through the
  * half-band. The noise, the AGC's level, BRIDGE TONE's ramps a 44.1 kHz sample. The analysis is as it was */
-static int32_t voc_bands_hq(int32_t c, const int32_t *env, const int32_t *bk, int32_t cf, uint32_t mode, uint32_t fill)
+static int64_t voc_bands_hq(int32_t c, const int32_t *env, const int32_t *bk, int32_t cf, uint32_t mode, uint32_t fill)
 {
     int64_t sum = 0;
     voc_bq *s = &voc.b[0];
@@ -684,6 +684,9 @@ static void __attribute__((noinline)) voc_process_hq(int32_t *b, uint32_t n)   /
                 voc.pk2 = (int32_t)(((int64_t)voc.pk2 * 18678) >> 15) + ((w * 34494) >> 15);
                 w = (int32_t)(((int64_t)(voc.pk0 + voc.pk1 + voc.pk2 + ((w * 6056) >> 15)) * VOC_PINK_Q15H) >> 15);
             }
+            if (voc_pink != 1u)                          /* (WHITE, SOFT: the same power over twice the band at 44.1:
+                                                          * x sqrt 2 to put each band's back; PINK's is in its low end) */
+                w = (int32_t)(((int64_t)w * 46341) >> 15);
             nz = (int32_t)(((int64_t)w * voc.cenv) >> 14);
             c = br && vm == VV_AUTO ? c + (int32_t)(((int64_t)nz * voc.uvg) >> 15)
                                     : c + (int32_t)(((int64_t)(nz - c) * voc.uvg) >> 15);
