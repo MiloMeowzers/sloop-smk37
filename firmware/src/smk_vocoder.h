@@ -602,7 +602,8 @@ static int32_t voc_bands_hq(int32_t c, const int32_t *env, const int32_t *bk, in
     }
     return sum;
 }
-static void voc_process_hq(int32_t *b, uint32_t n)
+static void __attribute__((noinline)) voc_process_hq(int32_t *b, uint32_t n)   /* (out of the hot code: FULL's cache
+                                                         * as before, 2026-11-11: inlined, FULL shed 0.7 / s, not 0.25) */
 {
     uint32_t i, j;
     int32_t pout = voc.peak_out, dg = VOC_MIX_Q15[vpg.byp == VB_SPEECH ? voc_dry % VOC_MIX_N : 0u];

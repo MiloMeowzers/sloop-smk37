@@ -18,7 +18,7 @@ static uint32_t vage;                                   /* voice ages: one clock
 /* the external carrier (IN L / IN R = CARRIER, vocoder-ui-spec.md §7j): the channel in place of the saws, gated by
  * track 3's notes as the built-in carrier is (any held: open in ~1.5 ms; all let go: GATE DELAY, then closed in ~12 ms:
  * the synth comes back through the DAW late). Its notes go out as MIDI on track 3's channel (seq.c, GLO > MIDI) */
-static void voc_ext_carrier(int32_t *out, uint32_t n)
+static void __attribute__((noinline)) voc_ext_carrier(int32_t *out, uint32_t n)
 {
     uint32_t i;
     int32_t a = voc_xgate, tgt;
@@ -35,7 +35,7 @@ static void voc_ext_carrier(int32_t *out, uint32_t n)
     voc_xheld = 0;
 }
 /* T1 / T2 playing an input (VOC_TRK_IN): the channel, dry, faded in and out (~5 ms) as the route or the SETUP changes */
-static void voc_tin_block(uint32_t k, int32_t *out, uint32_t n)
+static void __attribute__((noinline)) voc_tin_block(uint32_t k, int32_t *out, uint32_t n)
 {
     uint32_t i;
     int32_t g = voc_tin_g[k & 1u], tgt = VOC_TRK_IN(k) ? 32767 : 0;
@@ -45,6 +45,23 @@ static void voc_tin_block(uint32_t k, int32_t *out, uint32_t n)
         out[i] = (int32_t)(((int64_t)VOC_VS(x[i]) * g) >> 15);
     }
     voc_tin_g[k & 1u] = g;
+}
+/* HQ+ (SETUP VOC ALONE, 2026-11-11: "the single carrier is thin"): voc_saw with two saws, -3.4 and +3.4 cents, each at
+ * half (the second's phase v->ph[1]); a function of its own, out of the hot code (voc_saw as it was for the rest) */
+static void __attribute__((noinline)) voc_saw2(voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
+{
+    uint32_t i1 = m->inc - (m->inc >> 9), i2 = m->inc + (m->inc >> 9), ph = v->ph[0], ph2 = v->ph[1], i;
+    int32_t ic1 = v->s[0], ic2 = v->s[1], a = v->s[2];
+    int32_t tgt = v->gate ? 16384 + (int32_t)v->vel * 129 : 0;
+    tsvf_t f;
+    tsvf_coef(&f, ((int32_t)voc_cut << 8) + m->cutoff, voc_res);
+    for (i = 0; i < n; i++, ph += i1, ph2 += i2) {
+        int32_t s = clamp(tsvf_lp(&f, (osc_saw(ph, i1) + osc_saw(ph2, i2)) >> 1, &ic1, &ic2), -32767, 32767);
+        a += (tgt - a) >> (tgt > a ? 6 : 9);
+        out[i] += mulq15(mulq15(s, v->stage == 4u ? amp_at(m, i) : a), VOICE_FS) << 1;
+    }
+    v->ph[0] = ph, v->ph[1] = ph2;
+    v->s[0] = ic1, v->s[1] = ic2, v->s[2] = a;
 }
 /* the carrier: a plain band-limited saw for one of track 3's voices, at its pitch, through a resonant low-pass
  * (CARRIER > CUTOFF, RESO; the track's ENV > FLT and LFO > FLT in m->cutoff; state v->s[0..1]) and its amplitude
@@ -59,21 +76,10 @@ static void voc_saw(voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
     int32_t tgt = v->gate ? 16384 + (int32_t)v->vel * 129 : 0;
     tsvf_t f;
     tsvf_coef(&f, ((int32_t)voc_cut << 8) + m->cutoff, voc_res);
-    if (VOC_SETUP_ON == VSU_ALONE) {                    /* HQ+ (SETUP VOC ALONE, 2026-11-11: "the single carrier is
-                                                         * thin"): two saws, -3.4 and +3.4 cents, each at half */
-        uint32_t i1 = m->inc - (m->inc >> 9), i2 = m->inc + (m->inc >> 9), ph2 = v->ph[1];
-        for (i = 0; i < n; i++, ph += i1, ph2 += i2) {
-            int32_t s = clamp(tsvf_lp(&f, (osc_saw(ph, i1) + osc_saw(ph2, i2)) >> 1, &ic1, &ic2), -32767, 32767);
-            a += (tgt - a) >> (tgt > a ? 6 : 9);
-            out[i] += mulq15(mulq15(s, v->stage == 4u ? amp_at(m, i) : a), VOICE_FS) << 1;
-        }
-        v->ph[1] = ph2;
-    } else {
-        for (i = 0; i < n; i++, ph += m->inc) {
-            int32_t s = clamp(tsvf_lp(&f, osc_saw(ph, m->inc), &ic1, &ic2), -32767, 32767);
-            a += (tgt - a) >> (tgt > a ? 6 : 9);
-            out[i] += mulq15(mulq15(s, v->stage == 4u ? amp_at(m, i) : a), VOICE_FS) << 1;
-        }
+    for (i = 0; i < n; i++, ph += m->inc) {
+        int32_t s = clamp(tsvf_lp(&f, osc_saw(ph, m->inc), &ic1, &ic2), -32767, 32767);
+        a += (tgt - a) >> (tgt > a ? 6 : 9);
+        out[i] += mulq15(mulq15(s, v->stage == 4u ? amp_at(m, i) : a), VOICE_FS) << 1;
     }
     v->ph[0] = ph;
     v->s[0] = ic1, v->s[1] = ic2, v->s[2] = a;
@@ -1054,6 +1060,8 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         if (vsaw) {
             if (vext)
                 voc_xheld |= v->gate;                   /* (the external carrier: the notes only gate it) */
+            else if (VOC_SETUP_ON == VSU_ALONE)
+                voc_saw2(v, out, n, &m);                /* (HQ+: two saws) */
             else
                 voc_saw(v, out, n, &m);                 /* the SAW carrier */
         } else

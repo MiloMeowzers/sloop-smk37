@@ -478,7 +478,9 @@ UI_SMALL static void draw_menu(void)
            (uint32_t)UIN_TEST * 1000117u + voc_cut * 1000121u + voc_res * 1000133u + (uint32_t)VOC_AUDIO_ON * 1000151u +
            voc_vmode * 1000159u + voc_pink * 1000171u + voc_bridge * 1000183u + voc_thr * 1000187u +
            voc_tilt * 1000193u + voc_colour * 1000199u + voc_blend * 1000211u + voc_agc * 1000213u +
-           voc_norm * 1000231u + voc_emsel * 1000249u + voc_mwa * 1000253u;
+           voc_norm * 1000231u + voc_emsel * 1000249u + voc_mwa * 1000253u + voc_setup * 1000273u +
+           voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u;   /* (2026-11-11: SETUP's four: without them
+                                                         * the screen did not follow the knob) */
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
