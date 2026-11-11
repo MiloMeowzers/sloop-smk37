@@ -995,8 +995,9 @@ typedef struct {
                                           * 2026-11-02: old saves load) */
     uint8_t eatt, erel, trl, trr;        /* ENVELOPE > ATTACK, RELEASE (2026-11-11; an object of 472 bytes: 0, as before);
                                           * INPUT > TRIM L, TRIM R as dB, signed (the bytes spare before them: 0 dB) */
-    uint8_t mixv, rsv3[3];               /* 1: DRY and HF (cur, sec[]) on the 12-step scale (smk_vocoder.h VOC_MIX_N);
-                                          * an object of 476 bytes: the old 5-step scale, mapped (VOC_MIX_OLD) */
+    uint8_t mixv, brmode, rsv3[2];       /* 1: DRY and HF (cur, sec[]) on the 12-step scale (smk_vocoder.h VOC_MIX_N);
+                                          * an object of 476 bytes: the old 5-step scale, mapped (VOC_MIX_OLD);
+                                          * ENVELOPE > BRIDGE MODE (2026-11-11: a spare byte, 0: FIXED) */
 } vocset_t;
 #define VOCSET_V1 64u                    /* (the object's size before BRIDGE TONE) */
 #define VOCSET_V2 68u                    /* (.. before NORMAL) */
@@ -1085,6 +1086,7 @@ static int vocset_take(const uint8_t *b, uint32_t n)
         voc_emsel = (uint8_t)(s.emsel & voc_norm);
         voc_mwa = (uint8_t)(s.rsv[0] % VOC_MWA_N);
         voc_eatt = (uint8_t)(s.eatt % VOC_EATT_N), voc_erel = (uint8_t)(s.erel % VOC_EREL_N);   /* (older: 0, 0) */
+        voc_brmode = (uint8_t)(s.brmode & 1u);         /* (older: FIXED) */
         {                                              /* TRIM L / R: signed dB, -18 .. +6 (older: 0 dB) */
             int32_t tl = (int8_t)s.trl, tr = (int8_t)s.trr;
             tl = tl < -(int32_t)VOC_TRIM_0 ? -(int32_t)VOC_TRIM_0 : tl > (int32_t)(VOC_TRIM_N - 1u - VOC_TRIM_0) ? (int32_t)(VOC_TRIM_N - 1u - VOC_TRIM_0) : tl;
@@ -1127,6 +1129,7 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocset.trl = (uint8_t)(int8_t)((int32_t)(voc_trim[0] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
     vocset.trr = (uint8_t)(int8_t)((int32_t)(voc_trim[1] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
     vocset.mixv = 1;
+    vocset.brmode = (uint8_t)(voc_brmode & 1u);
 }
 static void vocset_save(void)
 {

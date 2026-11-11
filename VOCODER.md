@@ -19,7 +19,7 @@ in SLOOP stays: the four tracks, the sequencer, the punch-ins, the multichannel 
 | **USB audio out** (to the computer) | HOME > USB > USB LAYOUT: **STEREO** (the mix; 44.1 or 48 kHz, HOME > AUDIO > USB RATE), or 6 channels, 24 bit, **48 kHz** (default, resampled on the keyboard) or **44.1 kHz** (the lightest; HOME > USB > STEM RATE): **SYNTHS+RET** (T1, T2, T3, the drums, the effects return L and R), **DRUMS+RET** (kick, snare, hats, percussion, the return L and R), **ALL DRY** (T1, T2, T3, kick, snare, hats and percussion) |
 | **The vocoder** | 20 channels at the Sennheiser VSM201's centres, 145 Hz to 6.78 kHz, each a 4th-order band-pass. The voice analysed at 22.05 kHz; the output at 22.05 kHz in FULL, **44.1 kHz (HQ)** in the other SETUPs |
 | **The carrier** | HOME > SETUP > CARRIER: the built-in saw, one or two a note (**AUTO**, **1 SAW**, **2 SAWS**), played from the keys, the sequencer or MIDI on track 3's channel; or **EXT L** / **EXT R**: an external synth on that input, gated by track 3's notes. Section 2.4 |
-| **Shaping** | ENVELOPE (ATTACK 3-30 ms, RELEASE 8-100 ms, GATE DELAY); voiced / unvoiced detection with a noise source (WHITE, PINK, SOFT); the speech addition (HF, OFF or −30 .. 0 dB); silence bridging and BRIDGE TONE; AUTOCONTROL (the voice's level, steadied); the carrier's AGC; RESPONSE (FLAT, the VSM201's NORMAL, EMPHASIS); per channel on the vocoder page: EMPHASIS, ADDITION, BRIDGING, mute |
+| **Shaping** | ENVELOPE (ATTACK 3-30 ms, RELEASE 8-100 ms, GATE DELAY, BRIDGE MODE FIXED / FOLLOW); voiced / unvoiced detection with a noise source (WHITE, PINK, SOFT); the speech addition (HF, OFF or −30 .. 0 dB); silence bridging and BRIDGE TONE; AUTOCONTROL (the voice's level, steadied); the carrier's AGC; RESPONSE (FLAT, the VSM201's NORMAL, EMPHASIS); per channel on the vocoder page: EMPHASIS, ADDITION, BRIDGING, mute |
 | **Left out to make room** | the built-in samples (your own samples work); the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and NOISE engines; the delay runs at 22.05 kHz. For those: the Multichannel USB audio build |
 
 ## 1. Getting sound in
@@ -186,6 +186,13 @@ The row always tells the truth: setting IN L or IN R to CARRIER by hand shows EX
 | **ATTACK** | 3, 5, 8, 12, 20, 30 ms | how fast each of the 20 bands opens when a sound starts |
 | **RELEASE** | 8, 15, 25, 40, 60, 100 ms | how fast it closes |
 | **GATE DELAY** | 0 .. 50 ms (5 ms steps) | an external carrier's gate held open after the last note (2.4) |
+| **BRIDGE MODE** | FIXED, FOLLOW | how SILENCE > BRIDGE fills the pauses (below) |
+
+**BRIDGE MODE.** **FIXED** (the default, as before): in a pause the carrier plays at BRIDGE's level, whatever level
+your words came in at; turned up, the pauses can be louder than the words, and each word then starts as a drop, a
+rough, choppy edge. **FOLLOW**: the bridge keeps the pauses below your recent words (about 8 dB under them; BRIDGE is
+the most it plays) and hands over to each word at ATTACK's speed and back at RELEASE's, so a word picks up smoothly.
+With BRIDGE OFF, BRIDGE MODE does nothing (dim).
 
 The defaults are the VSM201's fast, articulate response. If syllable edges sound sharp or harsh, slow them down:
 
@@ -266,6 +273,7 @@ The small tick marks **−10 dBFS**: aim your voice's loud peaks there (AIM −1
 | ENVELOPE | ATTACK | 3 ms (3 .. 30) | how fast the bands open (2.5) |
 | | RELEASE | 8 ms (8 .. 100) | how fast they close |
 | | GATE DELAY | 0 ms (0 .. 50) | an external carrier's gate held after the last note |
+| | BRIDGE MODE | FIXED, FOLLOW | FOLLOW: the pauses below your words, a smooth pickup into each word (2.5) |
 
 Everything here is also on the vocoder page or the web editor's **Vocoder** tab.
 
@@ -435,6 +443,7 @@ on the keyboard.
 | Drums or T1 / T2 silent | SETUP: VOC + DRUMS turns T1 and T2 off, VOC + SYNTH the drums, VOC ALONE all three. FULL plays everything |
 | An instrument plays on T1 / T2 | IN L or IN R is on T1 or T2 (only in a SETUP that has the track off) |
 | Harsh, sharp syllable edges | the input too hot: HOME > INPUT, the meter's peaks near 0 dBFS or CLIP: TRIM down to the −10 tick (or lower it at the computer); ENVELOPE > ATTACK 8 ms, RELEASE 25 ms or slower |
+| A rough, choppy edge to each word (BRIDGE up) | the pauses louder than the words: ENVELOPE > BRIDGE MODE: FOLLOW; or BRIDGE lower |
 | Tearing or raw synth in the pauses (external carrier, BRIDGE up) | the synth clipping on its way in: HOME > INPUT, its side's meter: TRIM it down, or lower it in the DAW; SILENCE > AGC on |
 | External carrier silent | CARRIER EXT L / EXT R; the synth's audio on that side; play track 3: the gate opens only while a track 3 note is held |
 | External carrier's notes cut short | ENVELOPE > GATE DELAY up (the synth comes back through the DAW late) |

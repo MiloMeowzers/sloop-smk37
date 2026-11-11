@@ -51,8 +51,9 @@ enum { MI_COLOR, MI_ZOOM,
                                                     * carrier's; kept, project.c) */
        MI_VTILT, MI_VCOL, MI_VBLEND, MI_VNORM,     /* BRIDGE TONE > TILT, COLOUR, BLEND, NORMAL (the whole output's: the
                                                     * VSM201's weights; smk_vocoder.h; kept, project.c) */
-       MI_VEATT, MI_VEREL, MI_VGDEL,               /* ENVELOPE > ATTACK, RELEASE (the bands' envelopes), GATE DELAY (the
-                                                    * external carrier's gate); kept, project.c */
+       MI_VEATT, MI_VEREL, MI_VGDEL, MI_VBRM,      /* ENVELOPE > ATTACK, RELEASE (the bands' envelopes), GATE DELAY (the
+                                                    * external carrier's gate), BRIDGE MODE (smk_vocoder.h voc_brmode);
+                                                    * kept, project.c */
 #endif
 #endif
        MI_ADV, MI_DPREV,
@@ -90,7 +91,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "SETUP", "CARRIER", "IN L", "IN R", "TRIM L", "TRIM R",
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
                                               "BRIDGE", "THRESHOLD", "AGC", "MOD WHEEL", "TILT", "COLOUR", "BLEND", "RESPONSE",
-                                              "ATTACK", "RELEASE", "GATE DELAY",
+                                              "ATTACK", "RELEASE", "GATE DELAY", "BRIDGE MODE",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -367,6 +368,9 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         str_cpy(b + str_len(b), " DB", 4);
         return b;
     }
+    case MI_VBRM:                                     /* FIXED, FOLLOW (dim: no bridging: the same) */
+        *c = VOC_AUDIO_ON && voc_bridge ? C_HI : C_DIM;
+        return voc_brmode ? "FOLLOW" : "FIXED";
     case MI_VGDEL: {                                  /* the external carrier's gate held after the notes, 0 .. 50 ms
                                                        * (dim: no channel to CARRIER) */
         static const char *const N[11] = {"0 MS", "5 MS", "10 MS", "15 MS", "20 MS", "25 MS", "30 MS", "35 MS",
@@ -583,7 +587,8 @@ UI_SMALL static void draw_menu(void)
            voc_vmode * 1000159u + voc_pink * 1000171u + voc_bridge * 1000183u + voc_thr * 1000187u +
            voc_tilt * 1000193u + voc_colour * 1000199u + voc_blend * 1000211u + voc_agc * 1000213u +
            voc_norm * 1000231u + voc_emsel * 1000249u + voc_mwa * 1000253u + voc_setup * 1000273u +
-           voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u + voc_eatt * 1000313u + voc_erel * 1000333u + voc_saws * 1000357u;
+           voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u + voc_eatt * 1000313u + voc_erel * 1000333u + voc_saws * 1000357u +
+           voc_brmode * 1000409u;
     sig += voc_trim[0] * 1000363u + voc_trim[1] * 1000367u;
     if (ui.menu == 1 && sec == MS_INPUT) {          /* (the meters move: a frame each time they do) */
         mtr_update();
@@ -919,6 +924,9 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         voc_trim[i == MI_VTRR] = (uint8_t)(v < 0 ? 0 : v > (int32_t)VOC_TRIM_N - 1 ? (int32_t)VOC_TRIM_N - 1 : v);
         break;
     }
+    case MI_VBRM:                                      /* right FOLLOW, left FIXED; OCT+ toggles */
+        voc_brmode = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_brmode);
+        break;
     case MI_VGDEL: {                                   /* 0 .. 50 ms in 5 (stops at the ends); OCT+ back to 0 */
         int32_t v = s ? (int32_t)(voc_gdel % 11u) + s : 0;
         voc_gdel = (uint8_t)(v < 0 ? 0 : v > 10 ? 10 : v);

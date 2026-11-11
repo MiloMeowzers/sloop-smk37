@@ -29,7 +29,7 @@ its own, and the vocoder runs at **44.1 kHz (HQ)**. [How it all works](/VOCODER.
 
 - **An audio track:** track 3 plays the computer's audio (your microphone, an instrument, any recording) dry or vocoded.
 - **The vocoder:** 20 channels, per-channel emphasis, speech addition, silence bridging, voiced / unvoiced detection,
-  ATTACK and RELEASE for smoother syllables.
+  ATTACK and RELEASE for smoother syllables, BRIDGE MODE FOLLOW for a smooth pickup into each word.
 - **The carrier:** saws played from the keys and the sequencer (two a note in VOC ALONE), or your own synth. Play
   chords: that is the classic sound.
 - **The vocoder page:** the 20 channels on the knobs and pads (PATCH on the tracks screen).

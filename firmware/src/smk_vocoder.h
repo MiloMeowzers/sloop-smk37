@@ -256,6 +256,7 @@ static struct {                          /* the analysis (core 0, fx.c mix_block
     uint8_t voiced;                      /* the detector's state (hysteresis) */
     int32_t acg_now;                     /* AUTOCONTROL's gain as the last block ended (Q12): each block ramps from it */
     uint8_t rest, rest_zero;             /* the bands resting (SILENCE > ANALYSIS); voc_ab buffers still to clear */
+    int32_t psm;                         /* BRIDGE MODE FOLLOW: the pause value, moved at the bands' times */
     uint32_t quiet;                      /* samples below THRESHOLD in a row */
     uint32_t blocks, uv_blocks, pause_blocks, rest_blocks;   /* (the console) */
 } voa;
@@ -281,6 +282,8 @@ static struct {                          /* the synthesis (track 3's core): the 
     int32_t agc_env, agc_g;              /* the carrier AGC: its level (mean |x|), its gain (Q15, 1.0 = 32767) */
     int32_t bk[VOC_NB], cf;              /* BRIDGE TONE as the last block ended: each band's bridge, COLOUR's factor (the
                                           * next block ramps from them: no zipper) */
+    int32_t bfa, lsp, lgap;              /* BRIDGE MODE FOLLOW: the bridge's gain taken off (Q15, 0: BRIDGE's own), the
+                                          * words' and the gaps' level (mean |x| a sample) */
     int32_t pk0, pk1, pk2;               /* the pink filter */
     int32_t sf;                          /* the SOFT noise's low-pass */
     uint32_t rnd;
@@ -305,6 +308,15 @@ static inline int32_t voc_sec(int32_t x, int32_t b0, int32_t *x1, int32_t *x2, i
 static const uint16_t VOC_EATT_K[VOC_EATT_N] = {VOC_ENV_ATT, 592, 370, 247, 148, 99};   /* 3, 5, 8, 12, 20, 30 ms */
 static const uint16_t VOC_EREL_K[VOC_EREL_N] = {VOC_ENV_REL, 198, 119, 74, 50, 30};     /* 8, 15, 25, 40, 60, 100 ms */
 static uint8_t voc_eatt, voc_erel;
+/* ENVELOPE > BRIDGE MODE (2026-11-11, the owner: "a rough, choppy edge to the syllables rather than a smooth pickup";
+ * vocoder-ui-spec.md §7n): 0 FIXED (the default: as before, bit for bit), 1 FOLLOW: (a) the pause value moves at the
+ * bands' own times (down at ATTACK into a word, up at RELEASE out of it: a crossfade with the bands, no hole), (b) the
+ * bridge's level follows the words': its gain (voc.bfa) moves only in a gap, keeping the gaps at most VOC_FOLLOW_K x the
+ * recent words' level (the vocoded output's |x|), BRIDGE the most it can be. Host-measured on a steady carrier and
+ * 39 syllables: BRIDGE 0 dB, the gaps 11 dB above the words before, 8 below with it; the hole as a word starts 2.7 ->
+ * 1.6 dB */
+static uint8_t voc_brmode;
+#define VOC_FOLLOW_K 11585                /* the gaps at most -3 dB x the words' mean |x| (Q15; ~ -8 dB as heard) */
 static inline int32_t voc_env_k(int32_t e, int32_t y, int32_t ka, int32_t kr)   /* voc_env with its times given */
 {
     int32_t t = y < 0 ? -y : y, d;
@@ -437,6 +449,13 @@ static void voc_analyse(uint32_t n)
         int32_t thr = VOC_THR_DB[voc_thr % VOC_THR_N] * 256, p;
         int32_t db = voa.envs > 0 ? ((voc_log2_q8((uint32_t)voa.envs) - 19 * 256) * 1541) >> 8 : -120 * 256;
         p = db <= thr ? 32767 : db >= thr + 24 * 256 ? 0 : (int32_t)(((int64_t)(thr + 24 * 256 - db) * 32767) / (24 * 256));
+        if (voc_brmode) {                                /* FOLLOW: the pause value at the bands' times (no hole) */
+            int32_t kk = (int32_t)(p < voa.psm ? eka : ekr) * (int32_t)(n / 2u);
+            voa.psm += (int32_t)(((int64_t)(p - voa.psm) * (kk > 65535 ? 65535 : kk)) >> 16);
+            p = voa.psm;
+        } else {
+            voa.psm = p;
+        }
         voc_ab[voc_aw].pause = p;
         voc_ab[voc_aw].speech = (uint8_t)(db > thr);
     }
@@ -520,6 +539,29 @@ static void voc_chan_block(uint32_t hq)
 
 
 /* the carrier block b (the track's scale, n even) becomes the vocoded block, in place */
+/* BRIDGE MODE FOLLOW, once a block after the synthesis: the words' level (the pause value near 0), the gaps' (near
+ * full), and the bridge's gain moved in a gap only (down ~1.6 % a block while the gaps are too loud, back up ~0.4 %) */
+static inline void voc_follow(uint32_t oa)       /* (oa: the block's sum of |x|, at most 2^23 x 32: a block's own
+                                                     * scale, only the words' and the gaps' ratio counts: no division) */
+{
+    int32_t a, pz = voc_ab[voc_aw ^ 1u].pause;
+    if (!voc_brmode) {
+        voc.bfa = 0;
+        return;
+    }
+    a = (int32_t)(oa >> 5);
+    if (pz < 4096) {
+        voc.lsp += (a - voc.lsp) >> 6;                   /* (~45 ms) */
+    } else if (pz > 28672) {
+        voc.lgap += (a - voc.lgap) >> 4;
+        if ((int64_t)voc.lgap * 32768 > (int64_t)voc.lsp * VOC_FOLLOW_K)
+            voc.bfa += (32767 - voc.bfa) >> 6;
+        else
+            voc.bfa -= voc.bfa >> 8;
+        if (voc.bfa > 32255)
+            voc.bfa = 32255;                             /* (at most -36 dB off) */
+    }
+}
 static void voc_process(int32_t *b, uint32_t n)
 {
     uint32_t i, j;
@@ -529,6 +571,9 @@ static void voc_process(int32_t *b, uint32_t n)
     uint32_t vm = voc_vmode % VV_N, br = vpg.brsel != VS_OFF && voc_bridge % VOC_BR_N != 0u;
     int32_t badd = br ? (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * voc_br_q15(voc_bridge % VOC_BR_N) >> 15) *
                                   VOC_BR_Q15 >> 15) : 0;
+    uint32_t oa = 0;                                     /* (FOLLOW: the vocoded output's sum of |x|) */
+    if (voc_brmode)
+        badd = (int32_t)(((int64_t)badd * (32767 - voc.bfa)) >> 15);
     int32_t bk[VOC_NB], dbk[VOC_NB], cf, dcf, ag, dag, m = (int32_t)(n / 2u);
     uint32_t fill = voc_blend & 1u, mode, ramp = 0, any = 0;
     int32_t uvt = vm == VV_UNVOICED ? 32767 : vm == VV_VOICED ? 0 :                 /* the noise's share wanted */
@@ -611,6 +656,7 @@ static void voc_process(int32_t *b, uint32_t n)
                 cf += dcf;
             }
             d = voc_tick(c, i >> 1, bk, cf, mode, fill);
+            oa += (uint32_t)(d < 0 ? -d : d);
         }
         voc.oh[voc.ow++ & (VOC_ON - 1u)] = d;
         /* 2:1 up: the even sample the one VOC_HB back, the odd one the half-band between it and the next */
@@ -632,6 +678,7 @@ static void voc_process(int32_t *b, uint32_t n)
         }
     }
     voc.peak_out = pout;
+    voc_follow(oa);
 }
 
 /* HQ (SETUP VOC + DRUMS, VOC + SYNTH, VOC ALONE: vocoder-ui-spec.md §7i-2): voc_process with the synthesis bank at
@@ -669,6 +716,9 @@ static void __attribute__((noinline)) voc_process_hq(int32_t *b, uint32_t n)   /
     uint32_t vm = voc_vmode % VV_N, br = vpg.brsel != VS_OFF && voc_bridge % VOC_BR_N != 0u;
     int32_t badd = br ? (int32_t)(((int64_t)voc_ab[voc_aw ^ 1u].pause * voc_br_q15(voc_bridge % VOC_BR_N) >> 15) *
                                   VOC_BR_Q15 >> 15) : 0;
+    uint32_t oa = 0;                                     /* (FOLLOW: the vocoded output's sum of |x|) */
+    if (voc_brmode)
+        badd = (int32_t)(((int64_t)badd * (32767 - voc.bfa)) >> 15);
     int32_t bk[VOC_NB], dbk[VOC_NB], cf, dcf, ag, dag, m = (int32_t)n;
     uint32_t fill = voc_blend & 1u, mode, ramp = 0, any = 0;
     int32_t uvt = vm == VV_UNVOICED ? 32767 : vm == VV_VOICED ? 0 :                 /* the noise's share wanted */
@@ -765,6 +815,7 @@ static void __attribute__((noinline)) voc_process_hq(int32_t *b, uint32_t n)   /
             }
             d += (int32_t)(((int64_t)VOC_VS(hf >> 4) * VOC_MIX_Q15[voc_hf % VOC_MIX_N]) >> 15);
         }
+        oa += (uint32_t)(d < 0 ? -d : d);
         x = d;
         if (dg)
             x += (int32_t)(((int64_t)VOC_VS(voc_in[i]) * dg) >> 15);   /* DRY */
@@ -776,6 +827,7 @@ static void __attribute__((noinline)) voc_process_hq(int32_t *b, uint32_t n)   /
         b[i] = x;
     }
     voc.peak_out = pout;
+    voc_follow(oa);
 }
 
 /* voice.c track_render, track 3, at its start: the state to render this block. A change fades the old state out first
