@@ -73,6 +73,12 @@ enum { VR_T3, VR_CARR, VR_T1, VR_T2, VR_OFF, VR_N };          /* IN L / IN R: TR
 enum { UD_T3, UD_CARR, UD_T1, UD_T2, UD_N };                  /* the destinations' buffers (VR_T3 .. VR_T2) */
 static uint8_t voc_setup, voc_inl, voc_inr;
 static uint8_t voc_gdel;                 /* GATE DELAY (external carrier): 0 .. 10, x 5 ms */
+/* SETUP > CARRIER (2026-11-11, the owner): the built-in saws, AUTO (one; two in VOC ALONE), 1 SAW, 2 SAWS (not in FULL:
+ * it does not fit), or EXT L / EXT R (shown from IN L / IN R = CARRIER, set there by choosing it: ui_menu.c) */
+enum { VCS_AUTO, VCS_ONE, VCS_TWO, VCS_N };
+static uint8_t voc_saws;
+#define VOC_PAIR (((voc_saws % VCS_N == VCS_AUTO && VOC_SETUP_ON == VSU_ALONE) ||                                 \
+                   (voc_saws % VCS_N == VCS_TWO && VOC_SETUP_ON != VSU_FULL)) && !(voc_dbg & 2u))
 static uint8_t voc_hq;                   /* the synthesis' rate now (latched at a reset, voc_state): 1 HQ */
 static uint8_t voc_dbg;                  /* (console "setup dbg N": bit 0 no HQ, bit 1 no two saws, bit 2 two
                                           * saws in every SETUP; 0 at boot) */

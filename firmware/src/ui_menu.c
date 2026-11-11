@@ -39,7 +39,7 @@ enum { MI_COLOR, MI_ZOOM,
        MI_XFADE,                                   /* SMK-37: PUNCH > XFADE (smk_tpunch.h tp_xfl, live) */
        MI_CURVE,                                   /* SMK-37: PUNCH > CURVE (smk_tpunch.h tp_lin, live) */
 #if SMK_UAC_IN_PROBE
-       MI_VSETUP, MI_VINL, MI_VINR, MI_VGDEL,      /* the vocoder build: SETUP > SETUP, IN L, IN R, GATE DELAY
+       MI_VSETUP, MI_VCARR, MI_VINL, MI_VINR,      /* the vocoder build: SETUP > SETUP, CARRIER, IN L, IN R
                                                     * (smk_vocoder.h; kept, project.c) */
        MI_VMODE, MI_VLVL, MI_VDRY, MI_VHF,         /* the vocoder build: VOCODER > MODE, LEVEL, DRY, HF (smk_vocoder.h:
                                                     * the audio track, track 3; live, not kept) */
@@ -47,9 +47,10 @@ enum { MI_COLOR, MI_ZOOM,
                                                     * VSM201's voice mode, its pink filter); live, not kept */
        MI_VBR, MI_VTHR, MI_VAGC, MI_VMWA,          /* SILENCE > BRIDGE, THRESHOLD (the VSM201's silence bridging), AGC (the
                                                     * carrier's; kept, project.c) */
-       MI_VTILT, MI_VCOL, MI_VBLEND, MI_VNORM,
-       MI_VEATT, MI_VEREL,                         /* ENVELOPE > ATTACK, RELEASE (the bands' envelopes; kept, project.c) */     /* BRIDGE TONE > TILT, COLOUR, BLEND, NORMAL (the whole output's: the
+       MI_VTILT, MI_VCOL, MI_VBLEND, MI_VNORM,     /* BRIDGE TONE > TILT, COLOUR, BLEND, NORMAL (the whole output's: the
                                                     * VSM201's weights; smk_vocoder.h; kept, project.c) */
+       MI_VEATT, MI_VEREL, MI_VGDEL,               /* ENVELOPE > ATTACK, RELEASE (the bands' envelopes), GATE DELAY (the
+                                                    * external carrier's gate); kept, project.c */
 #endif
 #endif
        MI_ADV, MI_DPREV,
@@ -84,10 +85,10 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #endif
                                               "STEM FX", "FADE", "XFADE", "CURVE",
 #if SMK_UAC_IN_PROBE
-                                              "SETUP", "IN L", "IN R", "GATE DELAY",
+                                              "SETUP", "CARRIER", "IN L", "IN R",
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
                                               "BRIDGE", "THRESHOLD", "AGC", "MOD WHEEL", "TILT", "COLOUR", "BLEND", "RESPONSE",
-                                              "ATTACK", "RELEASE",
+                                              "ATTACK", "RELEASE", "GATE DELAY",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -165,6 +166,13 @@ UI_SMALL static uint32_t mi_row(uint32_t i) { return i - MS_FIRST[mi_sec(i)]; } 
 static const char *const UL_MENU_NAME[UL_N] = {"STEREO", "DRUMS+RET", "SYNTHS+RET", "ALL DRY"};
 static int replug_pending(void);                   /* (main.c: a new layout or rate is about to be plugged) */
 /* the guide under STEM RATE and STEM FILTER (two short lines beside the value): what each choice costs */
+#if SMK_UAC_IN_PROBE
+/* SETUP > CARRIER as shown: EXT L / EXT R (3, 4) when IN L / IN R is CARRIER, else the saws' choice (0 .. 2) */
+UI_SMALL static uint32_t mi_carr_now(void)
+{
+    return voc_inl % VR_N == VR_CARR ? 3u : voc_inr % VR_N == VR_CARR ? 4u : voc_saws % VCS_N;
+}
+#endif
 UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
 {
     static const char *const G[4][2] = {{"RESAMPLED ON", "THE KEYBOARD"}, {"LIGHTEST:", "PC CONVERTS"},
@@ -174,6 +182,16 @@ UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
     if (i == MI_SFILT)
         return stem_rate & 1u ? (line ? "AT 44.1 KHZ" : "NOT USED") : G[2u + (stem_light & 1u)][line & 1u];
 #if SMK_UAC_IN_PROBE
+    if (i == MI_VCARR) {                                /* (2 SAWS: where it fits) */
+        uint32_t v = mi_carr_now(), su = voc_setup % VSU_N;
+        if (v == 2u && su == VSU_FULL)
+            return line ? "NOT IN FULL" : "NEEDS A SETUP";
+        if (v == 2u && su == VSU_SYNTH)
+            return line ? "CPU TIGHT" : "VOC + SYNTH:";
+        if (v == 0u)
+            return line ? "IN VOC ALONE" : "TWO SAWS";
+        return "";
+    }
     if (i == MI_VINL || i == MI_VINR) {                 /* (what the route needs or does) */
         uint32_t r = (i == MI_VINL ? voc_inl : voc_inr) % VR_N;
         if ((r == VR_T1 || r == VR_T2) && !(VSU_SKIP(voc_setup % VSU_N) >> (r - VR_T1) & 1u))
@@ -305,6 +323,13 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         *c = usb_layout_now() && stem_fx ? C_HI : C_DIM;
         return tp_lin ? "LINEAR" : "EQUAL";
 #if SMK_UAC_IN_PROBE
+    case MI_VCARR: {                                  /* the carrier: the saws, or a channel (dim: not vocoding; 2 SAWS
+                                                       * in FULL: amber, one plays) */
+        static const char *const N[5] = {"AUTO", "1 SAW", "2 SAWS", "EXT L", "EXT R"};
+        uint32_t v = mi_carr_now();
+        *c = !(VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW) ? C_DIM : v == 2u && voc_setup % VSU_N == VSU_FULL ? C_AMB : C_HI;
+        return N[v];
+    }
     case MI_VEATT: {                                  /* the bands' envelopes' attack (dim: not vocoding) */
         static const char *const N[VOC_EATT_N] = {"3 MS", "5 MS", "8 MS", "12 MS", "20 MS", "30 MS"};
         *c = VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW ? C_HI : C_DIM;
@@ -492,7 +517,7 @@ UI_SMALL static void draw_menu(void)
            voc_vmode * 1000159u + voc_pink * 1000171u + voc_bridge * 1000183u + voc_thr * 1000187u +
            voc_tilt * 1000193u + voc_colour * 1000199u + voc_blend * 1000211u + voc_agc * 1000213u +
            voc_norm * 1000231u + voc_emsel * 1000249u + voc_mwa * 1000253u + voc_setup * 1000273u +
-           voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u + voc_eatt * 1000313u + voc_erel * 1000333u;   /* (2026-11-11: SETUP's four: without them
+           voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u + voc_eatt * 1000313u + voc_erel * 1000333u + voc_saws * 1000357u;   /* (2026-11-11: SETUP's four: without them
                                                          * the screen did not follow the knob) */
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
@@ -619,7 +644,7 @@ UI_SMALL static void draw_menu(void)
                     cv_text(xv + 8, y + 30, &FONT_S, "RE-PLUG", C_AMB);   /* (main.c: a moment after the knob) */
                 else if (i == MI_SRATE || i == MI_SFILT
 #if SMK_UAC_IN_PROBE
-                         || i == MI_VINL || i == MI_VINR
+                         || i == MI_VINL || i == MI_VINR || i == MI_VCARR
 #endif
                          ) {
                     uint16_t gc = vc == C_HI ? C_GRAY : C_DIM;
@@ -772,6 +797,25 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         tp_lin = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !tp_lin);
         break;
 #if SMK_UAC_IN_PROBE
+    case MI_VCARR: {                                   /* AUTO .. EXT R (stops at the ends); OCT+ back to AUTO. EXT L / R
+                                                        * set that channel to CARRIER (the other one off it: OFF); the
+                                                        * saws take any channel off CARRIER (OFF: no synth in the voice) */
+        uint32_t v = mi_carr_now();
+        v = s > 0 ? (v < 4u ? v + 1u : v) : s < 0 ? (v ? v - 1u : 0u) : 0u;
+        if (v <= 2u) {
+            voc_saws = (uint8_t)v;
+            if (voc_inl % VR_N == VR_CARR)
+                voc_inl = VR_OFF;
+            if (voc_inr % VR_N == VR_CARR)
+                voc_inr = VR_OFF;
+        } else {
+            uint8_t *on = v == 3u ? &voc_inl : &voc_inr, *off = v == 3u ? &voc_inr : &voc_inl;
+            *on = VR_CARR;
+            if (*off % VR_N == VR_CARR)
+                *off = VR_OFF;
+        }
+        break;
+    }
     case MI_VEATT:                                     /* 3 .. 30 ms (stops at the ends); OCT+ back to 3 ms */
     case MI_VEREL: {                                   /* 8 .. 100 ms (stops at the ends); OCT+ back to 8 ms */
         uint8_t *x = i == MI_VEATT ? &voc_eatt : &voc_erel;

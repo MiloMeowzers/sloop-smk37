@@ -7856,7 +7856,8 @@ const OB = {
     ["lin", 15, "PUNCH CURVE", ["EQUAL", "LINEAR"], 0], ["sqcarry", 16, "FLIP RETURN", ["SLIP", "CARRY"], 0],
     ["sqlb", 17, "LOOP BACK", ["2 bars", "1 bar", "1/2 bar", "1/4", "1/8", "1/16"], 1],
     ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0],
-    ["gdel", 19, "GATE DELAY (VOCODER)", Array.from({ length: 11 }, (_, i) => [i, `${i * 5} MS`]), 0]] },
+    ["gdel", 19, "GATE DELAY (VOCODER)", Array.from({ length: 11 }, (_, i) => [i, `${i * 5} MS`]), 0],
+    ["saws", 19, "CARRIER SAWS (VOCODER)", ["AUTO", "1 SAW", "2 SAWS"], 0]] },
   vocoder: { id: 14, len: 476, magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
     ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0],
     ["vsetup", 71, "SETUP", ["FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"], 0],
@@ -7883,7 +7884,8 @@ const OB = {
     ["nzc", 151, "NOISE BLEND", Array.from({ length: 21 }, (_, i) => [100 - i * 5, `${i * 5} %`]).reverse(), 0]] },
 };
 const OB_PG = 72;                                     /* vocset_t pcur: mute (4), emph[20], add[20], brg[10], fn[20], byp .. */
-const OB_BITS = { vsetup: [0, 3], vinl: [2, 7], vinr: [5, 7] };   /* vocset rsv[1] (byte 71): SETUP, IN L, IN R */
+const OB_BITS = { vsetup: [0, 3], vinl: [2, 7], vinr: [5, 7],     /* vocset rsv[1] (byte 71): SETUP, IN L, IN R */
+                  gdel: [0, 15], saws: [4, 3] };                  /* smkset spare (byte 19): GATE DELAY, CARRIER's saws */
 const obOpts = (f) => f[3].map((x, i) => (Array.isArray(x) ? x : [i, x]));
 const obResp = (d) => (d[68] & 1 ? (d[69] & 1 ? 2 : 1) : 0);
 const obBendGet = (d, f) => {                         /* smk_wheel.h: 0 the default (down: as up), 0x80 none, else semitones */
@@ -7894,7 +7896,7 @@ function obGet(k, f) {
   const d = OB[k].d;
   if (f[0] === "resp") return obResp(d);
   if (f[0] === "bup" || f[0] === "bdn") return obBendGet(d, f);
-  if (OB_BITS[f[0]]) { const [sh, m] = OB_BITS[f[0]]; return Math.min((d[f[1]] >> sh) & m, f[2] === "SETUP" ? 3 : 4); }
+  if (OB_BITS[f[0]]) { const [sh, m] = OB_BITS[f[0]]; return Math.min((d[f[1]] >> sh) & m, obOpts(f).length - 1); }
   return d[f[1]];
 }
 function obSet(k, f, v) {

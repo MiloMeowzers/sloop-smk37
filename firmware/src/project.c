@@ -893,7 +893,8 @@ static void smkset_fill(smkset_t *s)
     s->sqlb = (uint8_t)(sq_lb % SQ_LB_N);
     s->sqgrid = (uint8_t)(sq_grid % SQ_GRID_N);
 #if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
-    s->spare = (uint8_t)(voc_gdel % 11u);          /* SETUP > GATE DELAY (the vocoder build; 0 in the others) */
+    s->spare = (uint8_t)(voc_gdel % 11u | (voc_saws % VCS_N) << 4);   /* GATE DELAY, CARRIER's saws (the vocoder
+                                                     * build; 0 in the others) */
 #endif
 }
 /* a record of n bytes (as read from flash, or the editor's restore, backup object 12): 1 taken (the settings set from
@@ -925,7 +926,8 @@ static int smkset_take(const uint8_t *b, uint32_t n)
             sq_lb = (uint8_t)(s.sqlb < SQ_LB_N ? s.sqlb : 1u);
             sq_grid = (uint8_t)(s.sqgrid < SQ_GRID_N ? s.sqgrid : 0u);
 #if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
-            voc_gdel = (uint8_t)(s.spare <= 10u ? s.spare : 0u);
+            voc_gdel = (uint8_t)((s.spare & 15u) <= 10u ? s.spare & 15u : 0u);
+            voc_saws = (uint8_t)(((s.spare >> 4) & 3u) % VCS_N);
 #endif
         }
         knob_layout_apply();

@@ -14,7 +14,14 @@ on:
     branches: [ci, uac-in]          # (uac-in: the playback probe, on the private repository)
   workflow_dispatch:
 
+# a newer push to the same branch stops the run before it (the owner, 2026-11-11: the private repository's Actions
+# minutes; a run is 15-20 minutes)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
+  VOC_ONLY: ${{ github.ref_name == 'uac-in' }}   # (the vocoder branch: its package only, no Pro / MKE / probes)
   BASE: 91f3018                      # SLOOP 2.8.4, the port's upstream base (was d893642, 2.8.1)
   JIELI_TOOLCHAIN: /home/runner/.jieli/toolchain
   AC79_SDK: /home/runner/fw-AC79_AIoT_SDK
@@ -68,22 +75,57 @@ jobs:
           "$JIELI_TOOLCHAIN"/pi32v2/bin/clang --version 2>/dev/null | head -1 || true
           python3 --version; node --version; gcc --version | head -1
 
+      - name: The day (the builds embed __DATE__)
+        id: day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      # the baseline never changes: its test results kept for good, its FM-1 hashes for the day (the date is in the
+      # binaries), so a second run the same day builds and tests it no more
+      - name: Baseline cache (tests)
+        uses: actions/cache@v6
+        with:
+          path: basecache/tests
+          key: base-tests-${{ env.BASE }}
+
+      - name: Baseline cache (FM-1 hashes, the day's)
+        uses: actions/cache@v6
+        with:
+          path: basecache/fm1
+          key: base-fm1-${{ env.BASE }}-${{ steps.day.outputs.day }}
+
       - name: 1. Baseline (upstream ${{ env.BASE }}, FM-1)
         run: |
+          if [ -s basecache/fm1/fm1-reference.sha256 ] && [ -s basecache/tests/base-tests.log ]; then
+            echo "baseline from the cache"
+            cp basecache/fm1/fm1-reference.sha256 ../
+            cp basecache/tests/base-tests.log basecache/tests/base-fails.txt ../
+            cat ../fm1-reference.sha256
+            echo "baseline failures: $(wc -l < ../base-fails.txt)"
+            exit 0
+          fi
           git worktree add ../base "$BASE"
           cd ../base
           sh build.sh > ../base-build.log 2>&1 || { tail -50 ../base-build.log; exit 1; }
           sha256sum build/felucca.bin build/felucca.fwsc build/loader/ota.bin > ../fm1-reference.sha256
           cat ../fm1-reference.sha256
-          sh tests/run_tests.sh > ../base-tests.log 2>&1 || true
-          # (regress prints timing-only measurements as "-- timed: a note, not a failure": listed apart, never a failure;
-          # their numbers differ on every run of a shared runner)
-          grep -E "FAIL|OVER BUDGET" ../base-tests.log | grep -v "a note, not a failure" | sort -u > ../base-fails.txt || true
+          if [ -s "$GITHUB_WORKSPACE/basecache/tests/base-tests.log" ]; then
+            cp "$GITHUB_WORKSPACE"/basecache/tests/base-tests.log "$GITHUB_WORKSPACE"/basecache/tests/base-fails.txt ../
+          else
+            sh tests/run_tests.sh > ../base-tests.log 2>&1 || true
+            # (regress prints timing-only measurements as "-- timed: a note, not a failure": listed apart, never a
+            # failure; their numbers differ on every run of a shared runner)
+            grep -E "FAIL|OVER BUDGET" ../base-tests.log | grep -v "a note, not a failure" | sort -u > ../base-fails.txt || true
+            mkdir -p "$GITHUB_WORKSPACE/basecache/tests"
+            cp ../base-tests.log ../base-fails.txt "$GITHUB_WORKSPACE/basecache/tests/"
+          fi
+          mkdir -p "$GITHUB_WORKSPACE/basecache/fm1"
+          cp ../fm1-reference.sha256 "$GITHUB_WORKSPACE/basecache/fm1/"
           echo "baseline failures: $(wc -l < ../base-fails.txt)"
 
       - name: 2. SMK-37 packages (Pro, Elite, MKE)
         run: |
           mkdir -p out
+          if [ "$VOC_ONLY" != true ]; then
           for m in pro elite mke; do
             BOARD=smk37 MODEL=$m sh build.sh > "out/build-smk37-$m.log" 2>&1 || { tail -50 "out/build-smk37-$m.log"; exit 1; }
             p=build/sloop-smk37$( [ $m = pro ] || echo "-$m" ).fwsc     # (the intermediates are shared: copy each at once)
@@ -109,6 +151,7 @@ jobs:
             > out/build-smk37-elite-uin.log 2>&1 || { tail -50 out/build-smk37-elite-uin.log; exit 1; }
           cp build/sloop-smk37-elite.fwsc out/sloop-smk37-elite-uinprobe.fwsc
           tail -3 out/build-smk37-elite-uin.log
+          fi
           # the vocoder build: the playback input and HOME > VOCODER on the console build, SLOOP's USB audio as usual
           # (no test signals: USB LAYOUT stereo or the stems), lean (SMK_VOC_LEAN: smk37-devtools vocoder-ui-spec.md
           # §1: no built-in samples, TEXTURE or five engines; SLICE on user samples; the delay at 22.05 kHz)
@@ -129,11 +172,17 @@ jobs:
           # also as one file for the disk (webapp/editor/sloop-editor.html). The installer fetches its package, so
           # it is served from localhost (serve-installer.ps1), not opened as a file
           v="2.8.1-smk37-$(git rev-parse --short HEAD)"
+          if [ "$VOC_ONLY" = true ]; then      # (the vocoder branch: its own package's site and editor)
+            python3 web/make_site.py out/sloop-smk37-elite-vocoder.fwsc "$v" out/installer-elite > /dev/null
+            mkdir -p out/installer-pro/webapp/editor
+            cp out/installer-elite/webapp/editor/sloop-editor.html out/installer-pro/webapp/editor/
+          else
           for m in pro elite mke; do
             p=out/sloop-smk37$( [ $m = pro ] || echo "-$m" ).fwsc
             python3 web/make_site.py "$p" "$v" "out/installer-$m" > /dev/null
             ls "out/installer-$m/webapp/installer/index.html" "out/installer-$m/firmware/"*.fwsc
           done
+          fi
           cp .github/serve-installer.ps1 out/
           mkdir -p out/tools        # the backup prep and the installer (Python 3 with mido and python-rtmidi)
           cp tools/smk_backup_prep.py tools/fm1_install.py out/tools/
