@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SLOOP for the SMK-37</title>
+<title>Enhanced SLOOP for the SMK-37</title>
 <style>
   :root { --bg: #0b0b0c; --fg: #ececec; --dim: #9a9aa0; --line: #2a2a2e; --card: #151517; --acc: #ff9a2e; --acc2: #c58bff; --warn: #ffd54a; }
   * { box-sizing: border-box; }
@@ -31,6 +31,8 @@
   a.card span { color: var(--dim); font-size: .9rem; }
   .dev { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 14px; color: var(--dim); font-size: .92rem; }
   .dev b { color: var(--fg); }
+  ul.opts { color: var(--dim); margin: 0 0 14px; font-size: .95rem; }
+  ul.opts b { color: var(--fg); font-weight: 600; }
   p a, li a { color: var(--acc); }
   section.mew li a { color: var(--acc2); }
   ul { padding-left: 20px; margin: 0; }
@@ -39,9 +41,9 @@
 </head>
 <body>
 <main>
-  <h1>SLOOP for the M-Vave SMK-37</h1>
-  <p class="sub">The SLOOP groovebox firmware on the SMK-37, in two builds. Install and edit from this page:
-    Chrome or Edge, over USB.</p>
+  <h1>Enhanced SLOOP for the M-Vave SMK-37</h1>
+  <p class="sub">Enhanced versions of the SLOOP groovebox firmware on the SMK-37, in two distinct flavours. Install and
+    edit from this page: Chrome or Edge, over USB.</p>
 
   <div class="warn"><b>Back up first.</b> Before the first install, make a full 1 MiB flash backup of your keyboard:
     its calibration, Bluetooth pairing and key_mac are its own and no package contains them.
@@ -51,9 +53,17 @@
 
   <div class="builds">
     <section class="build stems">
-      <h2>Audio stems</h2>
-      <p class="what">SLOOP 2.8.1 with USB audio stems for a DAW, punch-ins on every stem, the stem punch-in page,
-        sequencer effects and DAW mode. Every engine and the built-in samples.</p>
+      <h2>Multichannel USB audio</h2>
+      <p class="what">SLOOP 2.8.1 as a 6-channel USB audio interface: your DAW records each track and drum group on a
+        channel of its own. Punch-in effects on every channel, the punch-in page on the pads, sequencer effects and DAW
+        mode. Every engine and the built-in samples.</p>
+      <h3>The channels: HOME &gt; USB &gt; USB LAYOUT</h3>
+      <ul class="opts">
+        <li><b>STEREO</b> (default): the stereo mix, as on the FM-1</li>
+        <li><b>SYNTHS+RET</b>: T1, T2, T3, the drums, the effects return L and R</li>
+        <li><b>DRUMS+RET</b>: kick, snare, hats, percussion, the effects return L and R</li>
+        <li><b>ALL DRY</b>: T1, T2, T3, kick, snare, hats and percussion</li>
+      </ul>
       <h3>Install: pick your model</h3>
       <div class="grid">
         <a class="card" href="elite/webapp/installer/"><b>SMK-37 Elite</b><span>identity SMK-37 Elite</span></a>
@@ -73,9 +83,18 @@
 
     <section class="build mew">
       <h2>Mewcoder</h2>
-      <p class="what">SLOOP 2.8.4 with your voice, or any sound you choose, in over USB audio on track 3, dry or through a 20-channel vocoder
-        modelled on the Sennheiser VSM201, played from the keys and the sequencer. Two inputs, routed apart: your voice
-        on one, your synth as the carrier or an instrument through SLOOP's effects on the other. Up to 44.1 kHz.</p>
+      <p class="what">SLOOP 2.8.4 with a 20-channel vocoder modelled on the Sennheiser VSM201, played from the keys and
+        the sequencer, and <b>two USB audio inputs</b>, each routed on the keyboard. Your voice, or any sound you choose,
+        dry or vocoded.</p>
+      <h3>Each input: HOME &gt; SETUP &gt; IN L, IN R</h3>
+      <ul class="opts">
+        <li><b>TRACK 3</b>: your voice into the vocoder, dry or vocoded</li>
+        <li><b>CARRIER</b>: your own synth as the vocoder's carrier, gated by track 3's notes</li>
+        <li><b>T1</b> or <b>T2</b>: an instrument through that track's effects and slicer, on a channel of its own</li>
+        <li><b>OFF</b>: a mono mic on the other side, at full level</li>
+      </ul>
+      <p class="what" style="min-height:0"><b>SETUP</b> picks which of SLOOP's tracks play beside the vocoder (FULL,
+        VOC + DRUMS, VOC + SYNTH, VOC ALONE). With any turned off, the vocoder runs at 44.1 kHz.</p>
       <h3>Install</h3>
       <div class="grid">
         <a class="card" href="mewcoder/webapp/installer/"><b>SMK-37 Elite</b><span>the vocoder build (Elite only)</span></a>
@@ -107,7 +126,7 @@
       <a href="https://github.com/isod89/sloop-fm1">SLOOP</a> by isod89, <a href="https://github.com/hugelton/Felucca">Felucca</a>
       by Leo Kuroshita and the SMK-37 layer by <a href="https://github.com/genkigenki/sloop-fm1">genkigenki</a></li>
   </ul>
-  <footer>Audio stems: STEMSBUILD · Mewcoder: MEWBUILD</footer>
+  <footer>Multichannel USB audio: STEMSBUILD · Mewcoder: MEWBUILD</footer>
 </main>
 </body>
 </html>

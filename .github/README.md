@@ -1,17 +1,24 @@
-# SLOOP for the M-Vave SMK-37
+# Enhanced SLOOP for the M-Vave SMK-37
 
-The SLOOP groovebox firmware on the M-Vave SMK-37 keyboard, in two builds. Install and edit from the browser:
+Enhanced versions of the SLOOP groovebox firmware on the M-Vave SMK-37 keyboard, in two distinct flavours. Install and edit from the browser:
 **[milomeowzers.github.io/sloop-smk37](https://milomeowzers.github.io/sloop-smk37/)**
 
 > Unofficial firmware, not affiliated with M-Vave. No warranty. **Back up the keyboard first** ([how](/SMK37.md#install)).
 
-## Audio stems
+## Multichannel USB audio
 
 ![The stem punch-in page, HOME > USB and HOME > PUNCH](/assets/screens/smk37-stems-screens.png)
 
-SLOOP 2.8.1 with **six USB audio stems** for your DAW (the drums in four groups, the synths, the reverb / delay return),
-**punch-ins on every stem**, the stem punch-in page on the pads, sequencer effects (FLIP, LOOP BACK, RAMP) and DAW
-mode. Every engine and the built-in samples. For the SMK-37 Pro, Elite, MKE-P37 and Starrykey 37 Play.
+SLOOP 2.8.1 as a **6-channel USB audio interface**: your DAW records each track and drum group on a channel of its
+own, with **punch-in effects on every channel**, the punch-in page on the pads, sequencer effects (FLIP, LOOP BACK,
+RAMP) and DAW mode. Every engine and the built-in samples. For the SMK-37 Pro, Elite, MKE-P37 and Starrykey 37 Play.
+
+| HOME > USB > USB LAYOUT | The channels |
+|---|---|
+| **STEREO** (default) | the stereo mix, as on the FM-1 |
+| **SYNTHS+RET** | T1, T2, T3, the drums, the effects return L and R |
+| **DRUMS+RET** | kick, snare, hats, percussion, the effects return L and R |
+| **ALL DRY** | T1, T2, T3, kick, snare, hats and percussion |
 
 **[Install](https://milomeowzers.github.io/sloop-smk37/)** ·
 **[Editor](https://milomeowzers.github.io/sloop-smk37/elite/webapp/editor/)** ·
@@ -22,11 +29,18 @@ mode. Every engine and the built-in samples. For the SMK-37 Pro, Elite, MKE-P37 
 
 ![The vocoder page: the 20 channels on the knobs and pads](/assets/screens/smk37-vocoder-page.png)
 
-SLOOP 2.8.4 with **your voice, or any sound you choose, in over USB audio** on track 3, played dry or through a **20-channel vocoder** modelled
-on the Sennheiser VSM201, played from the keys and the sequencer. **The input's two sides are routed apart:** your voice
-on one, and on the other your own synth as the carrier (gated by the keys, as in the studio) or an instrument through
-SLOOP's effects on a track of its own. Turn SLOOP's tracks off when your DAW brings its own, and the vocoder runs at
-44.1 kHz. A lean build: some engines and the built-in samples make room for it. For the SMK-37 Elite. **In
+SLOOP 2.8.4 with a **20-channel vocoder** modelled on the Sennheiser VSM201, played from the keys and the sequencer,
+and **two USB audio inputs**, each routed on the keyboard (HOME > SETUP > IN L, IN R):
+
+| Each input | |
+|---|---|
+| **TRACK 3** | your voice into the vocoder, dry or vocoded |
+| **CARRIER** | your own synth as the vocoder's carrier, gated by track 3's notes |
+| **T1**, **T2** | an instrument through that track's effects and slicer, on a channel of its own |
+| **OFF** | a mono mic on the other side, at full level |
+
+**SETUP** picks which of SLOOP's tracks play beside the vocoder (FULL, VOC + DRUMS, VOC + SYNTH, VOC ALONE); with any
+turned off, the vocoder runs at 44.1 kHz. A lean build: some engines and the built-in samples make room for it. For the SMK-37 Elite. **In
 development:** a harmoniser modelled on the Eventide H949: your voice, another external sound, the drums or a synth
 engine pitch-shifted into up to three harmony voices.
 
@@ -44,7 +58,7 @@ engine pitch-shifted into up to three harmony voices.
 
 ## Branches and tags
 
-| | Audio stems | Mewcoder |
+| | Multichannel USB audio | Mewcoder |
 |---|---|---|
 | Branch | `ci` (built on `smk37`, `editor-slot-readback`, `stems`) | `mewcoder` |
 | Release tag | `v2.8.1-smk37.1` | `mewcoder-v0.1` |

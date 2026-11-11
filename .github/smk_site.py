@@ -16,10 +16,11 @@ page = out / "webapp" / "installer" / "index.html"
 html = page.read_text(encoding="utf-8")
 
 HEAD = {
-    "stems": (f"SLOOP for the {model}: Audio stems",
-              "SLOOP 2.8.1 with six USB audio stems for your DAW, punch-ins on every stem, the stem punch-in page on the "
-              "pads, sequencer effects and DAW mode. Every engine, 153 sounds and the built-in samples.",
-              [("6", "USB audio stems to the DAW"), ("27", "punch-in effects, on every stem"),
+    "stems": (f"SLOOP for the {model}: Multichannel USB audio",
+              "SLOOP 2.8.1 as a 6-channel USB audio interface: your DAW records each track and drum group on a channel "
+              "of its own. Punch-in effects on every channel, the punch-in page on the pads, sequencer effects and DAW "
+              "mode. Every engine, 153 sounds and the built-in samples.",
+              [("6", "USB audio channels to the DAW"), ("27", "punch-in effects, on every channel"),
                ("16", "pads: the stem punch-in page"), ("DAW", "mode, with your own CC map")]),
     "mewcoder": (f"Mewcoder for the {model}",
                  "SLOOP 2.8.4 with your voice, or any sound you choose, in over USB audio on track 3, played dry or through a 20-channel vocoder "
