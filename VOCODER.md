@@ -350,7 +350,7 @@ instead:
 ## 7. The web editor
 
 Use Mewcoder's own editor: [online](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/editor/), or the one file
-`sloop-editor-…-smk37-<build>.html` from the same release. The Audio stems editor does not know the vocoder. It shows:
+`sloop-editor-…-smk37-<build>.html` from the same release. The Multichannel USB audio editor does not know the vocoder. It shows:
 - **Track 3 as VOCODER**: the engine, the presets and INIT locked, with a note.
 - **The Vocoder tab:** the menus' settings, the page's selectors and NOISE BLEND, and a table of the 20 channels
   (function, EMPHASIS, ADDITION, BRIDGING, mute). A name in colour has changed from its default. **Send to the

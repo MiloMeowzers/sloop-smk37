@@ -33,10 +33,10 @@ its own, and the vocoder runs at **44.1 kHz (HQ)**. [How it all works](/VOCODER.
 - **The carrier:** saws played from the keys and the sequencer (two a note in VOC ALONE), or your own synth. Play
   chords: that is the classic sound.
 - **The vocoder page:** the 20 channels on the knobs and pads (PATCH on the tracks screen).
-- **The editor's Vocoder tab**, and everything else SLOOP and the Audio stems build have.
+- **The editor's Vocoder tab**, and everything else SLOOP and the Multichannel USB audio build have.
 
 **Left out to make room:** the built-in samples (your own samples work), the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and
-NOISE engines. Need them? Use [Audio stems](https://github.com/MiloMeowzers/sloop-smk37).
+NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMeowzers/sloop-smk37).
 
 ## Start
 
