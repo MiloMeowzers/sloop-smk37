@@ -1258,6 +1258,10 @@ static uint32_t voc_setup_block(void)
     for (k = 0; k < VOC_TRK; k++)
         if (VOC_TRK_IN(k) || voc_tin_g[k])
             skip &= ~(1u << k);
+#ifdef SMK_HARM_PROBE
+    if (hp.on && hp.skip1)
+        skip |= 1u;                                     /* (probe 3: T1 as a HARMONY track would free it) */
+#endif
     return skip;
 }
 #define VOC_SETUP_BLOCK() voc_setup_block()

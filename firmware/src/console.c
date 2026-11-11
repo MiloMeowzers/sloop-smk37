@@ -483,9 +483,36 @@ static void con_bled(const char *p)
 
 #ifdef SMK_HARM_PROBE
 /* the vocoder build: the harmoniser's measurement probe (smk_harm.h) */
-/* the console: hprobe [on | off] */
-static void hp_console(int on)
+/* probe 3's settings: the tracker's rate (its window and lags with it), lags a block, the tracker, T1 */
+static void hp_set_div(uint32_t d)
 {
+    hp.on = 0;                                          /* (not mid-frame: the frame starts again) */
+    hp.div = (uint8_t)(d == 8u ? 8u : 4u);
+    hp.twn = hp.div == 8u ? HP_TW / 2u : HP_TW;
+    hp.tln = hp.div == 8u ? HP_TLN / 2u : HP_TLN;
+    hp.tlmin = hp.div == 8u ? HP_TLMIN / 2u : HP_TLMIN;
+    hp.lag = 0, hp.per = 0;
+}
+/* the console: hprobe [on | off | tlb N | div 4|8 | trk on|off | t1 on|off] */
+static void hp_console(const char *p)
+{
+    int on = con_word(&p, "on") ? 1 : con_word(&p, "off") ? 0 : -1, ok = 0;
+    uint32_t was;
+    if (!hp.div)
+        hp.tlb = HP_TLB, hp_set_div(4u);                /* (the defaults: probe 2's) */
+    was = hp.on;
+    if (con_word(&p, "tlb")) {
+        uint32_t v = con_num(&p, &ok);
+        if (ok && v >= 1u && v <= 40u)
+            hp.tlb = (uint8_t)v;
+    } else if (con_word(&p, "div")) {
+        hp_set_div(con_num(&p, &ok));
+        hp.on = (uint8_t)was;
+    } else if (con_word(&p, "trk")) {
+        hp.notrk = (uint8_t)con_word(&p, "off");
+    } else if (con_word(&p, "t1")) {
+        hp.skip1 = (uint8_t)con_word(&p, "on");
+    }
     if (on == 1 && !hp.on) {
         if (tp_on) {
             con_puts("hprobe: STEM FX lends the memory out now; STEM FX off first\r\n");
@@ -504,7 +531,8 @@ static void hp_console(int on)
     con_puts("hprobe ");
     con_puts(hp.on ? "on" : "off");
     if (hp.on) {
-        uint32_t per = hp.per, f10 = per ? (uint32_t)(11025u * 2560u / per) : 0u;   /* deci-Hz (the note: the host's) */
+        uint32_t per = hp.per, f10 = per ? (uint32_t)(44100u / hp.div * 2560u / per) : 0u;   /* deci-Hz (the note: the
+                                                         * host's) */
         con_puts(" f0 ");
         con_dec((int32_t)(f10 / 10u));
         con_putc('.');
@@ -517,6 +545,12 @@ static void hp_console(int on)
         con_dec(hp.peak);
         hp.peak = 0;
     }
+    con_puts(" | tlb ");                               /* (probe 3's settings) */
+    con_dec(hp.tlb);
+    con_puts(" div ");
+    con_dec(hp.div);
+    con_puts(hp.notrk ? " trk off" : " trk on");
+    con_puts(hp.skip1 ? " t1 off" : " t1 on");
     con_puts("\r\n");
 }
 #endif
@@ -571,7 +605,7 @@ static void con_exec(const char *p)
 #endif
 #ifdef SMK_HARM_PROBE
     else if (con_word(&p, "hprobe"))
-        hp_console(con_word(&p, "on") ? 1 : con_word(&p, "off") ? 0 : -1);
+        hp_console(p);
 #endif
     else if (con_word(&p, "memr"))
         con_memr(p);
