@@ -4,7 +4,22 @@
 audio from the computer. Track 3 either plays it as it is (AUDIO) or vocodes it (VOCODER): a 20-channel vocoder modelled
 on the Sennheiser VSM201, played from the keys. **The input's two sides can be routed apart** (section 2): your voice on
 one, and on the other an external synth as the carrier, or an instrument through T1's or T2's effects. Everything else
-in SLOOP stays: four tracks, the sequencer, the punch-ins, the stems. Install and editor: [Mewcoder's page](.github/README.md). How it was built and tested: [VOCODER-DESIGN.md](VOCODER-DESIGN.md).
+in SLOOP stays: the four tracks, the sequencer, the punch-ins, the multichannel USB audio (below). Install and editor: [Mewcoder's page](.github/README.md). How it was built and tested: [VOCODER-DESIGN.md](VOCODER-DESIGN.md).
+
+## At a glance
+
+| | |
+|---|---|
+| **Base** | SLOOP 2.8.4, with all the Multichannel USB audio build adds: punch-in effects on every channel, the punch-in page on the pads, sequencer effects (FLIP, LOOP BACK, RAMP), DAW mode |
+| **Keyboard** | SMK-37 Elite only |
+| **Tracks** | T1 and T2 (synths); **T3** the audio track (USB > AUDIO IN: ON: the input dry or vocoded) or a synth (AUDIO IN: OFF); the drums |
+| **Configurations** | HOME > SETUP: **FULL** (every track), **VOC + DRUMS** (T1, T2 off), **VOC + SYNTH** (the drums off), **VOC ALONE** (T1, T2 and the drums off). Section 2.1 |
+| **USB audio in** (from the computer) | 2 channels, 48 kHz, each side routed on its own (HOME > SETUP > IN L, IN R): **TRACK 3** (the voice), **CARRIER** (an external synth), **T1** or **T2** (an instrument through that track), **OFF**. Section 2.2 |
+| **USB audio out** (to the computer) | HOME > USB > USB LAYOUT: **STEREO** (the mix), or 6 channels, 24 bit, 48 or 44.1 kHz: **SYNTHS+RET** (T1, T2, T3, the drums, the effects return L and R), **DRUMS+RET** (kick, snare, hats, percussion, the return L and R), **ALL DRY** (T1, T2, T3, kick, snare, hats and percussion) |
+| **The vocoder** | 20 channels at the Sennheiser VSM201's centres, 145 Hz to 6.78 kHz, each a 4th-order band-pass. The voice analysed at 22.05 kHz; the output at 22.05 kHz in FULL, **44.1 kHz (HQ)** in the other SETUPs |
+| **The carrier** | HOME > SETUP > CARRIER: the built-in saw, one or two a note (**AUTO**, **1 SAW**, **2 SAWS**), played from the keys, the sequencer or MIDI on track 3's channel; or **EXT L** / **EXT R**: an external synth on that input, gated by track 3's notes. Section 2.4 |
+| **Shaping** | ENVELOPE (ATTACK 3-30 ms, RELEASE 8-100 ms, GATE DELAY); voiced / unvoiced detection with a noise source (WHITE, PINK, SOFT); the speech addition (HF); silence bridging and BRIDGE TONE; AUTOCONTROL (the input's level); the carrier's AGC; RESPONSE (FLAT, the VSM201's NORMAL, EMPHASIS); per channel on the vocoder page: EMPHASIS, ADDITION, BRIDGING, mute |
+| **Left out to make room** | the built-in samples (your own samples work); the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and NOISE engines; the delay runs at 22.05 kHz. For those: the Multichannel USB audio build |
 
 ## 1. Getting sound in
 
