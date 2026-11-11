@@ -164,7 +164,7 @@ static const char *vp_mval(uint32_t mi, uint16_t *c)   /* a master's value (mi_v
     str_cpy(b + str_len(b), " %", 3);
     return b;
 }
-static uint32_t vp_mdef(uint32_t mi) { return mi == VP_MI_NBL ? 20u : mi == MI_VLVL ? 4u : mi == MI_VBR || mi == MI_VDRY ? 0u : 2u; }   /* (smk_vocoder.h's) */
+static uint32_t vp_mdef(uint32_t mi) { return mi == VP_MI_NBL ? 20u : mi == MI_VLVL ? 4u : mi == MI_VBR || mi == MI_VDRY ? 0u : VOC_HF_DEF; }   /* (smk_vocoder.h's) */
 static void vp_master(uint32_t mi, const char *name, int32_t s)
 {
     uint16_t c;

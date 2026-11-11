@@ -239,7 +239,7 @@ int main(void)
     reset();
     n = run(1.0, vzero, saw110);
     check("silence in, silence out (the carrier alone: < 1)", rms_last(n, 0.5) < 1.0);
-    voc_dry = 3;                                    /* -6 dB (OFF, -18, -12, -6, 0) */
+    voc_dry = 9;                                    /* -6 dB (OFF, -30 .. 0 in 3 dB steps) */
     reset();
     n = run(1.0, v1k, vzero);
     printf("   DRY -6 dB: %.2f dB re a voice's full scale\n", db(rms_last(n, 0.5) / (16000.0 * 2.0 * VOICE_FS / 32768.0 / sqrt(2.0))));
@@ -248,7 +248,7 @@ int main(void)
     voc_dry = 0;
     {
         double on, off;
-        voc_hf = 2;                                     /* -12 dB */
+        voc_hf = VOC_HF_DEF;                            /* -12 dB */
         reset();
         n = run(1.0, vnoise, sine220);
         on = hiss(n);

@@ -44,9 +44,10 @@ NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMe
 2. [Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/) (Chrome or Edge, over USB).
 3. On the computer, send your microphone to the SMK-37's audio output (peaks around −10 dBFS).
 4. HOME > USB > **AUDIO IN: ON**, HOME > VOCODER > **MODE: VOCODER**, select track 3, play chords and speak.
-5. A mono mic on one side: HOME > SETUP > **IN R: OFF** (or IN L), for its full level.
+5. A mono mic on one side: HOME > SETUP > **IN R: OFF** (or IN L), for its full level. HOME > **INPUT** shows each
+   side's level: trim your voice until its peaks sit near the −10 tick.
 
-The [manual](/VOCODER.md) has the rest. Known: AUTOCONTROL can pop (leave it off).
+The [manual](/VOCODER.md) has the rest.
 
 **In development:** a harmoniser modelled on the Eventide H949, for this build, on the same routing: your voice,
 another external sound, the drums or a synth engine pitch-shifted into up to three harmony voices.

@@ -283,6 +283,9 @@ static void con_status(void)
     con_kv("voc_skip", voc_skip);                        /* the units off now (bit 0 T1, 1 T2, 3 the drums) */
     con_kv("voc_inl", voc_inl);                          /* IN L / IN R: 0 TRACK 3, 1 CARRIER, 2 T1, 3 T2, 4 OFF */
     con_kv("voc_inr", voc_inr);
+    con_kv("voc_trim_l", (int32_t)(voc_trim[0] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);   /* INPUT > TRIM L, R (dB) */
+    con_kv("voc_trim_r", (int32_t)(voc_trim[1] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
+    con_kv("voc_act_db10", voc_acg > 0 ? (((int32_t)voc_log2_q8((uint32_t)voc_acg) - 12 * 256) * 1541 >> 8) * 10 / 256 : -999);   /* (AUTOCONTROL's gain, dB x 10) */
     con_kv("voc_cur", voc_cur);                          /* the audio track's state: 0 engine, 1 AUDIO, 2 VOCODER */
     con_kv("voc_blocks", (int32_t)voc.blocks);           /* blocks vocoded since the last status */
     con_kv("voc_peak_in", voa.peak_in);                  /* the voice's |peak|, Q15, since the last status */

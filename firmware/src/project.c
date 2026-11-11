@@ -993,13 +993,17 @@ typedef struct {
     vocpg_t pcur, psec[4];               /* the vocoder page's (smk_vocoder.h vpg), now and each project slot's; an object
                                           * of 72 bytes (before it) loads with the page at its defaults (the owner,
                                           * 2026-11-02: old saves load) */
-    uint8_t eatt, erel, rsv2[2];         /* ENVELOPE > ATTACK, RELEASE (2026-11-11; an object of 472 bytes: 0, as before) */
+    uint8_t eatt, erel, trl, trr;        /* ENVELOPE > ATTACK, RELEASE (2026-11-11; an object of 472 bytes: 0, as before);
+                                          * INPUT > TRIM L, TRIM R as dB, signed (the bytes spare before them: 0 dB) */
+    uint8_t mixv, rsv3[3];               /* 1: DRY and HF (cur, sec[]) on the 12-step scale (smk_vocoder.h VOC_MIX_N);
+                                          * an object of 476 bytes: the old 5-step scale, mapped (VOC_MIX_OLD) */
 } vocset_t;
 #define VOCSET_V1 64u                    /* (the object's size before BRIDGE TONE) */
 #define VOCSET_V2 68u                    /* (.. before NORMAL) */
 #define VOCSET_V3 72u                    /* (.. before the vocoder page) */
 #define VOCSET_V4 472u                   /* (.. before ENVELOPE) */
-_Static_assert(sizeof(vocset_t) == VOCSET_V4 + 4u && VOCSET_V4 == VOCSET_V3 + 5u * 80u && sizeof(vocpg_t) == 80u &&
+#define VOCSET_V5 476u                   /* (.. before the 12-step DRY / HF) */
+_Static_assert(sizeof(vocset_t) == VOCSET_V5 + 4u && VOCSET_V5 == VOCSET_V4 + 4u && VOCSET_V4 == VOCSET_V3 + 5u * 80u && sizeof(vocpg_t) == 80u &&
                __builtin_offsetof(vocset_t, tilt) == VOCSET_V1 && __builtin_offsetof(vocset_t, norm) == VOCSET_V2 &&
                __builtin_offsetof(vocset_t, pcur) == VOCSET_V3, "vocset: the magic, 5 x 12 bytes, tone, NORMAL, the page");
 static vocset_t vocset, vocset_saved;
@@ -1057,7 +1061,7 @@ static int vocset_take(const uint8_t *b, uint32_t n)
 {
     static vocset_t s;                                 /* (472 bytes: not on the stack) */
     uint32_t k;
-    if (n != sizeof s && n != VOCSET_V4 && n != VOCSET_V3 && n != VOCSET_V2 && n != VOCSET_V1)
+    if (n != sizeof s && n != VOCSET_V5 && n != VOCSET_V4 && n != VOCSET_V3 && n != VOCSET_V2 && n != VOCSET_V1)
         return 0;
     memset(&s, 0, sizeof s);                           /* (an older, shorter object: the rest none / OFF) */
     memcpy(&s, b, n);
@@ -1068,12 +1072,25 @@ static int vocset_take(const uint8_t *b, uint32_t n)
             s.norm = 0, s.emsel = 0, s.rsv[0] = s.rsv[1] = 0;
         if (n == VOCSET_V1)                            /* (saved before BRIDGE TONE: its defaults) */
             s.tilt = voc_tilt, s.colour = voc_colour, s.blend = voc_blend, s.agc = 0;
+        if (!s.mixv) {                                 /* (DRY and HF saved on the 5-step scale: the same level on
+                                                        * the 12-step one) */
+            s.cur.dry = VOC_MIX_OLD[s.cur.dry % 5u], s.cur.hf = VOC_MIX_OLD[s.cur.hf % 5u];
+            for (k = 0; k < 4u; k++)
+                s.sec[k].dry = VOC_MIX_OLD[s.sec[k].dry % 5u], s.sec[k].hf = VOC_MIX_OLD[s.sec[k].hf % 5u];
+            s.mixv = 1;
+        }
         vocset = s;
         voc_tilt = (uint8_t)(s.tilt % VOC_TILT_N), voc_colour = (uint8_t)(s.colour % VOC_COLOUR_N);
         voc_blend = (uint8_t)(s.blend & 1u), voc_agc = (uint8_t)(s.agc % VOC_AGC_N), voc_norm = (uint8_t)(s.norm & 1u);
         voc_emsel = (uint8_t)(s.emsel & voc_norm);
         voc_mwa = (uint8_t)(s.rsv[0] % VOC_MWA_N);
         voc_eatt = (uint8_t)(s.eatt % VOC_EATT_N), voc_erel = (uint8_t)(s.erel % VOC_EREL_N);   /* (older: 0, 0) */
+        {                                              /* TRIM L / R: signed dB, -18 .. +6 (older: 0 dB) */
+            int32_t tl = (int8_t)s.trl, tr = (int8_t)s.trr;
+            tl = tl < -(int32_t)VOC_TRIM_0 ? -(int32_t)VOC_TRIM_0 : tl > (int32_t)(VOC_TRIM_N - 1u - VOC_TRIM_0) ? (int32_t)(VOC_TRIM_N - 1u - VOC_TRIM_0) : tl;
+            tr = tr < -(int32_t)VOC_TRIM_0 ? -(int32_t)VOC_TRIM_0 : tr > (int32_t)(VOC_TRIM_N - 1u - VOC_TRIM_0) ? (int32_t)(VOC_TRIM_N - 1u - VOC_TRIM_0) : tr;
+            voc_trim[0] = (uint8_t)(tl + (int32_t)VOC_TRIM_0), voc_trim[1] = (uint8_t)(tr + (int32_t)VOC_TRIM_0);
+        }
         voc_setup = (uint8_t)(s.rsv[1] & 3u);          /* SETUP, IN L, IN R (2026-11-11: the last spare byte; 0: FULL,
                                                         * TRACK 3, TRACK 3, as before) */
         voc_inl = (uint8_t)(((s.rsv[1] >> 2) & 7u) % VR_N), voc_inr = (uint8_t)(((s.rsv[1] >> 5) & 7u) % VR_N);
@@ -1107,6 +1124,9 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocset.rsv[0] = voc_mwa;                       /* MOD WHEEL (VOCODER) (2026-11-06: the spare byte, 0: VIBRATO) */
     vocset.rsv[1] = (uint8_t)(voc_setup % VSU_N | (voc_inl % VR_N) << 2 | (voc_inr % VR_N) << 5);
     vocset.eatt = (uint8_t)(voc_eatt % VOC_EATT_N), vocset.erel = (uint8_t)(voc_erel % VOC_EREL_N);
+    vocset.trl = (uint8_t)(int8_t)((int32_t)(voc_trim[0] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
+    vocset.trr = (uint8_t)(int8_t)((int32_t)(voc_trim[1] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
+    vocset.mixv = 1;
 }
 static void vocset_save(void)
 {

@@ -13,12 +13,13 @@ in SLOOP stays: the four tracks, the sequencer, the punch-ins, the multichannel 
 | **Base** | SLOOP 2.8.4, with all the Multichannel USB audio build adds: punch-in effects on every channel, the punch-in page on the pads, sequencer effects (FLIP, LOOP BACK, RAMP), DAW mode |
 | **Keyboard** | SMK-37 Elite only |
 | **Tracks** | T1 and T2 (synths); **T3** the audio track (USB > AUDIO IN: ON: the input dry or vocoded) or a synth (AUDIO IN: OFF); the drums |
+| **Input level** | HOME > INPUT: **TRIM L**, **TRIM R** (−18 .. +6 dB) with a meter each. Section 2.6 |
 | **Configurations** | HOME > SETUP: **FULL** (every track), **VOC + DRUMS** (T1, T2 off), **VOC + SYNTH** (the drums off), **VOC ALONE** (T1, T2 and the drums off). Section 2.1 |
 | **USB audio in** (from the computer) | 2 channels, 48 kHz, each side routed on its own (HOME > SETUP > IN L, IN R): **TRACK 3** (the voice), **CARRIER** (an external synth), **T1** or **T2** (an instrument through that track), **OFF**. Section 2.2 |
 | **USB audio out** (to the computer) | HOME > USB > USB LAYOUT: **STEREO** (the mix; 44.1 or 48 kHz, HOME > AUDIO > USB RATE), or 6 channels, 24 bit, **48 kHz** (default, resampled on the keyboard) or **44.1 kHz** (the lightest; HOME > USB > STEM RATE): **SYNTHS+RET** (T1, T2, T3, the drums, the effects return L and R), **DRUMS+RET** (kick, snare, hats, percussion, the return L and R), **ALL DRY** (T1, T2, T3, kick, snare, hats and percussion) |
 | **The vocoder** | 20 channels at the Sennheiser VSM201's centres, 145 Hz to 6.78 kHz, each a 4th-order band-pass. The voice analysed at 22.05 kHz; the output at 22.05 kHz in FULL, **44.1 kHz (HQ)** in the other SETUPs |
 | **The carrier** | HOME > SETUP > CARRIER: the built-in saw, one or two a note (**AUTO**, **1 SAW**, **2 SAWS**), played from the keys, the sequencer or MIDI on track 3's channel; or **EXT L** / **EXT R**: an external synth on that input, gated by track 3's notes. Section 2.4 |
-| **Shaping** | ENVELOPE (ATTACK 3-30 ms, RELEASE 8-100 ms, GATE DELAY); voiced / unvoiced detection with a noise source (WHITE, PINK, SOFT); the speech addition (HF); silence bridging and BRIDGE TONE; AUTOCONTROL (the input's level); the carrier's AGC; RESPONSE (FLAT, the VSM201's NORMAL, EMPHASIS); per channel on the vocoder page: EMPHASIS, ADDITION, BRIDGING, mute |
+| **Shaping** | ENVELOPE (ATTACK 3-30 ms, RELEASE 8-100 ms, GATE DELAY); voiced / unvoiced detection with a noise source (WHITE, PINK, SOFT); the speech addition (HF, OFF or −30 .. 0 dB); silence bridging and BRIDGE TONE; AUTOCONTROL (the voice's level, steadied); the carrier's AGC; RESPONSE (FLAT, the VSM201's NORMAL, EMPHASIS); per channel on the vocoder page: EMPHASIS, ADDITION, BRIDGING, mute |
 | **Left out to make room** | the built-in samples (your own samples work); the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and NOISE engines; the delay runs at 22.05 kHz. For those: the Multichannel USB audio build |
 
 ## 1. Getting sound in
@@ -26,7 +27,8 @@ in SLOOP stays: the four tracks, the sequencer, the punch-ins, the multichannel 
 1. Connect the SMK-37 to the computer with a USB data cable. It shows up as an audio device with an input and an
    output.
 2. In your computer's sound settings (or your DAW), send your microphone to the SMK-37's audio **output**: mono or
-   stereo, 48 kHz. Keep your voice's peaks around −10 dBFS: hotter makes the vocoder harsh.
+   stereo, 48 kHz. Keep your voice's peaks around −10 dBFS: hotter makes the vocoder harsh. **HOME > INPUT** shows
+   each side's level and trims it on the keyboard (section 2.6).
 3. On the keyboard: **HOME menu** (PATCH held) **> USB > AUDIO IN: ON**. Track 3 is now the audio track: its own
    engine, presets and Program Change are set aside (they come back with AUDIO IN OFF). TEST plays a test tone in
    place of the computer's audio.
@@ -97,6 +99,10 @@ vocoder. Everything starts as before: both sides into track 3, every track runni
 **A mono microphone:** set the side without it to **OFF** (or to another use). With both on TRACK 3, an empty side
 halves your voice's level; on its own it comes in at full level.
 
+**The round trip:** an instrument on T1 or T2 goes from the DAW to the SMK-37 and back, so what you hear from the
+SMK-37 comes noticeably late (both trips and the buffers on each side). Listen to the instrument dry in the DAW while you
+play, or record what comes back through T1 / T2 and move it earlier (your DAW's latency compensation may do it).
+
 ### 2.3 What the split makes possible
 
 Each recipe lists only what differs from the defaults. Send the sources to the SMK-37's left and right outputs in your
@@ -151,14 +157,25 @@ AUDIO** (track 3 silent with nothing routed to it). Two external sources, each w
 The row always tells the truth: setting IN L or IN R to CARRIER by hand shows EXT L or EXT R here.
 
 **Playing an external carrier:**
-1. In the DAW, set the synth to receive MIDI from the SMK-37 on **track 3's MIDI channel**: **GLO → MIDI → CH3**
-   (3 unless you changed it). The keys always send; for the sequencer's notes too, set **GLO → MIDI 2 → OUT: SEQ**.
-   USB MIDI and the TRS MIDI OUT both carry them.
+1. In the DAW, set the synth to receive MIDI from the SMK-37 on **track 3's MIDI channel**: **GLO → MIDI → T3 CH**
+   (3 unless you changed it). The keys always send; for the sequencer's notes too, set **GLO → MIDI IN/OUT → OUT:
+   +SEQ**. USB MIDI and the TRS MIDI OUT both carry them. To play track 3 from the DAW instead, send on that channel
+   (the DAW's *MIDI To*: channel 3), with **GLO → MIDI IN/OUT → IN: ALL**: it plays track 3 whatever is selected.
 2. Send the synth's audio back to the SMK-37 on the carrier side, and your voice on the other.
 3. Play track 3: the synth plays your notes, and the vocoder **opens while any track 3 note is held** (about 1.5 ms to
    open, about 12 ms to close, as the built-in saw). Chords work: every note goes out, the gate is open while any is held.
 4. The synth's sound comes back through the DAW a few milliseconds late, so the end of each note could be cut. Raise
    **ENVELOPE > GATE DELAY** (0–50 ms) until the release is whole.
+
+**Settings for an external carrier** (the internal saw's are not the best starting point):
+
+| | Set | Why |
+|---|---|---|
+| The synth's patch | bright: a saw, the filter open | the vocoder can only pass the treble the carrier has: a mellow pad vocodes muddy |
+| Levels | both sides' peaks around −10 dBFS (HOME > INPUT shows them) | a clipped synth sounds raw wherever it passes through, as BRIDGE lets it in the pauses |
+| SILENCE > AGC | on (any setting) | evens out the synth's level from patch to patch and chord to chord |
+| HF (the speech addition) | −12 .. −6 dB | the s and t of your voice on top of the synth |
+| CARRIER > VOICE, NOISE | AUTO; NOISE PINK or SOFT | the whisper sounds from the noise, matched to the synth's level |
 
 ### 2.5 ENVELOPE: how fast the vocoder follows your voice
 
@@ -209,6 +226,19 @@ flowchart LR
   SAW -->|"BYPASS REPLACEMENT"| SUM
 ```
 
+### 2.6 INPUT: each side's level
+
+![HOME > INPUT: TRIM L and TRIM R, each with its meter; the tick at -10 dBFS](assets/screens/smk37-voc-input.png)
+
+**HOME > INPUT** has **TRIM L** and **TRIM R**: each side's level before it goes anywhere, −18 .. +6 dB in 1 dB steps
+(0 dB: as it comes, the default), kept with the unit. Beside each, its **meter**: the level after the trim on a −48 .. 0
+dBFS bar, green, then amber from −12, red from −3; the peak held for a moment; **CLIP** in red when it reaches full scale.
+The small tick marks **−10 dBFS**: aim your voice's loud peaks there (AIM −10).
+
+- A voice that comes in hot (peaks near 0 dBFS) makes the vocoder harsh: trim it down until the peaks sit near the tick.
+- A quiet source: trim it up. Above 0 dB the trim can clip a loud source: watch for CLIP.
+- AUTOCONTROL (the vocoder page) then keeps the level steady from there.
+
 ## 3. The menus (HOME menu, PATCH held)
 
 | Section | Item | Values (default first, where there is one) | What it does |
@@ -217,10 +247,11 @@ flowchart LR
 | SETUP | SETUP | FULL, VOC + DRUMS, VOC + SYNTH, VOC ALONE | which tracks run, and HQ (section 2.1) |
 | | CARRIER | AUTO, 1 SAW, 2 SAWS, EXT L, EXT R | the carrier: the saws or an input (2.4) |
 | | IN L, IN R | TRACK 3, CARRIER, T1, T2, OFF | where each side of the input goes (2.2) |
+| INPUT | TRIM L, TRIM R | 0 dB (−18 .. +6 dB), each with a meter | each side's level before its route (2.6) |
 | VOCODER | MODE | AUDIO, VOCODER | the voice dry, or vocoded |
 | | LEVEL | 0 dB (−12 .. +18 dB, 3 dB steps) | the vocoder's make-up gain |
-| | DRY | OFF, −18, −12, −6, 0 dB | the BYPASS level (see the page) |
-| | HF | −12 dB (OFF .. 0 dB) | the speech addition's SUM level |
+| | DRY | OFF (−30 .. 0 dB, 3 dB steps) | the BYPASS level (see the page) |
+| | HF | −12 dB (OFF, −30 .. 0 dB, 3 dB steps) | the speech addition's SUM level |
 | CARRIER | CUTOFF, RESO | 127, 0 | the carrier saws' low-pass (also on FADER BANK B's track 3 fader and FX K4) |
 | | VOICE | AUTO, VOICED, UNVOICED | the VSM201's voice mode: unvoiced sounds (s, f, t) replaced by noise in AUTO |
 | | NOISE | WHITE, PINK, SOFT | the unvoiced replacement's colour (SOFT: a saw's −6 dB an octave, the gentlest) |
@@ -237,6 +268,23 @@ flowchart LR
 | | GATE DELAY | 0 ms (0 .. 50) | an external carrier's gate held after the last note |
 
 Everything here is also on the vocoder page or the web editor's **Vocoder** tab.
+
+### GLO's MIDI pages (named for what they do)
+
+Mewcoder names SLOOP's MIDI settings plainly, each in one place (a page's label fits 6 characters, its value 5):
+
+| Page | Setting | Values (default first) | What it does |
+|---|---|---|---|
+| **MIDI** | **T1 CH**, **T2 CH**, **T3 CH**, **DRM CH** | 1, 2, 3, 10 (OFF, 1 .. 16) | each track's MIDI channel, in and out |
+| **MIDI IN/OUT** | **IN** | ALL, CLOCK | ALL: every channel plays its track; CLOCK: the clock only, no notes |
+| | **SPARE** | SEL, OFF | a channel no track has: plays the selected track (SEL), or nothing |
+| | **OUT** | KEYS, +SEQ | what goes out on each track's channel: the keys, or the keys and the sequencer |
+| | **BEND** | 2 (1 .. 12 semitones) | MIDI pitch bend's range |
+| **MIDI 3** | **FX CH**, **DR MAP**, **BTN CH**, **CLOCK** | OFF; GM; OFF; OFF | the punch-in effects' channel; the drums from GM notes or 1-16; the buttons' channel (CC 102 ..); CLOCK SEND: MIDI clock and START / STOP out on USB |
+
+SLOOP's **IN: CH n** mode is gone: it sent one channel to the selected track and silently ignored every other channel,
+the tracks' own included. For the same thing, send on a spare channel (SPARE: SEL). A unit set to CH n reads ALL. The
+drums' channel is no longer on GLO > DRUMS, nor IN and OUT on GLO > SYSTEM: each is on its MIDI page only.
 
 ## 4. The vocoder page
 
@@ -321,9 +369,10 @@ What they do:
   BYPASS level.
 - **VOCODER:** FLAT sums the bands evenly; NORMAL uses the VSM201's fixed tilt (the top channels softer); EMPHASIS is
   NORMAL plus each channel's EMPHASIS knob. OFF takes the vocoder out (your voice dry).
-- **AUTOCONTROL:** keeps your voice's level steady going into the analysis. Above its target it turns down at once; it
-  turns up only slowly (about 1.5 s), only while you are clearly speaking, and by at most 9 dB. A pause leaves it
-  where it is.
+- **AUTOCONTROL:** keeps your voice's level steady going into the analysis, its loud peaks near −10 dBFS. Above that
+  it turns down within a few milliseconds; it turns up only slowly (about 0.75 s), only while you are speaking near the
+  level, never in the gaps between words, by at most 12 dB either way. It reads your voice above about 150 Hz, so
+  breath, plosives (p, b) and room rumble do not steer it. A hot voice is turned down, a quiet one up.
 - **BRIDGING:** SUM uses the one BRIDGE level (G2 K8); INDIVIDUAL also uses each pair's BRIDGING knob.
 - **VOICE:** AUTO detects voiced (vowels) and unvoiced (s, f, sh) sounds and replaces the unvoiced ones with noise;
   VOICED only uses the carrier; UNVOICED uses only noise.
@@ -337,7 +386,7 @@ What they do:
 ### 4.4 Starting points
 
 - **Classic robot:** VOCODER NORMAL, VOICE AUTO, NOISE WHITE, BYPASS OFF, everything else basic. Play chords on track 3.
-- **More words:** ADDITION SUM, ADD SUM around −12 dB; or BYPASS SPEECH at −18 dB.
+- **More words:** ADDITION SUM, ADD SUM around −12 dB; or BYPASS SPEECH at −24 .. −18 dB.
 - **Softer consonants:** NOISE SOFT, or NOISE BLEND around 50 %.
 - **Pads that keep going:** BRIDGING SUM, BRIDGE around −15 dB; COLOUR 100 %.
 - **Shape the sound:** VOCODER EMPHASIS, then turn channels up or down; mute channels for a filtered, telephone-like
@@ -371,7 +420,7 @@ Use Mewcoder's own editor: [online](https://milomeowzers.github.io/sloop-smk37/m
   (function, EMPHASIS, ADDITION, BRIDGING, mute). A name in colour has changed from its default. **Send to the
   keyboard** applies and saves at once (stop the song first); **Read** loads what the keyboard has now; **Defaults**
   sets every value back (send it to keep it).
-- **The Vocoder tab** also has SETUP, IN L, IN R, ATTACK and RELEASE.
+- **The Vocoder tab** also has SETUP, IN L, IN R, TRIM L, TRIM R, ATTACK and RELEASE.
 - **The SMK-37 tab:** the HOME menu's SMK-37 settings, with GATE DELAY and CARRIER's saws (AUTO, 1 SAW, 2 SAWS).
 
 The editor reads these tabs once per connection and again after a restore. Press **Read** after you change something
@@ -385,14 +434,16 @@ on the keyboard.
 | Voice half as loud as expected | a mono source on one side, both sides on TRACK 3: set the empty side to OFF |
 | Drums or T1 / T2 silent | SETUP: VOC + DRUMS turns T1 and T2 off, VOC + SYNTH the drums, VOC ALONE all three. FULL plays everything |
 | An instrument plays on T1 / T2 | IN L or IN R is on T1 or T2 (only in a SETUP that has the track off) |
-| Harsh, sharp syllable edges | the input too hot (peaks near 0 dBFS): lower it; ENVELOPE > ATTACK 8 ms, RELEASE 25 ms or slower |
+| Harsh, sharp syllable edges | the input too hot: HOME > INPUT, the meter's peaks near 0 dBFS or CLIP: TRIM down to the −10 tick (or lower it at the computer); ENVELOPE > ATTACK 8 ms, RELEASE 25 ms or slower |
+| Tearing or raw synth in the pauses (external carrier, BRIDGE up) | the synth clipping on its way in: HOME > INPUT, its side's meter: TRIM it down, or lower it in the DAW; SILENCE > AGC on |
 | External carrier silent | CARRIER EXT L / EXT R; the synth's audio on that side; play track 3: the gate opens only while a track 3 note is held |
 | External carrier's notes cut short | ENVELOPE > GATE DELAY up (the synth comes back through the DAW late) |
-| The synth plays nothing | it must receive track 3's MIDI channel (GLO → MIDI → CH3); for the sequencer's notes, GLO → MIDI 2 → OUT: SEQ |
+| The synth plays nothing | it must receive track 3's MIDI channel (GLO → MIDI → T3 CH); for the sequencer's notes, GLO → MIDI IN/OUT → OUT: +SEQ |
+| DAW MIDI does not play track 3 | the DAW's *MIDI To* channel = GLO → MIDI → T3 CH (3); GLO → MIDI IN/OUT → IN: ALL. A channel no track has plays the selected track (SPARE: SEL) |
 | Voice dry, no robot | MODE VOCODER; the VOCODER pad not OFF; play keys on track 3 |
 | Rough or peaky | VOICE on VOICED makes every sound the saw: try AUTO; lower LEVEL; AGC LIGHT for big chords |
 | Harsh consonants | NOISE PINK or SOFT; NOISE BLEND lower |
-| Pumping or pops | AUTOCONTROL OFF, or leave it on: it no longer boosts in pauses |
+| Pumping or pops | AUTOCONTROL OFF; on, it moves slowly and only near the level (since the build with HOME > INPUT); before, it boosted the gaps |
 | Sound goes on in pauses | BRIDGING OFF, or BRIDGE lower |
 | Tremolo or wobble on track 3 | the mod wheel is up and track 3 is selected (the wheels act on the selected track, the sequencer's notes too): wheel down, or SILENCE > MOD WHEEL to another choice. The sound changes as K5 on the punch page selects tracks for the same reason |
 | The mod wheel reads near full half-way up | HOME > SYSTEM > HARDWARE CALIBRATION, both wheels through their full travel |

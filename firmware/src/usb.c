@@ -1928,12 +1928,17 @@ enum { UD_N = 1 };
 static int16_t uin_dst[UD_N][32];
 static const uint8_t voc_inl = 0, voc_inr = 0;
 #define VOC_ROUTE(r) ((void)(r), 0u)
+static const uint8_t voc_trim[2] = {18u, 18u};
+static const uint16_t VOC_TRIM_Q12[19] = {[18] = 4096u};
+#define VOC_TRIM_N 19u
+static uint16_t uin_pk[2];
 #endif
 static uint8_t uin_rt_l, uin_rt_r;                      /* this block's routes (smk_vocoder.h VR_*: VR_OFF none) */
+static int32_t uin_tg_l = 4096, uin_tg_r = 4096;        /* this block's TRIM L / R (Q12; 4096: 0 dB, exact) */
 static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
 {
-    uint32_t i = 0, w = uin_w, fill, d, rl = uin_rt_l, rr = uin_rt_r;
-    int32_t e;
+    uint32_t i = 0, w = uin_w, fill, d, rl = uin_rt_l, rr = uin_rt_r, pl = uin_pk[0], pr = uin_pk[1];
+    int32_t e, tl = uin_tg_l, tr = uin_tg_r;
     if (mono)                                           /* (the destinations no channel goes to: silent) */
         for (d = 0; d < UD_N; d++)
             if (d != rl && d != rr)
@@ -1982,6 +1987,12 @@ static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
                 out[2u * i] += vl >> 1, out[2u * i + 1u] += vr >> 1;
             if (mono) {                                 /* (smk_vocoder.h uin_dst: each channel to its destination;
                                                          * both to one: averaged, as before; the others cleared below) */
+                uint32_t ml, mr;
+                vl = (vl * tl) >> 12, vr = (vr * tr) >> 12;   /* (TRIM L / R; 0 dB: as it came) */
+                vl = vl > 32767 ? 32767 : vl < -32768 ? -32768 : vl;
+                vr = vr > 32767 ? 32767 : vr < -32768 ? -32768 : vr;
+                ml = (uint32_t)(vl < 0 ? -vl : vl), mr = (uint32_t)(vr < 0 ? -vr : vr);
+                pl = ml > pl ? ml : pl, pr = mr > pr ? mr : pr;   /* (the meters) */
                 if (rl == rr) {
                     if (rl < UD_N)
                         uin_dst[rl][i] = (int16_t)((vl + vr) >> 1);
@@ -1997,6 +2008,8 @@ static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
         uin.mon_r += uin.mon_frac >> 16;
         uin.mon_frac &= 0xFFFFu;
     }
+    if (mono)
+        uin_pk[0] = (uint16_t)(pl > 32768u ? 32768u : pl), uin_pk[1] = (uint16_t)(pr > 32768u ? 32768u : pr);
     return;
 quiet:
     if (mono)
@@ -2017,6 +2030,7 @@ static void uin_block(uint32_t n)                       /* fx.c mix_block: the i
                                                          * destination (smk_vocoder.h IN L / IN R) */
 {
     uin_rt_l = (uint8_t)VOC_ROUTE(voc_inl), uin_rt_r = (uint8_t)VOC_ROUTE(voc_inr);
+    uin_tg_l = VOC_TRIM_Q12[voc_trim[0] % VOC_TRIM_N], uin_tg_r = VOC_TRIM_Q12[voc_trim[1] % VOC_TRIM_N];
     uin_take(0, uin_dst[0], n);
 }
 #endif

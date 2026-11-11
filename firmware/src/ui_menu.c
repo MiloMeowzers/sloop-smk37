@@ -41,6 +41,8 @@ enum { MI_COLOR, MI_ZOOM,
 #if SMK_UAC_IN_PROBE
        MI_VSETUP, MI_VCARR, MI_VINL, MI_VINR,      /* the vocoder build: SETUP > SETUP, CARRIER, IN L, IN R
                                                     * (smk_vocoder.h; kept, project.c) */
+       MI_VTRL, MI_VTRR,                           /* INPUT > TRIM L, TRIM R, each with its meter (smk_vocoder.h voc_trim,
+                                                    * uin_pk; kept, project.c) */
        MI_VMODE, MI_VLVL, MI_VDRY, MI_VHF,         /* the vocoder build: VOCODER > MODE, LEVEL, DRY, HF (smk_vocoder.h:
                                                     * the audio track, track 3; live, not kept) */
        MI_VCUT, MI_VRES, MI_VVM, MI_VPINK,         /* CARRIER > CUTOFF, RESO (the saws' low-pass), VOICE, NOISE (the
@@ -85,7 +87,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #endif
                                               "STEM FX", "FADE", "XFADE", "CURVE",
 #if SMK_UAC_IN_PROBE
-                                              "SETUP", "CARRIER", "IN L", "IN R",
+                                              "SETUP", "CARRIER", "IN L", "IN R", "TRIM L", "TRIM R",
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
                                               "BRIDGE", "THRESHOLD", "AGC", "MOD WHEEL", "TILT", "COLOUR", "BLEND", "RESPONSE",
                                               "ATTACK", "RELEASE", "GATE DELAY",
@@ -100,14 +102,14 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
 #if SMK_UAC_IN_PROBE
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_ENV, MS_SEQ,
-       MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
-static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "VOCODER", "CARRIER",
-                                              "SILENCE", "BRIDGE TONE", "ENVELOPE", "SEQ", "PLAY", "MIDI", "DAW",
-                                              "SYSTEM"};
-static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VMODE,
-                                               MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_ADV, MI_VEL, MI_TRS, MI_DMAP,
-                                               MI_SYS0, MI_COUNT};
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_ENV,
+       MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "INPUT", "VOCODER",
+                                              "CARRIER", "SILENCE", "BRIDGE TONE", "ENVELOPE", "SEQ", "PLAY", "MIDI",
+                                              "DAW", "SYSTEM"};
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VTRL,
+                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_ADV, MI_VEL, MI_TRS,
+                                               MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
 #else
 enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
@@ -119,7 +121,7 @@ static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, M
 #endif
 _Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_VOC0 - MI_SFX <= 4 &&
 #if SMK_UAC_IN_PROBE
-               MI_VMODE - MI_VOC0 <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_ADV - MI_VEATT <= 4 &&
+               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_ADV - MI_VEATT <= 4 &&
 #else
                MI_ADV - MI_VOC0 <= 4 &&
 #endif
@@ -354,6 +356,17 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
                                          ? C_AMB : C_HI;
         return N[r];
     }
+    case MI_VTRL:                                     /* each side's level before its route, -18 .. +6 dB (dim: AUDIO
+                                                       * IN off) */
+    case MI_VTRR: {
+        static char b[8];
+        int32_t db = (int32_t)(voc_trim[i == MI_VTRR] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0;
+        *c = VOC_AUDIO_ON ? C_HI : C_DIM;
+        b[0] = db > 0 ? '+' : db < 0 ? '-' : 0;
+        fmt_int(b + (db != 0), db < 0 ? -db : db);
+        str_cpy(b + str_len(b), " DB", 4);
+        return b;
+    }
     case MI_VGDEL: {                                  /* the external carrier's gate held after the notes, 0 .. 50 ms
                                                        * (dim: no channel to CARRIER) */
         static const char *const N[11] = {"0 MS", "5 MS", "10 MS", "15 MS", "20 MS", "25 MS", "30 MS", "35 MS",
@@ -447,7 +460,8 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     }
     case MI_VDRY:                                     /* the plain voice blended back, the speech addition */
     case MI_VHF: {
-        static const char *const N[VOC_MIX_N] = {"OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"};
+        static const char *const N[VOC_MIX_N] = {"OFF", "-30 DB", "-27 DB", "-24 DB", "-21 DB", "-18 DB", "-15 DB",
+                                                 "-12 DB", "-9 DB", "-6 DB", "-3 DB", "0 DB"};
         return N[(i == MI_VDRY ? voc_dry : voc_hf) % VOC_MIX_N];
     }
 #endif
@@ -498,6 +512,58 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     }
 }
 
+#if SMK_UAC_IN_PROBE
+/* INPUT's meters: each side's peak after its TRIM (usb.c uin_pk, taken and cleared each frame), on a -48 .. 0 dBFS bar:
+ * the level falls back ~24 dB a second, the peak holds ~1.5 s; green to -12, amber to -3, red above (0 dBFS: CLIP); a
+ * white tick at -10 dBFS, the level to aim for (VOCODER.md) */
+#define MTR_W 96                                   /* (the bar's pixels: 2 a dB) */
+static uint8_t mtr_lv[2], mtr_pk[2], mtr_hold[2], mtr_clip[2];
+static uint32_t mtr_px(uint32_t p)                 /* |sample| (0 .. 32768) -> 0 .. MTR_W (2 px a dB above -48 dBFS) */
+{
+    static const uint16_t T[12] = {32768, 30935, 29205, 27571, 26029, 24573, 23198, 21900, 20675, 19519, 18427, 17396};
+    uint32_t e = 0, k = 0;                         /* (T: 0, -0.5 .. -5.5 dB) */
+    if (p == 0u)
+        return 0;
+    while (p < 16384u && e < 9u)                   /* (6.02 dB an octave: 12 px) */
+        p <<= 1, e++;
+    while (k < 11u && p < T[k + 1u])
+        k++;
+    k = e * 12u + k;                               /* (half dBs down) */
+    return k >= 96u ? 0u : MTR_W - k;
+}
+UI_SMALL static void mtr_update(void)
+{
+    uint32_t c, p;
+    for (c = 0; c < 2u; c++) {
+        p = uin_pk[c];
+        uin_pk[c] = 0;                             /* (taken: the audio core sets it again) */
+        p = mtr_px(p);
+        mtr_lv[c] = (uint8_t)(p > mtr_lv[c] ? p : mtr_lv[c] > 2u ? mtr_lv[c] - 2u : 0u);   /* (~24 dB/s at 30 fps) */
+        if (p >= mtr_pk[c] || !mtr_hold[c])
+            mtr_pk[c] = (uint8_t)p, mtr_hold[c] = 45u;
+        else
+            mtr_hold[c]--;
+        mtr_clip[c] = (uint8_t)(p >= MTR_W ? 45u : mtr_clip[c] ? mtr_clip[c] - 1u : 0u);
+    }
+}
+UI_SMALL static void mtr_draw(int32_t x, int32_t y, uint32_t c)
+{
+    int32_t lv = mtr_lv[c], pk = mtr_pk[c], g = MTR_W - 24, a = MTR_W - 6;   /* (-12, -3 dBFS) */
+    cv_rect(x, y, MTR_W, 10, C_LINE);
+    cv_rect(x, y, lv < g ? lv : g, 10, RGB(70, 210, 100));
+    if (lv > g)
+        cv_rect(x + g, y, (lv < a ? lv : a) - g, 10, RGB(255, 190, 0));
+    if (lv > a)
+        cv_rect(x + a, y, lv - a, 10, RGB(255, 60, 60));
+    if (pk > 0)
+        cv_rect(x + pk - 1, y - 2, 2, 14, pk > a ? RGB(255, 60, 60) : pk > g ? RGB(255, 190, 0) : RGB(70, 210, 100));
+    cv_rect(x + MTR_W - 20, y + 11, 1, 4, C_WHITE);   /* (-10 dBFS: aim here) */
+    if (mtr_clip[c])
+        cv_text(x, y + 14, &FONT_S, "CLIP", RGB(255, 60, 60));
+    else
+        cv_text(x, y + 14, &FONT_S, "AIM -10", C_DIM);
+}
+#endif
 UI_SMALL static void draw_menu(void)
 {
     uint32_t i, pass, sec = mi_sec(ui.menu_sel % MI_COUNT);
@@ -517,7 +583,13 @@ UI_SMALL static void draw_menu(void)
            voc_vmode * 1000159u + voc_pink * 1000171u + voc_bridge * 1000183u + voc_thr * 1000187u +
            voc_tilt * 1000193u + voc_colour * 1000199u + voc_blend * 1000211u + voc_agc * 1000213u +
            voc_norm * 1000231u + voc_emsel * 1000249u + voc_mwa * 1000253u + voc_setup * 1000273u +
-           voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u + voc_eatt * 1000313u + voc_erel * 1000333u + voc_saws * 1000357u;   /* (2026-11-11: SETUP's four: without them
+           voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u + voc_eatt * 1000313u + voc_erel * 1000333u + voc_saws * 1000357u;
+    sig += voc_trim[0] * 1000363u + voc_trim[1] * 1000367u;
+    if (ui.menu == 1 && sec == MS_INPUT) {          /* (the meters move: a frame each time they do) */
+        mtr_update();
+        sig += (uint32_t)(mtr_lv[0] >> 1) * 1000373u + (uint32_t)(mtr_lv[1] >> 1) * 1000379u + mtr_pk[0] * 1000381u +
+               mtr_pk[1] * 1000393u + (uint32_t)(mtr_clip[0] != 0) * 1000397u + (uint32_t)(mtr_clip[1] != 0) * 1000403u;
+    }   /* (2026-11-11: SETUP's four: without them
                                                          * the screen did not follow the knob) */
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
@@ -656,6 +728,10 @@ UI_SMALL static void draw_menu(void)
 #if FELUCCA_CDC
                 if (i == MI_SERIAL && usb_serial != usb_cdc_now())
                     cv_text(xv + 8, y + 30, &FONT_S, "RESTART", C_AMB);   /* (usb.c: at the next start) */
+#endif
+#if SMK_UAC_IN_PROBE
+                if (i == MI_VTRL || i == MI_VTRR)
+                    mtr_draw(xv + 10 > 130 ? xv + 10 : 130, y + 20, i == MI_VTRR);
 #endif
                 if (i == MI_CPU1 && !mi_cpu1_have())
                     cv_text(xv + 8, y + 30, &FONT_S, "NOT RUNNING", C_AMB);   /* (cpu1.c: ABOUT says 1 CORE) */
@@ -837,6 +913,12 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         *x = (uint8_t)(s > 0 ? (r + 1u < VR_N ? r + 1u : r) : s < 0 ? (r ? r - 1u : 0u) : VR_T3);
         break;
     }
+    case MI_VTRL:                                      /* -18 .. +6 dB in 1 (stops at the ends); OCT+ back to 0 dB */
+    case MI_VTRR: {
+        int32_t v = s ? (int32_t)(voc_trim[i == MI_VTRR] % VOC_TRIM_N) + s : (int32_t)VOC_TRIM_0;
+        voc_trim[i == MI_VTRR] = (uint8_t)(v < 0 ? 0 : v > (int32_t)VOC_TRIM_N - 1 ? (int32_t)VOC_TRIM_N - 1 : v);
+        break;
+    }
     case MI_VGDEL: {                                   /* 0 .. 50 ms in 5 (stops at the ends); OCT+ back to 0 */
         int32_t v = s ? (int32_t)(voc_gdel % 11u) + s : 0;
         voc_gdel = (uint8_t)(v < 0 ? 0 : v > 10 ? 10 : v);
@@ -898,7 +980,7 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         voc_level = (uint8_t)(s > 0 ? (voc_level + 1u < VOC_LEVEL_N ? voc_level + 1u : voc_level)
                                     : s < 0 ? (voc_level ? voc_level - 1u : 0u) : 4u);
         break;
-    case MI_VDRY:                                      /* OFF, -18 .. 0 dB (stops at the ends); OCT+ round */
+    case MI_VDRY:                                      /* OFF, -30 .. 0 dB (stops at the ends); OCT+ round */
     case MI_VHF: {
         uint8_t *x = i == MI_VDRY ? &voc_dry : &voc_hf;
         *x = (uint8_t)(s > 0 ? (*x + 1u < VOC_MIX_N ? *x + 1u : *x) : s < 0 ? (*x ? *x - 1u : 0u) : (*x + 1u) % VOC_MIX_N);

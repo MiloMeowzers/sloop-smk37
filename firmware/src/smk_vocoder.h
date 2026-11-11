@@ -85,6 +85,15 @@ static uint8_t voc_dbg;                  /* (console "setup dbg N": bit 0 no HQ,
 static int16_t uin_dst[UD_N][VOC_MAXN];  /* this block's input a destination (usb.c uin_block); [UD_T3] is the voice */
 #define voc_in (uin_dst[UD_T3])
 #define UIN_DST 1                        /* (usb.c: the destinations are here) */
+/* SETUP > TRIM L / TRIM R (2026-11-11, the owner: "the input levels is the key"; the voice came in at -4 dBFS peaks):
+ * each side's level before its route, -18 .. +6 dB in 1 dB steps (index 18: 0 dB, exact: x 4096 >> 12), saturated to
+ * 16 bits; and its meter (uin_pk: |sample| after the trim, the largest since the menu last read it) */
+#define VOC_TRIM_N 25u
+#define VOC_TRIM_0 18u
+static const uint16_t VOC_TRIM_Q12[VOC_TRIM_N] = {516, 579, 649, 728, 817, 917, 1029, 1154, 1295, 1453, 1631, 1830, 2053,
+                                                  2303, 2584, 2900, 3254, 3651, 4096, 4596, 5157, 5786, 6492, 7284, 8173};
+static uint8_t voc_trim[2] = {VOC_TRIM_0, VOC_TRIM_0};   /* L, R */
+static uint16_t uin_pk[2];
 #define VOC_SETUP_ON (VOC_AUDIO_ON ? voc_setup % VSU_N : (uint32_t)VSU_FULL)
 #define VSU_UDR 8u                       /* (the drums' bit: fx.c U_DRUMS, asserted there) */
 #define VSU_SKIP(s) ((s) == VSU_DRUMS ? 3u : (s) == VSU_SYNTH ? VSU_UDR : (s) == VSU_ALONE ? 3u | VSU_UDR : 0u)
@@ -153,12 +162,16 @@ static const int32_t VOC_AGC_TQ[VOC_AGC_N] = {0, 48000, 32000, 18000};
 #define VOC_PINK_Q15 11105               /* the pink filter's rms over white: 2.95 (Kellet's, at 22050 Hz): back to 1 */
 static uint8_t voc_level = 4;            /* LEVEL: -12 .. +18 dB in 3 dB steps (default 0 dB: what the first listening
                                           * set at +16 .. 18 of the old scale) */
-static uint8_t voc_dry;                  /* DRY: OFF, -18, -12, -6, 0 dB */
-static uint8_t voc_hf = 2;               /* HF (speech addition): OFF, -18, -12, -6, 0 dB (default -12) */
+/* DRY and HF: OFF, -30 .. 0 dB in 3 dB steps (2026-11-11, the owner: "-18 is still pretty audible"; before: OFF, -18,
+ * -12, -6, 0 dB, their values kept bit for bit: VOC_MIX_OLD maps a setting saved on that scale, project.c) */
+#define VOC_MIX_N 12u
+#define VOC_HF_DEF 7u                    /* (-12 dB, as before) */
+static uint8_t voc_dry;                  /* DRY: OFF */
+static uint8_t voc_hf = VOC_HF_DEF;      /* HF (speech addition) */
 #define VOC_LEVEL_N 11u
-#define VOC_MIX_N 5u
 static const int32_t VOC_LV_Q8[VOC_LEVEL_N] = {511, 722, 1020, 1441, 2035, 2875, 4061, 5737, 8104, 11447, 16170};
-static const int32_t VOC_MIX_Q15[VOC_MIX_N] = {0, 4125, 8231, 16423, 32767};
+static const int32_t VOC_MIX_Q15[VOC_MIX_N] = {0, 1036, 1464, 2067, 2920, 4125, 5827, 8231, 11626, 16423, 23197, 32767};
+static const uint8_t VOC_MIX_OLD[5] = {0, 5, 7, 9, 11};   /* (the old scale's OFF, -18, -12, -6, 0 dB on this one) */
 #define VOC_VS(x) ((int32_t)(((int64_t)(x) * VOICE_FS) >> 14))   /* the voice (Q15) on the track's scale */
 #define VOC_XMAX ((1 << 23) - 1)         /* the output's ceiling (-2^22 .. -3 x 2^20 read as the ROM's addresses
                                           * 0xFFC00000.., which the build's image check refuses: 2^23 is clear) */
@@ -203,11 +216,27 @@ static inline int32_t voc_add_q15(uint32_t p) { return (int32_t)(p * p * 32767u 
  * output as before, bit for bit) */
 static int32_t voc_ga[VOC_CH];
 static const int32_t *voc_bap = VOC_B0;
-/* AUTOCONTROL (the VSM201's input AGC): the analysis's input gain, Q12 (1.0 .. -12 / +18 dB), towards the voice's level
- * at VOC_ACT in speech, held in a pause (no lift of the room's noise); the analysis only (DRY is the voice as it came) */
-#define VOC_ACT 60000                    /* (the voice's mean |x| aimed at, the analysis's scale: full 2^19; ~ -19 dB) */
-#define VOC_ACG_MAX 11565                /* (AUTOCONTROL's most: +9 dB, Q12) */
-static int32_t voc_acg = 4096;
+/* AUTOCONTROL (the VSM201's input AGC): the analysis's input gain, Q12, -12 .. +12 dB, towards the voice's level at
+ * VOC_ACT; the analysis only (DRY is the voice as it came). 2026-11-11 (the owner: "out of control. boomy / peaky",
+ * vocoder-ui-spec.md §7l): the level it reads through a high-pass (~150 Hz: breath, plosives and the room's low end do
+ * not set it); down in ~3 ms as before, up slowly (~0.75 s) and only while the voice is within ~15 dB of the aim (a gap
+ * between syllables no longer winds it up); the gain kept finer (Q20) so the slow rise still moves. Tuned on the owner's
+ * recorded voice (host replay of the firmware's analysis), its level -6 .. +8.5 dB: the loud peaks (p90 of 100 ms) near
+ * -10 dBFS, the manual's level, within 3 dB of each other; the gain moving 4 .. 16 dB a second (before: 120 .. 180, the
+ * voice pushed to +5 .. +12 dBFS) */
+#ifndef VOC_ACT
+#define VOC_ACT 60000                    /* (the voice's mean |x| aimed at, high-passed, the analysis's scale: full 2^19) */
+#endif
+#ifndef VOC_ACT_UP
+#define VOC_ACT_UP 1024                  /* (the rise: 1 / 1024 of the way a block, 1378 blocks a second: ~0.75 s) */
+#endif
+#ifndef VOC_ACT_WIN8
+#define VOC_ACT_WIN8 45                  /* (rising only while the level x 45 / 8 (5.6: 15 dB) reaches the aim) */
+#endif
+#define VOC_ACT_HPK 2740                 /* (the level's high-pass: a one-pole at ~150 Hz, 22.05 kHz, Q16) */
+#define VOC_ACG_LO 1029                  /* (-12 dB, Q12) */
+#define VOC_ACG_HI 16306                 /* (+12 dB, Q12) */
+static int32_t voc_acg = 4096, voc_acgq = 4096 << 8;   /* (Q12; Q20) */
 
 #define VOC_HN 32u                       /* the half-band's history at 44.1 kHz (27 taps), a power of two */
 #define VOC_ON 16u                       /* the decimated outputs' history (the interpolator's: 2 HB), a power of two */
@@ -223,6 +252,7 @@ static struct {                          /* the analysis (core 0, fx.c mix_block
     uint32_t hw;
     int32_t peak_in;
     int32_t lp1, lp2, env0, envs;        /* channel 0 (two one-poles, its envelope), the voice's level (unfiltered) */
+    int32_t hpl, enva;                   /* AUTOCONTROL's level: the high-pass's low part, its envelope (only while on) */
     uint8_t voiced;                      /* the detector's state (hysteresis) */
     int32_t acg_now;                     /* AUTOCONTROL's gain as the last block ended (Q12): each block ramps from it */
     uint8_t rest, rest_zero;             /* the bands resting (SILENCE > ANALYSIS); voc_ab buffers still to clear */
@@ -362,6 +392,8 @@ static void voc_analyse(uint32_t n)
             ga += dga;
             g = ((int64_t)v * ga) >> 12;
             v = g > (1 << 23) ? 1 << 23 : g < -(1 << 23) ? -(1 << 23) : (int32_t)g;
+            voa.hpl += (int32_t)(((int64_t)(v - voa.hpl) * VOC_ACT_HPK) >> 16);
+            voa.enva = voc_env(voa.enva, v - voa.hpl);   /* (its level, above ~150 Hz) */
         }
         voa.lp1 += (int32_t)(((int64_t)(v - voa.lp1) * VOC_LF_K) >> 16);   /* channel 0: below 1 kHz */
         voa.lp2 += (int32_t)(((int64_t)(voa.lp1 - voa.lp2) * VOC_LF_K) >> 16);
@@ -384,18 +416,17 @@ static void voc_analyse(uint32_t n)
     }
     voa.peak_in = pin;
     voa.acg_now = acg;
-    if (act && voa.envs > 0 && n) {                      /* AUTOCONTROL (2026-11-03: the pops / booms gone): down at once
-                                                          * above VOC_ACT, up slowly (~1.5 s) and only in clear speech
-                                                          * (within 12 dB of it), held in a pause; -12 .. +9 dB */
-        int64_t t = ((int64_t)VOC_ACT * acg) / voa.envs;
-        int32_t gt = t < 1024 ? 1024 : t > 32767 ? 32767 : (int32_t)t;   /* (2026-11-04: +18 dB again, the owner:
-                                                                          * +9 and the slow rise sounded thin) */
+    if (act && voa.enva > 0 && n) {                      /* AUTOCONTROL: down in ~3 ms, up slowly and only near the aim */
+        int64_t t = ((int64_t)VOC_ACT * acg) / voa.enva;
+        int32_t gt = t < VOC_ACG_LO ? VOC_ACG_LO : t > VOC_ACG_HI ? VOC_ACG_HI : (int32_t)t;
         if (gt < acg)
-            voc_acg = acg + (gt - acg) / 4;              /* down quickly, ~3 ms (2026-11-11: at once, a step, popped) */
-        else if (voc_ab[voc_aw].speech)
-            voc_acg = acg + (gt - acg) / 16;             /* up as before (~90 ms), in speech */
+            voc_acgq += ((gt << 8) - voc_acgq) / 4;
+        else if ((int64_t)voa.enva * VOC_ACT_WIN8 >= (int64_t)VOC_ACT * 8)
+            voc_acgq += ((gt << 8) - voc_acgq) / VOC_ACT_UP;
+        voc_acg = voc_acgq >> 8;
     } else if (!act) {
-        voc_acg = 4096;                                  /* (off: from 1.0 when it comes on) */
+        voc_acgq = 4096 << 8, voc_acg = 4096;            /* (off: from 1.0 when it comes on) */
+        voa.hpl = voa.enva = 0;
     }
     {   /* the detector: channel 0 against channel 19 (twice to turn voiced, 1.4 x to stay) */
         int32_t e19 = voa.env[18];
