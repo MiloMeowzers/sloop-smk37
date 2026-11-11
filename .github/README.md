@@ -13,12 +13,12 @@ SLOOP 2.8.1 as a **6-channel USB audio interface**: your DAW records each track 
 own, with **punch-in effects on every channel**, the punch-in page on the pads, sequencer effects (FLIP, LOOP BACK,
 RAMP) and DAW mode. Every engine and the built-in samples. For the SMK-37 Pro, Elite, MKE-P37 and Starrykey 37 Play.
 
-| HOME > USB > USB LAYOUT | The channels |
-|---|---|
-| **STEREO** (default) | the stereo mix, as on the FM-1 |
-| **SYNTHS+RET** | T1, T2, T3, the drums, the effects return L and R |
-| **DRUMS+RET** | kick, snare, hats, percussion, the effects return L and R |
-| **ALL DRY** | T1, T2, T3, kick, snare, hats and percussion |
+| HOME > USB > USB LAYOUT | The channels | Rate |
+|---|---|---|
+| **STEREO** (default) | the stereo mix, as on the FM-1 | 44.1 or 48 kHz (HOME > AUDIO > USB RATE) |
+| **SYNTHS+RET** | T1, T2, T3, the drums, the effects return L and R | 24 bit, 48 kHz (default, resampled on the keyboard) or 44.1 kHz (the lightest): HOME > USB > STEM RATE |
+| **DRUMS+RET** | kick, snare, hats, percussion, the effects return L and R | as SYNTHS+RET |
+| **ALL DRY** | T1, T2, T3, kick, snare, hats and percussion | as SYNTHS+RET |
 
 **[Install](https://milomeowzers.github.io/sloop-smk37/)** ·
 **[Editor](https://milomeowzers.github.io/sloop-smk37/elite/webapp/editor/)** ·
