@@ -278,6 +278,16 @@ static void con_status(void)
     con_kv("uin_on", UIN_ON);                            /* USB > AUDIO IN: the audio received is played (usb.c) */
     con_kv("uin_test", UIN_TEST);                        /* .. TEST: the stems carry the probe's test signals */
     con_kv("voc_mode", voc_mode);                        /* VOCODER > MODE: 0 AUDIO (dry), 1 VOCODER (smk_vocoder.h) */
+    con_kv("voc_setup", voc_setup);                      /* SETUP: 0 FULL, 1 VOC + DRUMS, 2 VOC + SYNTH, 3 VOC ALONE */
+    con_kv("voc_hq", voc_hq);                            /* the synthesis at 44.1 kHz now */
+    con_kv("voc_skip", voc_skip);                        /* the units off now (bit 0 T1, 1 T2, 3 the drums) */
+    con_kv("voc_inl", voc_inl);                          /* IN L / IN R: 0 TRACK 3, 1 CARRIER, 2 T1, 3 T2, 4 OFF */
+    con_kv("voc_inr", voc_inr);
+    con_kv("voc_trim_l", (int32_t)(voc_trim[0] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);   /* INPUT > TRIM L, R (dB) */
+    con_kv("voc_trim_r", (int32_t)(voc_trim[1] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
+    con_kv("voc_act_db10", voc_acg > 0 ? (((int32_t)voc_log2_q8((uint32_t)voc_acg) - 12 * 256) * 1541 >> 8) * 10 / 256 : -999);   /* (AUTOCONTROL's gain, dB x 10) */
+    con_kv("voc_brmode", voc_brmode);                    /* ENVELOPE > BRIDGE MODE: 0 FIXED, 1 FOLLOW */
+    con_kv("voc_follow_q15", 32767 - voc.bfa);           /* (FOLLOW: the bridge's gain now, Q15) */
     con_kv("voc_cur", voc_cur);                          /* the audio track's state: 0 engine, 1 AUDIO, 2 VOCODER */
     con_kv("voc_blocks", (int32_t)voc.blocks);           /* blocks vocoded since the last status */
     con_kv("voc_peak_in", voa.peak_in);                  /* the voice's |peak|, Q15, since the last status */
@@ -526,6 +536,28 @@ static void con_exec(const char *p)
 #if SMK_TIMING
     else if (con_word(&p, "timing"))
         con_timing();
+    else if (con_word(&p, "setup")) {                    /* setup N (0 FULL .. 3 VOC ALONE), setup in L R (0 TRACK 3,
+                                                         * 1 CARRIER, 2 T1, 3 T2, 4 OFF): as HOME > SETUP, not saved */
+        int ok, ok2;
+        uint32_t a, b;
+        if (con_word(&p, "dbg")) {
+            if ((a = con_num(&p, &ok)), ok)
+                voc_dbg = (uint8_t)(a & 7u);             /* (bit 0 no HQ, bit 1 no two saws, bit 2 two saws in
+                                                         * every SETUP) */
+            con_kv("voc_dbg", voc_dbg);
+        } else if (con_word(&p, "in")) {
+            a = con_num(&p, &ok), b = con_num(&p, &ok2);
+            if (ok && ok2 && a < VR_N && b < VR_N)
+                voc_inl = (uint8_t)a, voc_inr = (uint8_t)b;
+        } else if ((a = con_num(&p, &ok)), ok && a < VSU_N) {
+            voc_setup = (uint8_t)a;
+        }
+        con_kv("voc_setup", voc_setup);
+        con_kv("voc_hq", voc_hq);
+        con_kv("voc_skip", voc_skip);
+        con_kv("voc_inl", voc_inl);
+        con_kv("voc_inr", voc_inr);
+    }
 #endif
 #if BOARD_SMK37
     else if (con_word(&p, "smk"))

@@ -3421,8 +3421,9 @@ function makeMockDevice(opt = {}) {
     daw: { on: 0, ch: 1, local: 0, user: 0, rel: 0, map: DAW.defaults() },   /* SMK-37 (opt.daw): DAW mode */
     smkset: Uint8Array.from([0x53, 0x4B, 0x53, 0x54, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),   /* project.c smkset_t */
     vocset: (() => {                                   /* project.c vocset_t, the defaults (opt.voc) */
-      const v = new Uint8Array(472);
-      v.set([0x56, 0x4F, 0x43, 0x53, 0, 4, 0, 2, 127, 0, 0, 0, 0, 2, 1, 0], 0);
+      const v = new Uint8Array(480);
+      v.set([0x56, 0x4F, 0x43, 0x53, 0, 4, 0, 7, 127, 0, 0, 0, 0, 2, 1, 0], 0);
+      v[476] = 1;                                     /* (mixv: DRY / HF on the 12-step scale) */
       v.set([8, 10, 0, 0], 64);
       v.fill(50, 76, 116);
       v.set([2, 1, 1, 0, 1], 146);
@@ -3863,7 +3864,7 @@ function makeMockDevice(opt = {}) {
             }
             else if (id === 0) { const o = js(); st.tracks = o.tracks; st.sel = o.sel; st.g = o.g; }
             else if (id >= 12 && id <= 14) {                /* SMK-37 (editor.c: stopped only; 13 taken, not modelled) */
-              if (id !== 13 && P.len !== (id === 12 ? 20 : 472)) throw 0;
+              if (id !== 13 && P.len !== (id === 12 ? 20 : 480)) throw 0;
               if (st.playing) rc = 3;
               else if (id === 12) st.smkset = P.buf.slice();
               else if (id === 14) st.vocset = P.buf.slice();
@@ -7839,11 +7840,13 @@ $("dawfile").addEventListener("change", async (e) => {
   sayK("dawOpened");
 });
 
-/* SMK-37: its settings (backup object 12, project.c smkset_t, 20 bytes) and the vocoder build's (14, vocset_t, 472
+/* SMK-37: its settings (backup object 12, project.c smkset_t, 20 bytes) and the vocoder build's (14, vocset_t, 480
    bytes), read with BK_LIST / BK_GET and written back whole with BK_PUT (the firmware checks them as at power-on, takes
    them and saves). A field: [key, byte offset, label, options [[value, name]], default] */
 const OB_DB = (a, b, st, z) => Array.from({ length: (b - a) / st + 1 }, (_, i) => [i, `${a + i * st > 0 ? "+" : ""}${a + i * st}${z}`]);
 const OB_BEND = [0, 1, 2, 3, 4, 5, 7, 12].map((x) => [x, `${x} ST`]);
+const OB_MIX = ["OFF", ...Array.from({ length: 11 }, (_, i) => `${-30 + 3 * i} DB`)];   /* DRY, HF: OFF, -30 .. 0 dB */
+const OB_TRIM = Array.from({ length: 25 }, (_, i) => [(i - 18) & 255, `${i > 18 ? "+" : ""}${i - 18} DB`]);   /* signed bytes */
 const OB = {
   smk: { id: 12, len: 20, magic: 0x54534B53, box: "smkset", dev: null, d: null, dirty: false, fields: [
     ["vel", 4, "KEY VELOCITY", ["DYNAMIC", "SOFT", "HARD", "FIXED 64", "FIXED 100", "FIXED 127"], 0],
@@ -7855,12 +7858,19 @@ const OB = {
     ["sfilt", 13, "STEM FILTER", ["FULL", "LIGHT"], 0], ["xfl", 14, "PUNCH XFADE", ["2.9 MS", "1.5 MS", "5.8 MS"], 0],
     ["lin", 15, "PUNCH CURVE", ["EQUAL", "LINEAR"], 0], ["sqcarry", 16, "FLIP RETURN", ["SLIP", "CARRY"], 0],
     ["sqlb", 17, "LOOP BACK", ["2 bars", "1 bar", "1/2 bar", "1/4", "1/8", "1/16"], 1],
-    ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0]] },
-  vocoder: { id: 14, len: 472, magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
-    ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0], ["mode", 4, "T3", ["AUDIO", "VOCODER"], 0],
+    ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0],
+    ["gdel", 19, "GATE DELAY (VOCODER)", Array.from({ length: 11 }, (_, i) => [i, `${i * 5} MS`]), 0],
+    ["saws", 19, "CARRIER SAWS (VOCODER)", ["AUTO", "1 SAW", "2 SAWS"], 0]] },
+  vocoder: { id: 14, len: 480, magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
+    ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0],
+    ["vsetup", 71, "SETUP", ["FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"], 0],
+    ["vinl", 71, "IN L", ["TRACK 3", "CARRIER", "T1", "T2", "OFF"], 0],
+    ["vinr", 71, "IN R", ["TRACK 3", "CARRIER", "T1", "T2", "OFF"], 0],
+    ["trl", 474, "TRIM L", OB_TRIM, 0], ["trr", 475, "TRIM R", OB_TRIM, 0],
+    ["mode", 4, "T3", ["AUDIO", "VOCODER"], 0],
     ["lvl", 5, "LEVEL", OB_DB(-12, 18, 3, " DB"), 4],
     ["resp", -1, "RESPONSE", ["FLAT", "NORMAL", "EMPHASIS"], 0],
-    ["dry", 6, "DRY", ["OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"], 0], ["hf", 7, "HF", ["OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"], 2],
+    ["dry", 6, "DRY", OB_MIX, 0], ["hf", 7, "HF", OB_MIX, 7],
     ["cut", 8, "CARRIER CUTOFF", Array.from({ length: 128 }, (_, i) => [i, String(i)]), 127],
     ["res", 9, "CARRIER RESO", Array.from({ length: 128 }, (_, i) => [i, String(i)]), 0],
     ["vm", 10, "VOICE", ["AUTO", "VOICED", "UNVOICED"], 0], ["pink", 11, "NOISE", ["WHITE", "PINK", "SOFT"], 0],
@@ -7870,12 +7880,17 @@ const OB = {
     ["thr", 13, "THRESHOLD", [-54, -48, -42, -36, -30, -24].map((x, i) => [i, `${x} DB`]), 2],
     ["tilt", 64, "TILT", OB_DB(-3, 3, 0.5, " DB/OCT"), 8],
     ["colour", 65, "COLOUR", Array.from({ length: 11 }, (_, i) => [i, `${i * 10} %`]), 10],
-    ["blend", 66, "BLEND", ["SUM", "FILL"], 0]],
+    ["blend", 66, "BLEND", ["SUM", "FILL"], 0],
+    ["eatt", 472, "ATTACK", ["3 MS", "5 MS", "8 MS", "12 MS", "20 MS", "30 MS"], 0],
+    ["erel", 473, "RELEASE", ["8 MS", "15 MS", "25 MS", "40 MS", "60 MS", "100 MS"], 0],
+    ["brmode", 477, "BRIDGE MODE", ["FIXED", "FOLLOW"], 0]],
   page: [["byp", 146, "BYPASS", ["OFF", "REPLACEMENT", "SPEECH"], 2], ["brsel", 147, "BRIDGING", ["OFF", "SUM", "INDIVIDUAL"], 1],
     ["addsel", 148, "ADDITION", ["OFF", "SUM", "INDIVIDUAL"], 1], ["actl", 149, "AUTOCONTROL", ["OFF", "ON"], 0],
     ["nzc", 151, "NOISE BLEND", Array.from({ length: 21 }, (_, i) => [100 - i * 5, `${i * 5} %`]).reverse(), 0]] },
 };
 const OB_PG = 72;                                     /* vocset_t pcur: mute (4), emph[20], add[20], brg[10], fn[20], byp .. */
+const OB_BITS = { vsetup: [0, 3], vinl: [2, 7], vinr: [5, 7],     /* vocset rsv[1] (byte 71): SETUP, IN L, IN R */
+                  gdel: [0, 15], saws: [4, 3] };                  /* smkset spare (byte 19): GATE DELAY, CARRIER's saws */
 const obOpts = (f) => f[3].map((x, i) => (Array.isArray(x) ? x : [i, x]));
 const obResp = (d) => (d[68] & 1 ? (d[69] & 1 ? 2 : 1) : 0);
 const obBendGet = (d, f) => {                         /* smk_wheel.h: 0 the default (down: as up), 0x80 none, else semitones */
@@ -7886,11 +7901,13 @@ function obGet(k, f) {
   const d = OB[k].d;
   if (f[0] === "resp") return obResp(d);
   if (f[0] === "bup" || f[0] === "bdn") return obBendGet(d, f);
+  if (OB_BITS[f[0]]) { const [sh, m] = OB_BITS[f[0]]; return Math.min((d[f[1]] >> sh) & m, obOpts(f).length - 1); }
   return d[f[1]];
 }
 function obSet(k, f, v) {
   const d = OB[k].d;
   if (f[0] === "resp") { d[68] = v ? 1 : 0; d[69] = v === 2 ? 1 : 0; }
+  else if (OB_BITS[f[0]]) { const [sh, m] = OB_BITS[f[0]]; d[f[1]] = (d[f[1]] & ~(m << sh)) | ((v & m) << sh); }
   else if (f[0] === "bup" || f[0] === "bdn") {
     const up = f[0] === "bup" ? v : obBendGet(d, OB.smk.fields[2]), dn = f[0] === "bdn" ? v : obBendGet(d, OB.smk.fields[3]);
     d[6] = up === 7 ? 0 : up || 0x80;

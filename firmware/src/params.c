@@ -11,7 +11,29 @@ static const char *const N_LPOL[] = {"BI", "UNI"};
 /* GLO > MIDI (2.6): a synth track's MIDI channel, and the other channels */
 static const char *const N_SECT[] = {"A", "B", "C", "D", 0};   /* SAVE > SECTION (2.7): the slot as its section */
 static const char *const N_MCH[] = {"OFF", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"};
+#if BOARD_SMK37
+/* SMK-37, GLO's MIDI pages in plain words (2026-11-11, the owner: "opaque labels are to be avoided"; a page's label
+ * fits 6 characters, its value 5): the same settings, named for what they do (vocoder-ui-spec.md §7l 1a) */
+#define L_MOUT "OUT"
+#define L_MIN "IN"
+#define L_CH1 "T1 CH"
+#define L_CH2 "T2 CH"
+#define L_CH3 "T3 CH"
+#define L_DRCH "DRM CH"
+#define L_CHOTH "SPARE"
+#define L_RMCH "BTN CH"
 static const char *const N_MOTH[] = {"SEL", "OFF"};
+#else
+#define L_MOUT "OUT"
+#define L_MIN "IN"
+#define L_CH1 "CH1"
+#define L_CH2 "CH2"
+#define L_CH3 "CH3"
+#define L_DRCH "CH4"
+#define L_CHOTH "OTHER"
+#define L_RMCH "REMOTE"
+static const char *const N_MOTH[] = {"SEL", "OFF"};
+#endif
 /* GLO > TEXTURE (2.6, fx.c texture_*): the bed's sources (the user slots last), its movement's length, when it plays */
 static const char *const N_TXSRC[] = {"OFF", "VINYL", "TAPE", "RAIN", "WIND", "RADIO", "ROOM", "USR1", "USR2", "USR3", "USR4"};
 static const char *const N_TXRATE[] = {"1BAR", "2BAR", "4BAR", "8BAR", "16BAR"};
@@ -37,9 +59,19 @@ static const char *const N_IRATE[] = {"689", "919", "1.1k", "1.4k", "1.8k", "2.2
                                       "7.4k", "8.8k", "11k", "15k", "22k", "44k", 0};
 static const char *const N_AMODE[] = {"OFF", "UP", "DN", "UPDN", "RND", "ORD",   /* (append-only: seq.c AM_*) */
                                        "REPEAT", "DNUP", "UP+8", "CONV", "DIVG", "PINKY", "THUMB", "WALK", "CHORD"};
+#if BOARD_SMK37
+static const char *const N_MOUT[] = {"KEYS", "+SEQ"};   /* (the keys; the keys and the sequencer) */
+#else
 static const char *const N_MOUT[] = {"KEYS", "SEQ"};
+#endif
+#if BOARD_SMK37
+/* SMK-37 (2026-11-11, the owner: CH n "overrides the others", the 16 channels between the list's ends): every channel or
+ * the clock only. One channel to the selected track is a spare channel with OTHER = SEL; a saved CH n reads ALL (panel.c) */
+static const char *const N_MIN[] = {"ALL", "CLOCK"};
+#else
 static const char *const N_MIN[] = {"NOTES", "CLOCK", "CH 1", "CH 2", "CH 3", "CH 4", "CH 5", "CH 6", "CH 7", "CH 8", "CH 9",
                                      "CH 10", "CH 11", "CH 12", "CH 13", "CH 14", "CH 15", "CH 16"};  /* G_ROUTE: MIDI in, notes and clock, the clock only, or (2.6) one channel only, on the selected track (seq.c) */    /* G_MIDI: what goes to MIDI OUT (seq.c seq_out_on) */
+#endif
 static const char *const N_DIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T"};
 static const char *const N_SDIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1BAR", "2BAR"};   /* core.h div_units */
 static const char *const N_DLY[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/8D", "1/16D", "1/4D"};   /* core.h dly_units
@@ -47,7 +79,11 @@ static const char *const N_DLY[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "
 static const char *const N_SCALE[] = {"CHR", "MAJ", "MIN", "DOR", "MIX", "PEN", "MPEN", "HARM",
                                     "PHRY", "LYD", "LOC", "MEL", "BLUES", "WHOLE", "DIMHW", "DIMWH"};
 static const char *const N_ONOFF[] = {"OFF", "ON"};
-static const char *const N_CLKOUT[] = {"OFF", "OUT"};   /* 2.7, GLO > MIDI 3 > CLOCK: OUT, the MIDI clock out */
+#if BOARD_SMK37
+static const char *const N_CLKOUT[] = {"OFF", "SEND"};
+#else
+static const char *const N_CLKOUT[] = {"OFF", "OUT"};
+#endif   /* 2.7, GLO > MIDI 3 > CLOCK: OUT, the MIDI clock out */
 static const char *const N_DRMAP[] = {"GM", "1-16"};   /* (2.7) GLO > MIDI 3: DR MAP */
 static const char *const N_QUANT[] = {"OFF", "SNAP", "WHITE"};   /* seq.c kb_map; 1 = SNAP as the old ON */
 static const char *const N_VOICE[] = {"POLY", "MONO", "LEG", "UNI"};   /* V_POLY .. V_UNISON */
@@ -166,9 +202,9 @@ static const param_desc_t GP[G_COUNT] = {
     [G_RDAMP] = PD("DAMP", F_PCT, 0, 127, 60),
     [G_CRATE] = PD("CRT", F_LFOHZ, 0, 127, 40),
     [G_CDEPTH] = PD("CDP", F_PCT, 0, 127, 60),
-    [G_MIDI] = PE("OUT", N_MOUT, 0),            /* MIDI OUT: the keys, or the sequencer too (a setting of the FM-1) */
+    [G_MIDI] = PE(L_MOUT, N_MOUT, 0),            /* MIDI OUT: the keys, or the sequencer too (a setting of the FM-1) */
     [G_SYNC] = PE("SYNC", N_SYNC, 0),           /* a setting of the FM-1, not of a project (panel.c lights_sync) */
-    [G_ROUTE] = PE("IN", N_MIN, 0),             /* MIDI IN: NOTES (and the clock), CLOCK only, or CH n: that channel only (a setting of the FM-1) */
+    [G_ROUTE] = PE(L_MIN, N_MIN, 0),             /* MIDI IN: NOTES (and the clock), CLOCK only, or CH n: that channel only (a setting of the FM-1) */
     [G_INFO] = PD("CPU", F_INT, 0, 0, 0),
     [G_SLOT] = {"SECT", F_INT, 1, 4, 1, N_SECT, 0},     /* (2.7: A..D, the song's sections; "SLOT" 1..4 before) */
     [G_NAME] = PE("NAME", N_DASH, 0),
@@ -178,7 +214,7 @@ static const param_desc_t GP[G_COUNT] = {
     [G_ENGGO] = PE("SET", N_GO, 0),
     [G_CLRSEQ] = PE("CLRSQ", N_GO, 0),
     [G_INITSND] = PE("INIT", N_GO, 0),
-    [G_DRCH] = PE("CH4", N_MCH, 10),                  /* GM drum part (track 4) MIDI channel, 0 = OFF (2.6: as GLO > MIDI's CH1..3) */
+    [G_DRCH] = PE(L_DRCH, N_MCH, 10),                  /* GM drum part (track 4) MIDI channel, 0 = OFF (2.6: as GLO > MIDI's CH1..3) */
     [G_DRLVL] = PD("LVL", F_INT, 0, 127, 100),
     [G_DRREV] = PD("REV", F_INT, 0, 127, 16),
     [G_DUST] = PD("DUST", F_PCT, 0, 127, 0),
@@ -187,10 +223,10 @@ static const param_desc_t GP[G_COUNT] = {
     [G_ROLL] = PE("ROLL", N_ROLL, 1),
     [G_NEWPRJ] = PE("NEW", N_GO, 0),
     [G_DRDLY] = PD("DLY", F_INT, 0, 127, 0),
-    [G_CH1] = PE("CH1", N_MCH, 1),                /* 2.6, GLO > MIDI: synth track 1's channel, in and out (OFF: */
-    [G_CH2] = PE("CH2", N_MCH, 2),                /* no MIDI in; out on its old one) */
-    [G_CH3] = PE("CH3", N_MCH, 3),
-    [G_CHOTH] = PE("OTHER", N_MOTH, 0),           /* the channels no track has: SEL the selected track, OFF none */
+    [G_CH1] = PE(L_CH1, N_MCH, 1),                /* 2.6, GLO > MIDI: synth track 1's channel, in and out (OFF: */
+    [G_CH2] = PE(L_CH2, N_MCH, 2),                /* no MIDI in; out on its old one) */
+    [G_CH3] = PE(L_CH3, N_MCH, 3),
+    [G_CHOTH] = PE(L_CHOTH, N_MOTH, 0),           /* the channels no track has: SEL the selected track, OFF none */
     [G_TXSRC] = PE("SRC", N_TXSRC, 0),            /* 2.6, GLO > TEXTURE: the bed under the mix (OFF: none) */
     [G_TXLVL] = PD("LEVEL", F_PCT, 0, 127, 64),
     [G_TXTONE] = PD("TONE", F_FILT, -64, 63, 0),  /* left a low-pass, right a high-pass, centre open */
@@ -201,7 +237,7 @@ static const param_desc_t GP[G_COUNT] = {
     [G_FXCH] = PE("FX CH", N_MCH, 0),
     [G_DRMAP] = PE("DR MAP", N_DRMAP, 0),
     [G_CLKOUT] = PE("CLOCK", N_CLKOUT, 0),       /* 2.7, GLO > MIDI 3: MIDI clock and START / STOP out on USB (seq.c) */
-    [G_RMCH] = PE("REMOTE", N_MCH, 0),           /* 2.7, GLO > MIDI 3: the buttons over MIDI (CC 102..115, seq.c remote_cc) */        /* 2.7, GLO > MIDI 3: MIDI notes -> drum sounds (seq.c midi_drum_lane) */            /* 2.7, GLO > MIDI 3: the punch-in FX's channel (seq.c midi_fx) */
+    [G_RMCH] = PE(L_RMCH, N_MCH, 0),           /* 2.7, GLO > MIDI 3: the buttons over MIDI (CC 102..115, seq.c remote_cc) */        /* 2.7, GLO > MIDI 3: MIDI notes -> drum sounds (seq.c midi_drum_lane) */            /* 2.7, GLO > MIDI 3: the punch-in FX's channel (seq.c midi_fx) */
     [G_BEND] = PD("BEND", F_SEMI, 1, 12, 2),      /* 2.6, GLO > MIDI 2: MIDI pitch bend's range (a setting of the FM-1) */
     [G_FXFADE] = PD("FADE", F_INT, 0, 15, 0),     /* 2.7.2: the punch-in FX fade (FX layer SELECT), 0 off .. 15 (punch.c) */
 };
@@ -423,12 +459,24 @@ static const page_t PAGES[] = {
     {"VOICE 2", FAM_EDIT, SC_TRACK, GR_NONE, {P_ALLOC, P_DETUNE, P_PAN, P_MUTE}},
     {"GLOBAL", FAM_GLO, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, G_TUNE}},
     {"MASTER", FAM_GLO, SC_GLOBAL, GR_NONE, {G_DUST, G_DUCK, G_FILT, G_ROLL}},
+#if BOARD_SMK37
+    {"SYSTEM", FAM_GLO, SC_GLOBAL, GR_NONE, {0xFF, G_SYNC, 0xFF, G_INFO}},   /* (SMK-37: IN and OUT on MIDI IN/OUT only) */
+#else
     {"SYSTEM", FAM_GLO, SC_GLOBAL, GR_NONE, {G_MIDI, G_SYNC, G_ROUTE, G_INFO}},
+#endif
+#if BOARD_SMK37
+    {"DRUMS", FAM_GLO, SC_GLOBAL, GR_NONE, {0xFF, G_DRLVL, G_DRREV, G_DRDLY}},   /* (SMK-37: the channel on MIDI only) */
+#else
     {"DRUMS", FAM_GLO, SC_GLOBAL, GR_NONE, {G_DRCH, G_DRLVL, G_DRREV, G_DRDLY}},   /* GM kit on MIDI ch 10 */
+#endif
     {"MIDI", FAM_GLO, SC_GLOBAL, GR_NONE, {G_CH1, G_CH2, G_CH3, G_DRCH}},   /* 2.6: each track's channel, the drums' too */
+#if BOARD_SMK37
+    {"MIDI IN/OUT", FAM_GLO, SC_GLOBAL, GR_NONE, {G_ROUTE, G_CHOTH, G_MIDI, G_BEND}},
+#else
     {"MIDI 2", FAM_GLO, SC_GLOBAL, GR_NONE, {G_ROUTE, G_CHOTH, G_MIDI, G_BEND}},   /* 2.6: IN, OTHER, OUT, BEND: every MIDI
                                                                            * setting in these two pages (IN and OUT on
                                                                            * SYSTEM too, the drums' channel on DRUMS) */
+#endif
     {"MIDI 3", FAM_GLO, SC_GLOBAL, GR_NONE, {G_FXCH, G_DRMAP, G_RMCH, G_CLKOUT}},   /* 2.7: the punch-in FX over MIDI */
 #if !SMK_VOC_LEAN                                       /* (the vocoder build: no TEXTURE) */
     {"TEXTURE", FAM_GLO, SC_GLOBAL, GR_NONE, {G_TXSRC, G_TXLVL, G_TXTONE, G_TXMOVE}},   /* 2.6: the bed under the mix */

@@ -1,92 +1,56 @@
-# SLOOP for the M-Vave SMK-37
+# Mewcoder
 
-**SLOOP 2.8.1**, the groovebox firmware for the Hügelton FM-1, running on the **M-Vave SMK-37** (also sold as the
-SMK-37 Elite, MKE-P37 and Starrykey 37 Play: the same chip). It has the whole of SLOOP: four tracks, the step
-sequencer, the synth engines, the 27 punch-in effects and the web editor. It also uses the keyboard's 37 keys, 16 RGB
-pads, faders and wheels, and adds USB audio stems for a DAW.
+SLOOP 2.8.4 with a vocoder, for the M-Vave SMK-37 Elite: **your voice, or any sound you choose, in over USB audio** on track 3, played dry or
+through a **20-channel vocoder** modelled on the Sennheiser VSM201, played from the keys and the sequencer. One of the
+two builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/sloop-smk37).
 
-> Unofficial firmware, not affiliated with or endorsed by M-Vave, Hügelton Instruments or SLOOP's author. No
-> warranty: install at your own risk. **Back up the keyboard's flash first** (see [Install](#install)).
+**[Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/)** ·
+**[Editor](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/editor/)** ·
+[Manual](/VOCODER.md) ·
+[Release](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1)
 
-<p align="center">
-<a href="https://milomeowzers.github.io/sloop-smk37/"><b>Install from the browser</b></a> ·
-<a href="https://milomeowzers.github.io/sloop-smk37/elite/webapp/editor/">Web editor</a> ·
-<a href="https://github.com/MiloMeowzers/sloop-smk37/releases">Releases</a> ·
-<a href="/SMK37.md"><b>The SMK-37 manual</b></a> ·
-<a href="/SMK37.md#what-this-build-adds">What this build adds</a>
-</p>
+> Unofficial firmware, not affiliated with M-Vave. No warranty. **Back up the keyboard first** ([how](/SMK37.md#install)).
 
-[SLOOP's own guide](/GUIDE.md) · [Building](/BUILDING.md)
+![The vocoder page: the 20 channels on the knobs and pads](/assets/screens/smk37-vocoder-page.png)
 
-## What it adds
+## Two inputs, routed
 
-- **The keyboard as SLOOP's panel.** 37 velocity keys, 16 pads (drum kit or steps), 4 faders, 8 knobs (FM-1 or SMK
-  layout), pitch and mod wheels with a settable bend range, and TRS MIDI out.
-- **USB audio stems.** Six mono channels, 24 bit, to the DAW: the drums in four groups, the synths, and the reverb /
-  delay return. 48 or 44.1 kHz; a new layout re-plugs USB by itself, with no power cycle.
-- **Punch-ins on the stems.** The rhythmic punch-ins (loops, stutter, reverse, stop, half, rewind, gate) play on every
-  stem with seamless loop joins. The stitch length and curve are settable (HOME > PUNCH).
-- **The stem punch-in page.** Hold FX, or lock it with FX + FADER BANK, and the pads become four colour rows of
-  effects. FREEZE holds the reverb.
-- **Sequencer effects.** FLIP (play backwards), LOOP BACK (2 bars down to 1/16, changeable while held) and RAMP UP /
-  DOWN (tempo ramps, with the DAW staying the clock master). Each is recorded and replayed as MIDI.
-- **DAW mode.** < + > turns the keyboard into a MIDI controller with an editable CC map.
-- **Punch-in MIDI out.** Every punch-in sends a note on FX CH, so a DAW can record a performance and play it back.
+![HOME > SETUP: the defaults, your voice with your synth as the carrier, an instrument through T1](/assets/screens/smk37-voc-setup.png)
 
-All of it is in [SMK37.md](/SMK37.md), with a quick reference for the stem page.
+The USB input's left and right sides are **two sources of their own**. Your voice on one; on the other:
+- **your synth as the carrier**, played from the SMK-37's keys over MIDI and gated by them: the classic studio vocoder;
+- **an instrument through T1's or T2's effects** (filter, drive, sends, punch-ins) and onto its own USB stem;
+- or nothing: a mono mic at full level.
 
-## Install
+**SETUP** chooses which of SLOOP's tracks play beside the vocoder. Turn T1 and T2 or the drums off when your DAW brings
+its own, and the vocoder runs at **44.1 kHz (HQ)**. [How it all works](/VOCODER.md#2-setup-and-the-two-inputs).
 
-1. **Back up the whole 1 MiB flash** first: the calibration, the Bluetooth pairing and key_mac are your unit's own and
-   no package contains them ([how](/SMK37.md#install)).
-2. Install the package for your model with the [web installer](https://milomeowzers.github.io/sloop-smk37/)
-   (Chrome or Edge, over USB: pick your model), or download it from
-   [Releases](https://github.com/MiloMeowzers/sloop-smk37/releases) and run
-   `python3 tools/fm1_install.py sloop-smk37-elite.fwsc` (check its SHA-256 first).
-3. **Going back:** M-Vave's own updater (M-UPGRADE) installs the stock firmware as usual. The port never writes the
-   keyboard's protected flash.
+## What you get
 
-Your projects, presets, samples and settings are kept when you update.
+- **An audio track:** track 3 plays the computer's audio (your microphone, an instrument, any recording) dry or vocoded.
+- **The vocoder:** 20 channels, per-channel emphasis, speech addition, silence bridging, voiced / unvoiced detection,
+  ATTACK and RELEASE for smoother syllables, BRIDGE MODE FOLLOW for a smooth pickup into each word.
+- **The carrier:** saws played from the keys and the sequencer (two a note in VOC ALONE), or your own synth. Play
+  chords: that is the classic sound.
+- **The vocoder page:** the 20 channels on the knobs and pads (PATCH on the tracks screen).
+- **The editor's Vocoder tab**, and everything else SLOOP and the Multichannel USB audio build have.
 
-## Provenance
+**Left out to make room:** the built-in samples (your own samples work), the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and
+NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMeowzers/sloop-smk37).
 
-Everything here descends from **Felucca**: SLOOP is built on it, and genkigenki keeps the same SMK-37 layer for Felucca
-itself ([genkigenki/Felucca](https://github.com/genkigenki/Felucca) branch `smk37`, hugelton/Felucca#237).
+## Start
 
-| Part | From | Licence |
-|---|---|---|
-| Felucca, the root: the FM-1 firmware platform (HAL, engines, update path) SLOOP and the SMK-37 work build on | [hugelton/Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita (@kurogedelic) / Hügelton Instruments | GPL-3.0-only |
-| SLOOP, the firmware | [isod89/sloop-fm1](https://github.com/isod89/sloop-fm1), based on Felucca | GPL-3.0-only |
-| The SMK-37 board layer (input, screen, pad LEDs, flash map, update path, DAW mode) | M. Geisler, [genkigenki/sloop-fm1](https://github.com/genkigenki/sloop-fm1) branch `smk37` (isod89/sloop-fm1#112); its commits keep their authorship here | GPL-3.0-only |
-| The porting method: the playbook, the hardware docs, the `smk37-port.yaml` template | M. Geisler, [genkigenki/fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) | see that repository |
-| Carrying the layer to 2.8.1, the user sample slots, punch-in MIDI out, the editor's slot read-back, the USB audio stems, STEM FX, the stem punch-in page, the sequencer effects | the commits on `smk37`, `editor-slot-readback` and `stems` | GPL-3.0-only |
+1. Back up the keyboard's flash ([how](/SMK37.md#install)) and your projects (the editor's Backup).
+2. [Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/) (Chrome or Edge, over USB).
+3. On the computer, send your microphone to the SMK-37's audio output (peaks around −10 dBFS).
+4. HOME > USB > **AUDIO IN: ON**, HOME > VOCODER > **MODE: VOCODER**, select track 3, play chords and speak.
+5. A mono mic on one side: HOME > SETUP > **IN R: OFF** (or IN L), for its full level. HOME > **INPUT** shows each
+   side's level: trim your voice until its peaks sit near the −10 tick.
 
-The decisions behind the port, and what was tested on a real unit, are in [`smk37-port.yaml`](/smk37-port.yaml).
+The [manual](/VOCODER.md) has the rest.
 
-## Branches
+**In development:** a harmoniser modelled on the Eventide H949, for this build, on the same routing: your voice,
+another external sound, the drums or a synth engine pitch-shifted into up to three harmony voices.
 
-The work is a stack, so each part can be offered upstream on its own:
-
-- **`smk37`**: the port itself. Everything SMK-37-specific is behind `BOARD_SMK37`, and the FM-1 build is unchanged
-  byte for byte.
-- **`editor-slot-readback`**: the web editor reads a user slot back from the keyboard.
-- **`stems`**: the USB audio stems and everything built on them (STEM FX, the stem punch-in page, the sequencer
-  effects). SMK-37 only.
-- **`ci`** (the default branch): `stems` plus this README and the build workflow. Never part of a pull request.
-
-## Builds and tests
-
-Each push to `ci` builds, in one run: upstream SLOOP 2.8.1 for the FM-1 (the baseline); the SMK-37 packages (Pro,
-Elite, MKE, and an Elite build with a USB serial console); the FM-1 again from this source, which **must be
-byte-identical** to the baseline or the run fails; the installer sites and the offline editor; and the host and web
-tests, which fail the run on any failure the baseline does not have. The run's artifact holds the packages,
-`packages.sha256`, `fm1-identical.txt` and the logs. Only once every check has passed does the run publish the
-installer sites and the editor on [GitHub Pages](https://milomeowzers.github.io/sloop-smk37/).
-
-Tested on an SMK-37 Elite. The Pro, MKE-P37 and Starrykey builds differ only in the name the keyboard reports, but
-have not been tried on those units: reports are welcome.
-
-## Licence
-
-GPL-3.0-only, as SLOOP and Felucca ([LICENSE](/LICENSE), [LICENSING.md](/LICENSING.md)). No M-Vave firmware or
-other vendor material is in this repository.
+Branch `mewcoder` · release tag `mewcoder-v0.1` · current build `mewcoder-baseline` ·
+how it was built: [VOCODER-DESIGN.md](/VOCODER-DESIGN.md) · GPL-3.0-only

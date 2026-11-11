@@ -20,6 +20,9 @@
  *              three-note chord levelled to the ceiling (VOC_AGC_TQ)
  *   zipper     a voice gated as speech goes, BRIDGE 0 dB, TILT -3: the output above 9 kHz (the bank stops at 6.78) > 60 dB
  *              under it (the bridge and COLOUR ramped over a block: 62.7 dB; stepped block by block they made 54.5)
+ *   FOLLOW     BRIDGE MODE (vocoder-ui-spec.md §7n): a vowel as syllables (250 ms on, 150 off) on a three-note chord,
+ *              BRIDGE 0 dB: FIXED's gaps louder than its words (as before), FOLLOW's gaps 4 dB or more under its words, its
+ *              words within 1 dB of FIXED's; both rates (22.05, HQ)
  *   the track  MODE AUDIO: the voice itself, at a voice's full scale; a change of state (engine -> dry -> engine) fades out
  *              and in: no step over 200 a sample, settled within 15 blocks
  * 44.1 kHz, blocks of 32 as the mix. */
@@ -88,6 +91,25 @@ static uint32_t run(double secs, double (*voice)(uint32_t), double (*carrier)(ui
                                                     * on the envelopes of the block before) */
         voc_analyse(VOC_MAXN);
         voc_process(b, VOC_MAXN);
+        for (k = 0; k < VOC_MAXN && i + k < n; k++)
+            outbuf[i + k] = b[k];
+        i += VOC_MAXN;
+    }
+    return n;
+}
+/* run() with the synthesis at 44.1 kHz (HQ: SETUP VOC + DRUMS, VOC + SYNTH, VOC ALONE) */
+static uint32_t run_hq(double secs, double (*voice)(uint32_t), double (*carrier)(uint32_t))
+{
+    uint32_t i = 0, n = (uint32_t)(FS * secs), k;
+    int32_t b[VOC_MAXN];
+    while (i < n) {
+        for (k = 0; k < VOC_MAXN; k++) {
+            voc_in[k] = (int16_t)lrint(voice(i + k));
+            b[k] = (int32_t)lrint(carrier(i + k));
+        }
+        voc_ana_flip();
+        voc_analyse(VOC_MAXN);
+        voc_process_hq(b, VOC_MAXN);
         for (k = 0; k < VOC_MAXN && i + k < n; k++)
             outbuf[i + k] = b[k];
         i += VOC_MAXN;
@@ -164,6 +186,25 @@ static double vowel(uint32_t i)                   /* harmonics of 150 Hz, -12 dB
         s += sin(2.0 * M_PI * 150.0 * h * i / FS) / ((double)h * h);
     return 9000.0 * s;
 }
+static double vsyl(uint32_t i)                    /* syllables: 8 ms up, 250 ms on, 30 ms down, gaps to 400 ms */
+{
+    double ph = fmod((double)i / FS, 0.4), g = ph < 0.008 ? ph / 0.008 : ph < 0.25 ? 1.0 : ph < 0.28 ? (0.28 - ph) / 0.03 : 0.0;
+    return g * 0.5 * vowel(i);
+}
+/* the output's rms in the words (40 .. 240 ms of each 400) and in the gaps (320 .. 390 ms) after the first 300 ms, dB */
+static void words_gaps(uint32_t n, double *w, double *g)
+{
+    double sw = 0, sg = 0;
+    uint32_t i, mw = 0, mg = 0;
+    for (i = (uint32_t)(FS * 0.3); i < n; i++) {
+        double ph = fmod((double)i / FS, 0.4);
+        if (ph >= 0.04 && ph < 0.24)
+            sw += outbuf[i] * outbuf[i], mw++;
+        else if (ph >= 0.32 && ph < 0.39)
+            sg += outbuf[i] * outbuf[i], mg++;
+    }
+    *w = db(sqrt(sw / mw)), *g = db(sqrt(sg / mg));
+}
 static double vnoise(uint32_t i)
 {
     (void)i;
@@ -220,7 +261,7 @@ int main(void)
     reset();
     n = run(1.0, vzero, saw110);
     check("silence in, silence out (the carrier alone: < 1)", rms_last(n, 0.5) < 1.0);
-    voc_dry = 3;                                    /* -6 dB (OFF, -18, -12, -6, 0) */
+    voc_dry = 9;                                    /* -6 dB (OFF, -30 .. 0 in 3 dB steps) */
     reset();
     n = run(1.0, v1k, vzero);
     printf("   DRY -6 dB: %.2f dB re a voice's full scale\n", db(rms_last(n, 0.5) / (16000.0 * 2.0 * VOICE_FS / 32768.0 / sqrt(2.0))));
@@ -229,7 +270,7 @@ int main(void)
     voc_dry = 0;
     {
         double on, off;
-        voc_hf = 2;                                     /* -12 dB */
+        voc_hf = VOC_HF_DEF;                            /* -12 dB */
         reset();
         n = run(1.0, vnoise, sine220);
         on = hiss(n);
@@ -537,6 +578,49 @@ int main(void)
         run(0.1, v1k, saw110);
         check("page: AUTOCONTROL off, back to 1.0", voc_acg == 4096);
         voc_norm = 0;
+    }
+    {   /* BRIDGE MODE FOLLOW (2026-11-11): the gaps under the words, the words as FIXED's */
+        uint32_t hq, n;
+        for (hq = 0; hq < 2u; hq++) {
+            double fw, fg, ow, og;
+            char what[128];
+            voc_bridge = VOC_BR_N - 1u, vpg.brsel = VS_SUM;
+            voc_brmode = 0;
+            reset();
+            n = hq ? run_hq(1.5, vsyl, chord3) : run(1.5, vsyl, chord3);
+            words_gaps(n, &fw, &fg);
+            voc_brmode = 1;
+            reset();
+            n = hq ? run_hq(1.5, vsyl, chord3) : run(1.5, vsyl, chord3);
+            words_gaps(n, &ow, &og);
+            voc_brmode = 0;
+            printf("   %s BRIDGE 0 dB: FIXED words %.1f gaps %.1f dB, FOLLOW words %.1f gaps %.1f dB\n", hq ? "HQ" : "22.05",
+                   fw, fg, ow, og);
+            snprintf(what, sizeof what, "FOLLOW (%s): the gaps 4 dB or more under the words (FIXED: %+.1f, FOLLOW: %+.1f dB)",
+                     hq ? "HQ" : "22.05", fg - fw, og - ow);
+            check(what, og - ow <= -4.0 && fg > fw);
+            snprintf(what, sizeof what, "FOLLOW (%s): the words as FIXED's (%+.2f dB)", hq ? "HQ" : "22.05", ow - fw);
+            check(what, fabs(ow - fw) < 1.0);
+        }
+        voc_bridge = 0, vpg.brsel = VS_SUM;
+    }
+    {   /* HQ (2026-11-11): the 44.1 kHz synthesis at the 22.05 kHz one's level, voiced and unvoiced (its band sum was
+         * truncated to 32 bits: noise on the unit, ~-10 dB here) */
+        static const char *const W[3] = {"voiced, NORMAL, bridge", "unvoiced WHITE", "unvoiced PINK"};
+        uint32_t c;
+        for (c = 0; c < 3u; c++) {
+            double o, h;
+            char what[96];
+            reset();
+            voc_norm = c == 0u, voc_vmode = c ? VV_UNVOICED : VV_AUTO, voc_pink = c == 2u;
+            voc_bridge = c == 0u ? 3u : 0u, vpg.brsel = c == 0u ? VS_SUM : VS_OFF;
+            o = rms_last(run(1.0, vowel, chord3), 0.5);
+            reset();
+            h = rms_last(run_hq(1.0, vowel, chord3), 0.5);
+            snprintf(what, sizeof what, "HQ: %s at the 22.05 kHz level (%+.2f dB)", W[c], db(h / o));
+            check(what, fabs(db(h / o)) < 1.0);
+        }
+        voc_norm = 0, voc_vmode = VV_AUTO, voc_pink = 0, voc_bridge = 0, vpg.brsel = VS_SUM;
     }
     printf(fails ? "VOCODER TEST FAILED (%d)\n" : "smk_vocoder: all ok\n", fails);
     return fails != 0;
