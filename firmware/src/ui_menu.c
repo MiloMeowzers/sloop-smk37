@@ -648,8 +648,9 @@ UI_SMALL static void draw_menu(void)
 #endif
                          ) {
                     uint16_t gc = vc == C_HI ? C_GRAY : C_DIM;
-                    cv_text(xv + 8, y + 18, &FONT_S, mi_guide(i, 0), gc);
-                    cv_text(xv + 8, y + 34, &FONT_S, mi_guide(i, 1), gc);
+                    cv_text(xv + 8, y + 16, &FONT_S, mi_guide(i, 0), gc);   /* (y + 30: a fourth row's second line
+                                                         * inside the screen; at y + 34 it ran off the bottom) */
+                    cv_text(xv + 8, y + 30, &FONT_S, mi_guide(i, 1), gc);
                 }
 #endif
 #if FELUCCA_CDC
