@@ -8,14 +8,20 @@
 # private repository), with its own installer site and editor. The packages, their SHA-256 and the logs are the run's
 # artifact. Nothing is installed anywhere. On a public repository the run also publishes both builds' installer sites
 # and editors on GitHub Pages (.github/pages/index.html: Audio stems with its model picker, and Mewcoder at mewcoder/),
-# once every check above has passed. To refresh Mewcoder's site after a push to mewcoder, run this workflow on ci by
-# hand (Actions > SMK-37 build > Run workflow).
+# once every check above has passed, from the ci branch only. To refresh Mewcoder's site after a push to mewcoder, run
+# this workflow on ci by hand (Actions > SMK-37 build > Run workflow). ci-dev is ci plus a change under test: the same
+# run, its packages and installer sites as the run's artifact, no Pages; once tested on the unit, ci takes it.
 name: SMK-37 build
 
 on:
   push:
-    branches: [ci]
+    branches: [ci, ci-dev]          # (ci-dev: a change under test, built but never published)
   workflow_dispatch:
+
+# a newer push to the same branch stops the run before it
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   BASE: d893642                      # SLOOP 2.8.1, the port's upstream base
@@ -176,7 +182,7 @@ jobs:
           retention-days: 30
 
       - name: The Pages site (the model picker, an installer site per model; public repository only)
-        if: ${{ !github.event.repository.private }}
+        if: ${{ !github.event.repository.private && github.ref_name == 'ci' }}
         run: |
           mkdir -p pages
           for m in pro elite mke; do cp -r "out/installer-$m" "pages/$m"; done
@@ -186,13 +192,13 @@ jobs:
           touch pages/.nojekyll
 
       - name: Upload the Pages site
-        if: ${{ !github.event.repository.private }}
+        if: ${{ !github.event.repository.private && github.ref_name == 'ci' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: pages/
 
   pages:                             # (deployed only after the build, the FM-1 identity and the tests have passed)
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && github.ref_name == 'ci' }}
     needs: build
     runs-on: ubuntu-22.04
     permissions:
