@@ -40,8 +40,10 @@ jobs:
 
       - name: Host tools
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q build-essential python3-venv libraqm0 xz-utils curl
+          # (an apt mirror the runner cannot reach no longer stops the build: the raqm check below decides)
+          sudo apt-get update -q || true
+          sudo apt-get install -y -q -o Acquire::Retries=3 build-essential python3-venv libraqm0 xz-utils curl \
+            || echo "apt-get install failed: going on, Pillow's raqm is checked below"
           python3 -m venv ~/.venv-fw
           ~/.venv-fw/bin/pip install -q Pillow fonttools
           ~/.venv-fw/bin/python -c "from PIL import features; import sys; ok = features.check('raqm'); print('raqm', ok); sys.exit(0 if ok else 1)"
