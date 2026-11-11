@@ -6,22 +6,24 @@
 #   4. the host and web tests: no failure that the baseline does not have, or the run fails
 # The packages, their SHA-256 and the logs are the run's artifact. Nothing is installed anywhere. On a public repository
 # the run also publishes the installer sites (Pro, Elite, MKE) and the editor on GitHub Pages, behind a model picker
-# (.github/pages/index.html), once every check above has passed.
+# (.github/pages/index.html), once every check above has passed: from the ci branch only (the vocoder branches build
+# their package and installer site as the run's artifact; the Pages site is ci's, which builds Mewcoder too).
 name: SMK-37 build
 
 on:
   push:
-    branches: [ci, uac-in]          # (uac-in: the playback probe, on the private repository)
+    branches: [ci, uac-in, mewcoder, harmoniser]   # (uac-in: mewcoder on the private repository)
   workflow_dispatch:
 
 # a newer push to the same branch stops the run before it (the owner, 2026-11-11: the private repository's Actions
-# minutes; a run is 15-20 minutes)
+# minutes; a run is 15-20 minutes. On the public repository the runs are free; development continues there)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  VOC_ONLY: ${{ github.ref_name == 'uac-in' }}   # (the vocoder branch: its package only, no Pro / MKE / probes)
+  # (the vocoder branches: their package only, no Pro / MKE / probes)
+  VOC_ONLY: ${{ contains(fromJSON('["uac-in", "mewcoder", "harmoniser"]'), github.ref_name) }}
   BASE: 91f3018                      # SLOOP 2.8.4, the port's upstream base (was d893642, 2.8.1)
   JIELI_TOOLCHAIN: /home/runner/.jieli/toolchain
   AC79_SDK: /home/runner/fw-AC79_AIoT_SDK
@@ -214,7 +216,7 @@ jobs:
           retention-days: 30
 
       - name: The Pages site (the model picker, an installer site per model; public repository only)
-        if: ${{ !github.event.repository.private }}
+        if: ${{ !github.event.repository.private && github.ref_name == 'ci' }}
         run: |
           mkdir -p pages
           for m in pro elite mke; do cp -r "out/installer-$m" "pages/$m"; done
@@ -223,13 +225,13 @@ jobs:
           touch pages/.nojekyll
 
       - name: Upload the Pages site
-        if: ${{ !github.event.repository.private }}
+        if: ${{ !github.event.repository.private && github.ref_name == 'ci' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: pages/
 
   pages:                             # (deployed only after the build, the FM-1 identity and the tests have passed)
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && github.ref_name == 'ci' }}
     needs: build
     runs-on: ubuntu-22.04
     permissions:
