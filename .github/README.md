@@ -23,8 +23,12 @@ mode. Every engine and the built-in samples. For the SMK-37 Pro, Elite, MKE-P37 
 ![The vocoder page: the 20 channels on the knobs and pads](/assets/screens/smk37-vocoder-page.png)
 
 SLOOP 2.8.4 with **your voice, or any sound you choose, in over USB audio** on track 3, played dry or through a **20-channel vocoder** modelled
-on the Sennheiser VSM201, played from the keys and the sequencer. A lean build: some engines and the built-in samples
-make room for it. For the SMK-37 Elite. **In development:** a harmoniser modelled on the Eventide H949.
+on the Sennheiser VSM201, played from the keys and the sequencer. **The input's two sides are routed apart:** your voice
+on one, and on the other your own synth as the carrier (gated by the keys, as in the studio) or an instrument through
+SLOOP's effects on a track of its own. Turn SLOOP's tracks off when your DAW brings its own, and the vocoder runs at
+44.1 kHz. A lean build: some engines and the built-in samples make room for it. For the SMK-37 Elite. **In
+development:** a harmoniser modelled on the Eventide H949: your voice, another external sound, the drums or a synth
+engine pitch-shifted into up to three harmony voices.
 
 **[Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/)** ·
 **[Editor](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/editor/)** ·

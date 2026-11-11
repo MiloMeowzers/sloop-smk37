@@ -25,8 +25,8 @@ HEAD = {
                  "SLOOP 2.8.4 with your voice, or any sound you choose, in over USB audio on track 3, played dry or through a 20-channel vocoder "
                  "modelled on the Sennheiser VSM201, played from the keys and the sequencer. A lean build: the built-in "
                  "samples and some engines make room for it.",
-                 [("20", "vocoder channels"), ("USB", "your voice or any sound in"),
-                  ("POLY", "the carrier: play chords"), ("6", "USB audio stems out")]),
+                 [("20", "vocoder channels"), ("2", "inputs: voice, carrier, tracks"),
+                  ("EXT", "your synth as the carrier"), ("HQ", "44.1 kHz vocoder")]),
 }
 title, lead, tiles = HEAD[build]
 COLS = ["blue", "green", "yellow", "orange"]
