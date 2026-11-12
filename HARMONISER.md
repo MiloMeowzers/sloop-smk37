@@ -39,6 +39,9 @@ moving at the pitch ratio, spliced every segment, with feedback and REPEAT. Its 
    **C3** an octave below. Hold up to three keys for three harmony voices. With no key held, you hear your voice dry
    and no harmony.
 5. Move the faders on bank E: **PITCH**, **FEEDBACK**, **VOICE IN** (the input's level), **WET / DRY** ([A4](#a4-the-faders-banks-e-and-f-and-pickup)).
+6. For the H949's panel, open the **HARMONY page**: tap **HOME** on the tracks screen (the vocoder page), then **PATCH**.
+   Its interval pads, MICRO and LEVEL per voice, the control methods (MANUAL: a voice from the PITCH fader with no key
+   held), SHARP / FLAT, the feedback EQ and FB LIMIT are all there ([A11](#a11-the-harmony-page-the-h949s-panel)).
 
 ### A2. Playing the harmony: the keys
 
@@ -483,13 +486,19 @@ record the intervals from the keys.
 
 | What you hear or see | Why, and what to do |
 |---|---|
-| No harmony at all | HARMONY ON? IN L / IN R on HARMONY (the side your voice is on)? A key held on T1 (T1 selected)? VOICE IN up? WET / DRY not at 0 %? |
+| No harmony at all | HARMONY ON? IN L / IN R on HARMONY (the side your voice is on)? A key held on T1 (T1 selected)? VOICE IN up? WET / DRY not at 0 %? On the HARMONY page: V1-V3 not OFF (G3), their LEVEL up (G1 K4-K6), IN / OUT on IN (G2; **OUT** in red on the screen means bypassed), INPUT LEVEL not OFF (G2 K1)? |
 | Your voice, but no harmony | No key held: with no key the harmoniser plays your voice dry. |
 | Neighbouring keys uneven | INTERVALS is SCALE: the keys follow the scale over the sung note. Set FIXED for plain intervals. |
 | The harmony climbs or falls away | FEEDBACK is up (bank E, F2). |
 | A fader does nothing | It is waiting to pick up: follow the arrow on the FADER BANK screen to the end of its bar. |
 | SUNG NOTE reads `--` | INTERVALS is FIXED (the tracker is not running), or nothing clear is coming in yet. |
 | LOAD in the header | Too much at once: [A8](#a8-load-managing-the-load). |
+| A voice sounds with no key held | That voice is on **SHARP** or **FLAT** (G2), or the control method is **MAN** / **K+M** (G2: the MANUAL voice plays from the PITCH fader). Back to **NORM** and **KEYS** for keys only |
+| Three voices at once when choosing SHARP / FLAT | VOICE was on **ALL**: the function went to all three. Pick V1, V2 or V3 with the VOICE pad first |
+| It keeps howling after you stop | FB LIMIT is on **H949** (G3) with FEEDBACK high: pull FEEDBACK down (bank E F2 or G2 K3), or back to **SAFE** |
+| The trails boom or turn muddy | The feedback's LOW EQ is up (G2 K5): bring it down, or below 0 dB to keep a bass or drum send from building up |
+| PITCH moves only one voice | The control method is **MAN**: the fader is that voice's ratio. **KEYS** or **K+M**: PITCH transposes them all |
+| No HARMONY page after the vocoder page | HARMONY is off (HOME > HARMONY): the page only comes up while it is on |
 | A faint flutter on sustained low notes | The splice (ALGORITHM 1), most on big intervals down: the H949's colour. |
 
 ## Part B: coming next: the H949 page
@@ -498,7 +507,8 @@ record the intervals from the keys.
 > and wins where this part differs (the faders stay on banks E and F, the pans and DELAY ONLY wait for Stage 2). Stage 1b adds the harmoniser's own page: the H949's big red PITCH RATIO readout, the
 > sung note, the voices and their meters, the pads as the H949's switch row and intervals, and the control methods
 > (KEYS & MIDI, MANUAL: the pitch fader playing a voice with no key held, or both). Stage 2 adds the H949's effects
-> (DELAY, EXTEND, RANDOM, FLANGE, REVERSE, REPEAT LENGTH), its feedback EQ, ALGORITHM 2 and the output splits; Stage 3
+> (DELAY, EXTEND, RANDOM, FLANGE, REVERSE, REPEAT LENGTH), ALGORITHM 2 and the output splits (the feedback EQ came
+> early, in Stage 1b); Stage 3
 > MIDI out of the harmony. Where Part A and Part B differ, Part A is what the build does: in Part B, "HOME > HARMONY >
 > TRACK" is gone (the harmoniser is always T1), PITCH and FEEDBACK are on bank E, and the keys are chromatic.
 

@@ -98,7 +98,7 @@ update mode (UBOOT).
 | KNOB 3 | dial 3 on screen (yellow) | K7 | dial 3 |
 | KNOB 4 | dial 4 on screen (orange) | K8 | dial 4 |
 | — | — | KNOB LAYOUT = SMK | HOME menu > SCREEN > KNOB LAYOUT (K7): K1–K4 the dials 1–4, K5 master volume, K6 SELECT, K7 PRESETS, K8 ALGORITHM (track); FM-1 (default) as above |
-| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass), C reverb, D delay; a fader takes over once moved |
+| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass), C reverb, D delay (the harmoniser build with HARMONY on: also E HARM, F SENDS). **PICKUP:** after a bank change a fader acts only once it reaches the value the bank holds (within 3 steps, or passing through it either way), so nothing jumps; until then the FADER BANK screen shows it waiting, with an arrow the way to go |
 | — (no wheels used by SLOOP) | — | PITCH wheel | pitch bend, selected synth track: HOME menu > PLAY > BEND UP (K6) / BEND DOWN (K7), OFF, 1, 2, 3, 4, 5, 7, 12 semitones each; default 7 / 7 |
 | — | — | MOD wheel | vibrato 10 Hz, up to ±1 semitone (up = more) |
 | — | — | PEDAL jack | — |
@@ -122,7 +122,7 @@ update mode (UBOOT).
 | OCT− | octave down | drums: ghost hits | OCTAVE− | OCT− |
 | OCT+ | octave up | drums: hard hits | OCTAVE+ | OCT+ |
 | — | — | — | KNOB BANK | pins the pad sound picker open / closes it (lit while pinned or while K4 turns) |
-| — | — | — | FADER BANK | the fader bank screen; pressed again, < > or SELECT: the next bank A→B→C→D (closes after 4 s; lit while up; closes the pad picker) |
+| — | — | — | FADER BANK | the fader bank screen; tapped again, < > or SELECT: the next bank A→B→C→D (→E→F with HARMONY on); closes after 4 s (blinking while up); **held 0.6 s: pinned** open (lit steady) until held again or PATCH closes it; closes the pad picker |
 | — | — | — | KNOB BANK + FADER BANK | the pads on the PLAY screen: DRUM KIT (default) ↔ STEPS (as the stock PAD BANK combo) |
 | — | — | — | < | page back (as SELECT, never tempo); SEQ held or pads on STEPS: step page back; visualiser: style |
 | — | — | — | > | page forward; SEQ held or pads on STEPS: step page forward; visualiser: style |
@@ -398,8 +398,9 @@ samples; the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and NOISE engines; the delay ru
 - **[Mewcoder's page](.github/README.md):** what it adds, install and editor, the manuals.
 - **[VOCODER.md](VOCODER.md):** the vocoder manual.
 - **[VOCODER-DESIGN.md](VOCODER-DESIGN.md):** how it was built: the VSM201 modelling, the CPU and memory work, the tests.
-- **[HARMONISER.md](HARMONISER.md):** the harmoniser in development (the Eventide H949 model): its draft manual, on
-  the `harmoniser` branch.
+- **[HARMONISER.md](HARMONISER.md):** the harmoniser (the Eventide H949 model, on the `harmoniser` branch, in test):
+  HOME > HARMONY makes track 1 a three-voice harmoniser of your voice or any track sent in, with fader banks E and F
+  and its own HARMONY page (the H949's PITCH RATIO readout and switch row). Its manual covers the build as it is.
 
 ## Power-on and special combos (same as SLOOP on FM-1)
 

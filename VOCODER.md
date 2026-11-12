@@ -15,11 +15,12 @@ in SLOOP stays: the four tracks, the sequencer, the punch-ins, the multichannel 
 | **Tracks** | T1 and T2 (synths); **T3** the audio track (USB > AUDIO IN: ON: the input dry or vocoded) or a synth (AUDIO IN: OFF); the drums |
 | **Input level** | HOME > INPUT: **TRIM L**, **TRIM R** (−18 .. +6 dB) with a meter each. Section 2.6 |
 | **Configurations** | HOME > SETUP: **FULL** (every track), **VOC + DRUMS** (T1, T2 off), **VOC + SYNTH** (the drums off), **VOC ALONE** (T1, T2 and the drums off). Section 2.1 |
-| **USB audio in** (from the computer) | 2 channels, 48 kHz, each side routed on its own (HOME > SETUP > IN L, IN R): **TRACK 3** (the voice), **CARRIER** (an external synth), **T1** or **T2** (an instrument through that track), **OFF**. Section 2.2 |
+| **USB audio in** (from the computer) | 2 channels, 48 kHz, each side routed on its own (HOME > SETUP > IN L, IN R): **TRACK 3** (the voice), **CARRIER** (an external synth), **T1** or **T2** (an instrument through that track), **HARMONY** (into the harmoniser, while HARMONY is on), **OFF**. Section 2.2 |
 | **USB audio out** (to the computer) | HOME > USB > USB LAYOUT: **STEREO** (the mix; 44.1 or 48 kHz, HOME > AUDIO > USB RATE), or 6 channels, 24 bit, **48 kHz** (default, resampled on the keyboard) or **44.1 kHz** (the lightest; HOME > USB > STEM RATE): **SYNTHS+RET** (T1, T2, T3, the drums, the effects return L and R), **DRUMS+RET** (kick, snare, hats, percussion, the return L and R), **ALL DRY** (T1, T2, T3, kick, snare, hats and percussion) |
 | **The vocoder** | 20 channels at the Sennheiser VSM201's centres, 145 Hz to 6.78 kHz, each a 4th-order band-pass. The voice analysed at 22.05 kHz; the output at 22.05 kHz in FULL, **44.1 kHz (HQ)** in the other SETUPs |
 | **The carrier** | HOME > SETUP > CARRIER: the built-in saw, one or two a note (**AUTO**, **1 SAW**, **2 SAWS**), played from the keys, the sequencer or MIDI on track 3's channel; or **EXT L** / **EXT R**: an external synth on that input, gated by track 3's notes. Section 2.4 |
 | **Shaping** | ENVELOPE (ATTACK 3-30 ms, RELEASE 8-100 ms, GATE DELAY, BRIDGE MODE FIXED / FOLLOW); voiced / unvoiced detection with a noise source (WHITE, PINK, SOFT); the speech addition (HF, OFF or −30 .. 0 dB); silence bridging and BRIDGE TONE; AUTOCONTROL (the voice's level, steadied); the carrier's AGC; RESPONSE (FLAT, the VSM201's NORMAL, EMPHASIS); per channel on the vocoder page: EMPHASIS, ADDITION, BRIDGING, mute |
+| **The harmoniser** (this branch) | HOME > HARMONY ON: track 1 becomes a harmoniser after the Eventide H949, three voices from your voice (or any track sent in), with its own page after the vocoder page: [HARMONISER.md](HARMONISER.md) |
 | **Left out to make room** | the built-in samples (your own samples work); the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and NOISE engines; the delay runs at 22.05 kHz. For those: the Multichannel USB audio build |
 
 ## 1. Getting sound in
@@ -66,8 +67,11 @@ vocoder. Everything starts as before: both sides into track 3, every track runni
 |---|---|---|
 | **SETUP** | FULL, VOC + DRUMS, VOC + SYNTH, VOC ALONE | which tracks run beside the vocoder, and its quality |
 | **CARRIER** | AUTO, 1 SAW, 2 SAWS, EXT L, EXT R | what the vocoder plays through: the built-in saws, or one of the inputs |
-| **IN L** | TRACK 3, CARRIER, T1, T2, OFF | where the input's left side goes |
-| **IN R** | TRACK 3, CARRIER, T1, T2, OFF | where the right side goes |
+| **IN L** | TRACK 3, CARRIER, T1, T2, HARMONY, OFF | where the input's left side goes |
+| **IN R** | TRACK 3, CARRIER, T1, T2, HARMONY, OFF | where the right side goes |
+
+The help text beside IN L / IN R says what the choice does: **TRACK 3** reads **T3 AUDIO: DRY, ITS FX** (MODE AUDIO) or
+**T3 VOICE INTO THE VOCODER** (MODE VOCODER); **CARRIER** **T3 NOTES GATE IT**; **HARMONY** **TO THE HARMONISER**.
 
 ### 2.1 SETUP: which tracks run
 
@@ -91,9 +95,10 @@ vocoder. Everything starts as before: both sides into track 3, every track runni
 
 | Destination | What the side does there |
 |---|---|
-| **TRACK 3** | the audio track: your voice, dry (VOCODER > MODE AUDIO) or into the vocoder (MODE VOCODER). Both sides on TRACK 3: L and R averaged, exactly as before |
+| **TRACK 3** | track 3's input: played **dry through track 3's own chain** (its effects, SLICER, stem, punch-ins) with VOCODER > MODE **AUDIO**, or the vocoder's voice with MODE **VOCODER**. Both sides on TRACK 3: L and R averaged, exactly as before |
 | **CARRIER** | replaces the built-in saw: the vocoder plays **this** sound, shaped by your voice. Your keys gate it (2.4) |
 | **T1, T2** | the track plays the side **as audio**, through its own chain: DIST, INSERT, SLICER, FILTER, LEVEL, PAN, the sends, STEM FX and its own USB stem. Only for a track the SETUP has turned off (T1 and T2 in VOC + DRUMS and VOC ALONE); otherwise the value shows in amber with **NEEDS A SETUP** |
+| **HARMONY** | into the harmoniser (HOME > HARMONY ON; amber with **NEEDS HARMONY ON** otherwise). Both sides on HARMONY: mixed, each at half. [HARMONISER.md A6](HARMONISER.md#a6-the-input-and-the-sends) has what each choice does with the harmoniser on |
 | **OFF** | not used |
 
 **A mono microphone:** set the side without it to **OFF** (or to another use). With both on TRACK 3, an empty side
@@ -210,9 +215,10 @@ make up the level with VOCODER > LEVEL.
 
 ```mermaid
 flowchart LR
-  IN["USB input<br/>L and R"] -->|"IN L / IN R"| RT{"Each side to:<br/>TRACK 3, CARRIER,<br/>T1, T2, OFF"}
+  IN["USB input<br/>L and R"] -->|"IN L / IN R"| RT{"Each side to:<br/>TRACK 3, CARRIER,<br/>T1, T2, HARMONY, OFF"}
   RT -->|TRACK 3| MIC["Your voice"]
   RT -->|"T1 / T2"| TA["T1 / T2 as audio tracks:<br/>their chain and stem"]
+  RT -->|HARMONY| HM["The harmoniser (T1)<br/>HARMONISER.md"]
   MIC --> AC["AUTOCONTROL<br/>(optional)"] --> AN["Analysis<br/>20 band-pass filters<br/>145 Hz - 6.8 kHz<br/>ENVELOPE"]
   AN --> ENV["20 envelopes<br/>x EMPHASIS, mutes"]
   AN --> VD["Voiced / unvoiced<br/>detector (ch 0 vs 19)"]
@@ -253,7 +259,7 @@ The small tick marks **−10 dBFS**: aim your voice's loud peaks there (AIM −1
 | USB | AUDIO IN | OFF, ON, TEST | the computer's audio onto track 3 |
 | SETUP | SETUP | FULL, VOC + DRUMS, VOC + SYNTH, VOC ALONE | which tracks run, and HQ (section 2.1) |
 | | CARRIER | AUTO, 1 SAW, 2 SAWS, EXT L, EXT R | the carrier: the saws or an input (2.4) |
-| | IN L, IN R | TRACK 3, CARRIER, T1, T2, OFF | where each side of the input goes (2.2) |
+| | IN L, IN R | TRACK 3, CARRIER, T1, T2, HARMONY, OFF | where each side of the input goes (2.2) |
 | INPUT | TRIM L, TRIM R | 0 dB (−18 .. +6 dB), each with a meter | each side's level before its route (2.6) |
 | VOCODER | MODE | AUDIO, VOCODER | the voice dry, or vocoded |
 | | LEVEL | 0 dB (−12 .. +18 dB, 3 dB steps) | the vocoder's make-up gain |
@@ -274,6 +280,9 @@ The small tick marks **−10 dBFS**: aim your voice's loud peaks there (AIM −1
 | | RELEASE | 8 ms (8 .. 100) | how fast they close |
 | | GATE DELAY | 0 ms (0 .. 50) | an external carrier's gate held after the last note |
 | | BRIDGE MODE | FIXED, FOLLOW | FOLLOW: the pauses below your words, a smooth pickup into each word (2.5) |
+| HARMONY | HARMONY | OFF, ON: T1 | track 1 becomes the harmoniser ([HARMONISER.md](HARMONISER.md)) |
+| | INTERVALS | FIXED, SCALE | the keys as fixed intervals from C4, or counted from the sung note in the song's key |
+| | SUNG NOTE | (a readout) | the note the harmoniser hears (INTERVALS SCALE) |
 
 Everything here is also on the vocoder page or the web editor's **Vocoder** tab.
 
@@ -296,13 +305,16 @@ drums' channel is no longer on GLO > DRUMS, nor IN and OUT on GLO > SYSTEM: each
 
 ## 4. The vocoder page
 
-**Opening it:** on the tracks screen tap **PATCH**. PATCH steps through the pages: **TRACKS → VOCODER → PUNCH IN → TRACKS**.
+**Opening it:** on the tracks screen tap **PATCH**. PATCH steps through the pages: **TRACKS → VOCODER → PUNCH IN → TRACKS**
+(with HARMONY on, the harmoniser's page comes between: **TRACKS → VOCODER → HARMONY → PUNCH IN**; [HARMONISER.md
+A11](HARMONISER.md#a11-the-harmony-page-the-h949s-panel)).
 The page stays open until you tap PATCH again or open something else.
 
 ```mermaid
 flowchart LR
   T["TRACKS"] -->|PATCH| V["VOCODER page"] -->|PATCH| P["PUNCH IN<br/>(FX layer locked)"] -->|PATCH| T
   V -->|"< >"| V
+  V -.->|"PATCH (HARMONY on)"| H["HARMONY page"] -.->|PATCH| P
 ```
 
 ![The vocoder page: the three groups and NOISE BLEND, with the pads below each](assets/screens/smk37-vocoder-page.png)
@@ -417,7 +429,8 @@ instead:
 - **AUDIO IN** is the unit's setting, never a project's. So are **SETUP, CARRIER, IN L, IN R** and **ENVELOPE**: they
   describe your studio, not a song.
 - A **full backup** from the web editor includes them (backup object 14), with the SMK-37's settings (12) and the DAW
-  map (13).
+  map (13). With the harmoniser, object 14 also holds HARMONY, INTERVALS, the HARMONY page and fader banks E and F
+  (512 bytes; an older 480-byte backup restores with the harmoniser at its defaults).
 
 ## 7. The web editor
 
@@ -428,7 +441,8 @@ Use Mewcoder's own editor: [online](https://milomeowzers.github.io/sloop-smk37/m
   (function, EMPHASIS, ADDITION, BRIDGING, mute). A name in colour has changed from its default. **Send to the
   keyboard** applies and saves at once (stop the song first); **Read** loads what the keyboard has now; **Defaults**
   sets every value back (send it to keep it).
-- **The Vocoder tab** also has SETUP, IN L, IN R, TRIM L, TRIM R, ATTACK and RELEASE.
+- **The Vocoder tab** also has SETUP, IN L, IN R, TRIM L, TRIM R, ATTACK and RELEASE, and the harmoniser's HARMONY,
+  INTERVALS, CONTROL, INPUT LEVEL, FB LOW EQ, FB HIGH EQ and FB LIMIT (with a build that has them).
 - **The SMK-37 tab:** the HOME menu's SMK-37 settings, with GATE DELAY and CARRIER's saws (AUTO, 1 SAW, 2 SAWS).
 
 The editor reads these tabs once per connection and again after a restore. Press **Read** after you change something
