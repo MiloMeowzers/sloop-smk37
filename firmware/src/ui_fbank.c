@@ -85,6 +85,11 @@ static void fb_draw(void)
         fb_param(b, i, &vp);
         sig = sig * 31u + (uint32_t)(*vp + 200);
     }
+    sig = sig * 31u + nb;                          /* (the bank count and the labels, which change with HARMONY: E,
+                                                    * T1 PITCH / FEEDBK; not only the values) */
+#if SMK_UAC_IN_PROBE
+    sig = sig * 31u + hm_on + (uint32_t)(voc_mode % VM_N) * 2u + (uint32_t)VOC_AUDIO_ON * 4u;
+#endif
     if (!ui.force && sig == shown)
         return;
     shown = sig;
