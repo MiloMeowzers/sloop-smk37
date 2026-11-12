@@ -456,8 +456,12 @@ menu, another page.
   function lit.
 - **The voices:** each one's interval (`+M3`, `-P5`, `U`; **SHP** / **FLT**; **MAN**), its MICRO in amber when not 0,
   its LEVEL bar and its meter; **OFF** in red when muted.
-- **The bottom lines:** the input lights (five, as the H949's: -40, -18, -12, -6, -1 dBFS), FEEDBACK, FB LIMIT, the
-  feedback EQ, WET / DRY, and **OUT** in red while IN / OUT bypasses.
+- **The status line:** the input lights (five, as the H949's: -40, -18, -12, -6, -1 dBFS), FB LIMIT (SAFE / H949),
+  and **OUT** in red while IN / OUT bypasses.
+- **The knobs:** the group's knobs, each as a coloured tag (K1 / K5 blue, K2 / K6 green, K3 / K7 yellow, K4 / K8
+  orange, as the menu's) with its name and value beside it: G1 `K1-3 MICRO`, `K4-6 LEVEL`, `K8 W/D 50 %`; G2 `K1 IN 0`,
+  `K3 FB 30 %`, `K5 LO 0`, `K6 HI 0`, `K8 W/D`; G3 `K1 DRY`, `K2-4 LEVEL`, `K8 W/D`. MICRO and LEVEL's values are in
+  the voices' strips above. A knob turned shows its full value in the header.
 
 **G1 INTERVALS**
 - **Pads:** the HK940's intervals. Top row up: unison, 2nd, 3rd (major), 4th, 5th, 6th (major), 7th (minor), octave.

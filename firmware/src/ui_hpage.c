@@ -502,8 +502,6 @@ static void hp_ivname(char *b, int32_t s)           /* an interval: "U", "+M3", 
 static void hp_paint(const hp_view_t *w)
 {
     static const char *const FL[8] = {"NRM", "EXT", "SHP", "FLT", "DLY", "RND", "FLG", "REV"};
-    static const char *const LEG[3] = {"K1-3 MICRO K4-6 LVL K8 W/D", "K1 IN K3 FB K5/6 EQ K8 W/D",
-                                         "K1 DRY K2-4 V1-V3 K8 W/D"};   /* (every knob that does something) */
     uint32_t v, i, r = w->ratio;
     uint16_t on = w->rv_on ? HP_SEG_ON : RGB(120, 24, 18), W = RGB(220, 220, 220);
     char b[16];
@@ -571,38 +569,74 @@ static void hp_paint(const hp_view_t *w)
         else if (mw)
             cv_rect(x + 4, 166, mw, 4, w->red[v] ? RGB(255, 30, 30) : w->mk[v] >= 7u ? RGB(255, 140, 0) : W);
     }
-    /* the input lights (-40, -18, -12, -6, -1 dBFS), FB, FB LIMIT */
+    /* the status line (not knobs): the input lights (-40, -18, -12, -6, -1 dBFS), FB LIMIT, IN / OUT */
     cv_text(2, 178, &FONT_S, "IN", TE_G3);
     for (i = 0; i < 5u; i++) {
         uint16_t c = i == 0u ? RGB(255, 210, 0) : i == 4u ? RGB(255, 30, 30) : RGB(40, 230, 60);
         cv_rect(24 + (int32_t)i * 12, 181, 9, 10, (i < w->lamps || (i == 4u && w->clip)) ? c : TE_G1);
     }
-    str_cpy(b, "FB ", 4);
-    hp_pct(b + 3, w->fb);
-    cv_text(90, 178, &FONT_S, b, W);
-    cv_text(176, 178, &FONT_S, w->fbl ? "H949" : "SAFE", w->fbl ? (w->h949_red ? RGB(255, 40, 40) : RGB(255, 150, 0)) : TE_G4);
-    /* the EQ, WET / DRY, IN / OUT */
-    if (w->low == HM_LOW_0 && w->high == HM_HIGH_0) {
-        cv_text(2, 196, &FONT_S, "EQ FLAT", TE_G3);
-    } else {                                            /* (the feedback's EQ: G2 K5 / K6) */
-        cv_text(2, 196, &FONT_S, "EQ", TE_G3);
-        str_cpy(b, "LO", 3);
-        hp_sdb(b + 2, (int32_t)w->low - (int32_t)HM_LOW_0);
-        b[str_len(b) - 3u] = 0;                         /* (no " DB": the line is narrow) */
-        cv_text(24, 196, &FONT_S, b, W);
-        str_cpy(b, "HI", 3);
-        hp_sdb(b + 2, (int32_t)w->high - (int32_t)HM_HIGH_0);
-        b[str_len(b) - 3u] = 0;
-        cv_text(68, 196, &FONT_S, b, W);
-    }
-    str_cpy(b, "W/D ", 5);
-    hp_pct(b + 4, w->wd);
-    cv_text(118, 196, &FONT_S, b, W);
+    cv_text(96, 178, &FONT_S, "LIMIT", TE_G3);
+    cv_text(146, 178, &FONT_S, w->fbl ? "H949" : "SAFE", w->fbl ? (w->h949_red ? RGB(255, 40, 40) : RGB(255, 150, 0)) : TE_G4);
     if (w->byp)
-        cv_text(204, 196, &FONT_S, "OUT", RGB(255, 40, 40));
-    /* the group's knobs */
-    cv_rect(0, 216, 240, 1, TE_G2);
-    cv_text(2, 220, &FONT_S, LEG[w->grp % 3u], TE_G3);
+        cv_text(204, 178, &FONT_S, "OUT", RGB(255, 40, 40));
+    /* the group's knobs, each with its value beside it (the owner, 2026-11-13: the knob and its number together, the K
+     * tags coloured, nothing twice): left to right, two rows. MICRO and LEVEL's values are the voices' strips above */
+    {
+        char k8[12], v1[12], v2[12], v3[12], v4[12];
+        int32_t x = 2, y = 197;
+        uint32_t n, m;
+        const char *K[5], *N[5], *V[5];
+        uint8_t KN[5];
+        hp_pct(k8, w->wd);
+        if (w->grp == 0u) {
+            K[0] = "K1-3", N[0] = "MICRO", V[0] = "", KN[0] = 1;
+            K[1] = "K4-6", N[1] = "LEVEL", V[1] = "", KN[1] = 4;
+            n = 2;
+        } else if (w->grp == 1u) {
+            if (w->inl) {
+                int32_t dd = (int32_t)w->inl - (int32_t)HM_INL_0;
+                v1[0] = dd < 0 ? '-' : '+';
+                fmt_int(v1 + (dd != 0), dd < 0 ? -dd : dd);   /* (0: "0", no sign) */
+            } else {
+                str_cpy(v1, "OFF", 4);
+            }
+            hp_pct(v2, w->fb);
+            hp_sdb(v3, (int32_t)w->low - (int32_t)HM_LOW_0);
+            v3[str_len(v3) - 3u] = 0;                   /* (no " DB": the row is narrow; the header has it) */
+            if (w->low == HM_LOW_0)
+                str_cpy(v3, "0", 2);
+            hp_sdb(v4, (int32_t)w->high - (int32_t)HM_HIGH_0);
+            v4[str_len(v4) - 3u] = 0;
+            if (w->high == HM_HIGH_0)
+                str_cpy(v4, "0", 2);
+            K[0] = "K1", N[0] = "IN", V[0] = v1, KN[0] = 1;
+            K[1] = "K3", N[1] = "FB", V[1] = v2, KN[1] = 3;
+            K[2] = "K5", N[2] = "LO", V[2] = v3, KN[2] = 5;
+            K[3] = "K6", N[3] = "HI", V[3] = v4, KN[3] = 6;
+            n = 4;
+        } else {
+            hp_db(v1, w->dmute ? 0u : w->dry);
+            if (str_len(v1) > 3u && v1[str_len(v1) - 1u] == 'B')
+                v1[str_len(v1) - 3u] = 0;               /* ("-6.0 DB" -> "-6.0") */
+            K[0] = "K1", N[0] = "DRY", V[0] = v1, KN[0] = 1;
+            K[1] = "K2-4", N[1] = "LEVEL", V[1] = "", KN[1] = 2;
+            n = 2;
+        }
+        K[n] = "K8", N[n] = "W/D", V[n] = k8, KN[n] = 8;
+        n++;
+        for (m = 0; m < n; m++) {
+            int32_t kw = text_w(&FONT_S, K[m]) + 4, iw = kw + 4 + text_w(&FONT_S, N[m]) + (V[m][0] ? 4 + text_w(&FONT_S, V[m]) : 0);
+            if (x > 2 && x + iw > 238)
+                x = 2, y += 20;                         /* (the next row) */
+            cv_rect(x, y, kw, 17, TE_COL[(KN[m] - 1u) & 3u]);   /* the K tag in the knob's colour (K1 / K5 blue, K2 / K6
+                                                         * green, K3 / K7 yellow, K4 / K8 orange: the menu's) */
+            cv_text(x + 2, y, &FONT_S, K[m], C_BLACK);
+            cv_text(x + kw + 4, y, &FONT_S, N[m], TE_G4);
+            if (V[m][0])
+                cv_text(x + kw + 4 + text_w(&FONT_S, N[m]) + 4, y, &FONT_S, V[m], C_WHITE);
+            x += iw + 8;
+        }
+    }
 }
 /* the page, drawn as the vocoder page is (vis_draw: two bands of 120 rows), only when its view changed */
 static uint32_t hp_frame(hp_view_t *w)
