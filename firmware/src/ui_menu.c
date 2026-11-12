@@ -609,6 +609,11 @@ UI_SMALL static void draw_menu(void)
            voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u + voc_eatt * 1000313u + voc_erel * 1000333u + voc_saws * 1000357u +
            voc_brmode * 1000409u;
     sig += voc_trim[0] * 1000363u + voc_trim[1] * 1000367u;
+#ifdef SMK_HARM
+    sig += hm_on * 1000427u + hm_want * 1000429u + (uint32_t)hm.tnote * 1000433u +   /* (HARMONY, SUNG NOTE: 67ba07e left
+                                                         * them out, the screen stayed on OFF though the knob turned it) */
+           (uint32_t)(trk[0].p[P_SCALE] != 0) * 1000439u;
+#endif
     if (ui.menu == 1 && sec == MS_INPUT) {          /* (the meters move: a frame each time they do) */
         mtr_update();
         sig += (uint32_t)(mtr_lv[0] >> 1) * 1000373u + (uint32_t)(mtr_lv[1] >> 1) * 1000379u + mtr_pk[0] * 1000381u +
