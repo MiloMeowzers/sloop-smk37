@@ -157,54 +157,181 @@ the screen is up steps to the next bank; PATCH or KNOB BANK close it.
 
 ### A8. LOAD: managing the load
 
-The SMK-37 has two cores and a fixed time to make each block of sound. When a combination needs more than that, SLOOP
-**sheds voices**: it fades one out (no click), first a note already in its release tail, then the oldest held note,
-never a chord's bass or a mono lead. Dense chords thin out from the top. **LOAD** appears in the header (where USB
-shows) when that happens: orange after a shed, **red** while it keeps happening (two or more a second), gone about 2 s
-after the last one. An orange flash in a busy fill is harmless: most of the time it is a release tail ending early.
-Red, or held notes audibly thinning, means it is time to lighten the patch.
+The SMK-37 makes its sound in **halves of 5.8 ms**, each eight blocks of about 0.7 ms, on **two cores**. When a half
+comes close to running out of time (two halves in a row over 85 % of it), SLOOP **sheds a voice**: it fades one out
+over a few blocks (no click), first a note already in its release tail, then the oldest held note, never a chord's
+bass or a mono lead. Dense chords thin out from the top; the audio itself does not break up. **LOAD** in the header
+(where USB shows) reports it: **orange** after a shed, **red** while it keeps happening (two or more a second), gone
+about 2 s after the last one.
 
-**What costs what** (measured on the unit, 2026-11-12, against the main case: T1 HARMONY, T2 a synth, T3 vocoding with
-two saws, the drums, STEM FX SLICER):
+An orange flash in a busy fill is harmless: most sheds are release tails ending early, and you will rarely hear them.
+Red, or held notes audibly thinning, means it is time to lighten the patch: work down the chart in A8.4.
 
-| Part | Cost | What to do about it |
+#### A8.1 Where the time goes
+
+Every figure below was measured on the unit with the console's per-section `timing`, playing the same song (the
+owner's sequence, ~160 BPM, with the voice in), in 30 s windows and, for the baselines, runs of up to two hours. The
+figures are the mean time per 5.8 ms half (5800 µs); a busy half can run 20-50 % above its mean.
+
+| Core 0 | µs a half | Core 1 | µs a half |
+|---|---|---|---|
+| The sequencer, the keys, MIDI (always) | 580-770 | T3 vocoding, internal saw (its synthesis ~1000 of it) | 1760-2010 |
+| The vocoder's analysis (while T3 vocodes) | 1150-1260 | The drums | 520-590 (780-1000 in a busy half) |
+| T1, a synth | 260-580 | The tail: the effects buses, the master, the limiter, the stems | 410-950 |
+| T2, a synth: a light patch / an FM6 pad | 640 / 1830-2130 | | |
+| **T1 as the harmoniser**: its three voices / the tracker (SCALE) | **~460 / ~160** | | |
+
+What these figures show:
+- **The engine and the notes decide a synth's cost**, not the track. The same T2 cost 640 µs with a light patch and
+  over 1800 µs with a six-operator FM pad, and every held note is another voice. Big pads are the most expensive
+  thing in a song.
+- **The harmoniser's voices cost about what T1's synth gives back.** HARMONY frees T1's engine, its FILTER and its
+  delay send (~435-700 µs); the three voices take ~460. On their own they leave the load where it was: 0.24 sheds a
+  second against 0.27 with HARMONY off, the same song in the same run.
+- **The tracker is the harmoniser's only real extra** (~160 µs, and it runs only with INTERVALS SCALE). It was cut
+  from 574 µs in the first probe by listening at 5.5 kHz and testing five lags a block, with no loss of accuracy on a
+  sung melody (no octave errors).
+- **The effects buses cost nothing while idle.** Each bus (chorus, delay, reverb) stops for any block whose sends are
+  at 0 and whose tail has died away (below -78 dB); a send above 0 restarts it at once. So the global effects cost in
+  proportion to how many are in use, and a reverb on FREEZE runs all the time. The same song with the global effects
+  turned higher shed noticeably more.
+- **The two cores share one cache.** Code running on one core evicts the other's: the larger code ran 12-29 % faster
+  with one core alone. So switching a track off frees **more** than its own time (its code leaves the cache too):
+  with T1 and T2 skipped, core 0's other sections got faster as well.
+- **Moving work between the cores does not help.** Tried and measured: the drums on core 0 took 3.37 ms of core 0
+  against 2.10 before; T3 on core 0 went from 0 to 4.2 sheds a second. The split the firmware uses is the measured
+  best.
+
+#### A8.2 What we tested, and what it showed
+
+**The firmware is lean already.** The same song shed **6.5 times a second** on the vocoder's first build
+(2026-11-01) and sheds **0.25-0.50** now, with nothing taken out of the sound. Each step was measured on the unit and
+checked bit for bit against the build before it:
+
+| Step (vocoder build) | Sheds a second |
+|---|---|
+| The first vocoder build (9ffbb1c) | 6.5 |
+| The effects buses skipped while idle | 4.8 |
+| The block's tail (effects, master) moved to core 1, alongside core 0's start of the next block | 4.7 |
+| The tail's code in RAM; the code that runs every block placed together in the flash | 1.16 (over 116 minutes) |
+| The sine table in RAM; FM6's feedback operator unrolled | ~1.0 |
+| Today's FULL (one saw) | 0.25-0.50 |
+
+Ideas that were measured and **rejected** because they changed the sound or made things worse:
+- a multirate filter bank: 16 % faster, but up to +19 dB in the 1.5-2.3 kHz presence band;
+- moving whole tracks between the cores (above);
+- unrolling more of FM6's loops: slower (out of registers).
+
+**The configurations, measured** (the same song, sheds a second; 0 means none in the window):
+
+| What runs | One saw | Two saws |
 |---|---|---|
-| The harmoniser's three voices | ~460 µs a block, about what T1's synth gave back | Nothing: they fit on their own. |
-| The sung-note tracker (INTERVALS **SCALE** only) | ~160 µs: the biggest single item you can switch off | **FIXED** if you don't need the song's key. In the test run: ~3.7 sheds/s down to ~1.5. |
-| The vocoder's internal carrier (CARRIER **1 SAW** / **2 SAWS** / AUTO) | synth voices, every block | **EXT L / EXT R**: an external synth on the audio in as the carrier. |
-| T2's synth | grows with the notes held: big pads and chords cost most | Fewer notes, a thinner patch, or the layer from outside on IN L / IN R. |
-| The drums | a steady part of the budget | Off when the audio in already carries a drum machine. |
-| The global effects | the same song shed more with them higher | Lower or off for the heaviest sections. |
+| **FULL**: T1, T2, T3 vocoding, the drums | 0.25-0.50 | 1.95 (so FULL plays one) |
+| **VOC + SYNTH**: T1, T2, T3 vocoding, no drums | 0-0.28 | 0.53 (CPU TIGHT) |
+| **VOC + DRUMS**: T3 vocoding at 44.1 kHz (HQ), the drums | 0 | 0.03 |
+| **VOC ALONE**: T3 vocoding at HQ | 0 (about 2 ms of a half spare) | 0 |
 
-**Step by step:** work down the chart; stop as soon as LOAD stays quiet. The early steps cost the least sound.
+**The harmoniser, measured** (probe 3, 2026-11-12). The main case: T1 the harmoniser, T2 a synth, T3 vocoding with
+two saws, the drums, STEM FX SLICER, the global effects higher than in the runs above. All in the same run:
+
+| Setting | Sheds a second |
+|---|---|
+| HARMONY off | 0.27 |
+| HARMONY on, FIXED (the tracker off) | 0.24 |
+| HARMONY on, SCALE (the tracker on, at today's settings) | 1.55 |
+
+That probe ran the harmoniser **in series** on core 0, before core 1 got its work: the worst place for it. The 1a
+build (931b88b) runs it inside T1's own unit, alongside core 1's work. Played on the unit: "much improved, far more
+playable". Its own timing is the next measurement.
+
+**What we conclude:**
+- **The default patch fits.** With FIXED intervals, one saw and a sensible T2, the harmoniser adds about nothing to
+  the vocoder build's load.
+- **The heavy items are few, and known:** the tracker (SCALE), the second saw, a dense FM pad on T2, the drums
+  (~0.55 ms), and the global effects in use.
+- **Each has a lighter route** that keeps the sound, or moves it outside the box. That is the order of the chart in
+  A8.4.
+- **The figures vary with the song.** Shed counts move by about ±0.2 a second between windows of the same song, and a
+  song with longer chords or more effects sits higher. Read the tables as a ranking, not a promise.
+
+#### A8.3 What costs what, in short
+
+| Part | Cost | Lighter route |
+|---|---|---|
+| The harmoniser's three voices | about T1's synth | none needed |
+| The tracker (INTERVALS **SCALE**) | ~160 µs: the harmoniser's one real extra | **FIXED** when the song's key is not needed |
+| CARRIER **2 SAWS** | up to ~1.95 sheds a second in a full song, from 0.25-0.50 | **1 SAW**, or **EXT L / EXT R** (no saw at all) |
+| The vocoder (T3 VOCODER) | ~3 ms over both cores | the harmoniser on the voice; T3 as audio or a synth |
+| T2's synth | 640 µs to over 2 ms: the engine and the held notes | a lighter patch, fewer notes, or the layer on IN L / IN R |
+| The drums | ~550 µs (up to 1 ms in a busy half) | off, when the audio in carries a drum machine |
+| The global effects | only those in use (idle buses are skipped) | sends at 0 where not needed; FREEZE off |
+| Anything on the audio in | almost nothing | the cheapest layer there is |
+
+#### A8.4 Step by step
+
+Work down the chart and stop as soon as LOAD stays quiet. The early steps cost the least sound.
 
 ```mermaid
 flowchart TD
-    A([LOAD red, or notes cutting out]) --> B{INTERVALS on SCALE?}
-    B -- yes --> B1[Do you need the song's key?<br/>If not: INTERVALS FIXED<br/>the biggest single saving]
+    A([LOAD red, or notes thinning]) --> B{INTERVALS on SCALE?}
+    B -- yes --> B1[Need the song's key? If not:<br/>INTERVALS FIXED<br/>the harmoniser's one real extra]
     B -- no --> C
-    B1 --> C{T3 vocoding on its<br/>own saws?}
-    C -- yes --> C1[An external synth on the audio in:<br/>CARRIER EXT L / EXT R]
+    B1 --> C{T3 vocoding on<br/>2 SAWS?}
+    C -- yes --> C1[CARRIER 1 SAW, or an external synth<br/>on the audio in: EXT L / EXT R]
     C -- no --> D
-    C1 --> D{T2 holding big chords<br/>or a thick pad?}
-    D -- yes --> D1[Fewer notes or a thinner patch,<br/>or bring the layer in on IN L / IN R]
+    C1 --> D{T2 holding big chords<br/>or a thick FM pad?}
+    D -- yes --> D1[Fewer notes or a lighter patch,<br/>or bring the layer in on IN L / IN R]
     D -- no --> E
     D1 --> E{The drums on, and a drum<br/>machine on the audio in?}
     E -- yes --> E1[The drums off]
     E -- no --> F
-    E1 --> F{Global effects high?}
-    F -- yes --> F1[Lower them, or off<br/>for the busy section]
+    E1 --> F{Effects sends up that<br/>the part does not need?}
+    F -- yes --> F1[Those sends to 0, FREEZE off:<br/>idle buses cost nothing]
     F -- no --> G
-    F1 --> G([Still red? Choose one:<br/>the harmoniser OR the vocoder for this part:<br/>HARMONY off, or T3 to audio])
+    F1 --> G([Still red? Choose one for this part:<br/>the harmoniser OR the vocoder<br/>HARMONY off, or T3 to audio])
 ```
 
 **Plan for it before the gig:**
 - **Build the heaviest section first** and play it for a minute with an eye on the header: if it stays quiet, the rest
   of the song will too.
-- **Split the work between the box and the outside world.** Whatever is already coming in on the audio in (a synth as
-  CARRIER, a drum machine, a pad on IN L / IN R) costs the SMK-37 almost nothing.
-- **Harmoniser or vocoder on the voice, not both** (A6): the voice through the harmoniser, the vocoder on another
-  source, is lighter and usually the better sound.
+- **Split the work between the box and the outside world.** Whatever already comes in on the audio in (a synth as the
+  CARRIER, a drum machine, a pad on IN L / IN R) costs the SMK-37 almost nothing. Keep the box's time for what only
+  the box can do: the harmoniser, the vocoder, the sequencer.
+- **Harmoniser or vocoder on the voice, not both** (A6): the voice through the harmoniser and the vocoder on another
+  source is lighter, and usually the better sound.
+- **Spend the expensive choices where they count**: SCALE for the song that needs the key, two saws for the vocoder's
+  solo, the FM pad for the breakdown.
+
+#### A8.5 Routing: lighter, and a lot to explore
+
+The routing was left open on purpose. Nothing is locked to one use: each USB input channel goes where you send it,
+every track can feed the harmoniser, and T3 can be a vocoder, an audio track or a synth. The routing itself costs
+nothing; only the engines at the ends do. So the cheapest patch is often also the most interesting one: let the
+outside world bring the sounds, and spend the box's time on transforming them.
+
+Some starting points, all in today's build:
+
+| IN L | IN R | Inside | What you get |
+|---|---|---|---|
+| a synth: **CARRIER** | your voice: **TRACK 3** | T3 VOCODER; T2's send (bank F) | the classic vocoder with no saw to run, and T2's line harmonised beside it |
+| a drum machine: **TRACK 3** | your voice: **HARMONY** | T3 VOCODER, its saws played from the keys | vocoded drums under a harmonised voice |
+| a guitar: **HARMONY** | your voice: **TRACK 3** | T3 VOCODER | the voice vocoded; the guitar in parallel intervals |
+| **OFF** | **OFF** | AUDIO IN off; T2's send (bank F) | a synth line harmonised: chords from a single voice |
+| your voice: **HARMONY** | **OFF** | the drums' send up, FEEDBACK and REPEAT | the voice and the kit through the same intervals: pitched, looping percussion |
+| your voice: **HARMONY** | **OFF** | STEM FX on the stems that feed the sends | a looped, reversed or stuttered stem is what the harmoniser hears: it reharmonises the punch-in |
+
+- **The sends mix.** VOICE IN and the T2, T3 and drum sends add together into one harmoniser, so a voice and a synth
+  can share the same intervals, or the drums can join for one bar.
+- **The sends are after the faders**: mute a track or pull its level, and its send goes with it. A track can feed the
+  harmoniser and be silent itself (LEVEL down, send up): you hear only its harmonies.
+- **With SCALE**, the tracker hears the whole input: for the sung note to steer the key, keep one clear voice on the
+  input and add the other sends with INTERVALS on FIXED (A3).
+- **T3 sends only while it is not vocoding**: as an audio track or a synth it can feed the harmoniser too.
+- **With the SETUP** (HOME > SETUP: VOC + DRUMS or VOC ALONE), T2 stops being a synth and can play IN L or IN R as an
+  audio track through its own effects: an outside instrument on its own stem, beside the harmoniser, for less than
+  T2's synth would cost.
+
+Each of these costs less than an internal synth playing the same part. Try them before the chart's last step.
 
 ### A9. Saving, the editor and the console
 
