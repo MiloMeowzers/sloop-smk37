@@ -57,7 +57,9 @@ static void reset(void)
     memset(hm_sb, 0, sizeof hm_sb);
     hm_ring = pool;
     memset(&trk[0], 0, sizeof trk[0]);
-    hm_send[0] = 100, audio_on = 1;
+    hm_send[0] = 100, audio_on = 1, hm_pitch = 0, hm_fb = 0;
+    trk[0].p[P_TFLT] = -40, trk[0].p[P_DLY] = 90;    /* (a synth preset's FILTER and DELAY SEND: ignored, 67ba07e's
+                                                      * octave climb) */
 }
 /* n samples of input fn(i) through the harmoniser into out (the track's scale) */
 static void run(const int16_t *in, int32_t *out, uint32_t n)
@@ -131,7 +133,7 @@ int main(void)
         for (k = 0; k < 2u; k++) {
             double f;
             reset();
-            trk[0].p[P_TFLT] = F[k].v;
+            hm_pitch = F[k].v;
             sine(FT, 8000.0, 2 * N1);
             hm_note_on(60);
             run(in1, out1, 2 * N1);
@@ -172,7 +174,7 @@ int main(void)
         static int32_t o[61 * 44100];
         static int16_t x[61 * 44100];
         reset();
-        trk[0].p[P_DLY] = 127;
+        hm_fb = 127;
         hm_note_on(60), hm_note_on(67), hm_note_on(72);
         for (i = 0; i < len; i++) {
             s = s * 1664525u + 1013904223u;

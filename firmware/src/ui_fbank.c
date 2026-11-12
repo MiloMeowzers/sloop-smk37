@@ -57,10 +57,15 @@ static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
         *vp = &hv[i & 3u];
         return &HS;
     }
+    if (b == 3u && i == 0u && hm_on) {             /* .. and its D is FEEDBACK (its own: not T1's DELAY SEND) */
+        static const param_desc_t FBK = {"FEEDBK", F_PCT, 0, 127, 0, 0, 0};
+        *vp = &hm_fb;
+        return &FBK;
+    }
     if (b == 1u && i == 0u && hm_on) {             /* HARMONY: T1's B is PITCH (the FILTER is off, fx.c), shown in
                                                     * semitones (fb_draw) */
         static const param_desc_t PIT = {"PITCH", F_BIPCT, -64, 63, 0, 0, 0};
-        *vp = &trk[0].p[P_TFLT];
+        *vp = &hm_pitch;
         return &PIT;
     }
     if (b == 1u && VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW) {   /* track 3 vocoding: CARRIER CUTOFF */

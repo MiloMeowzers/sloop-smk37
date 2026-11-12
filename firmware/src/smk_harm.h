@@ -18,7 +18,9 @@
  * - the output: the input (dry) and the voices' sum, half each (WET / DRY 50 %), on the track's scale.
  * The notes: T1's (keys, its sequencer pattern, MIDI in on its channel: voice.c trk_note_on) each set one voice to
  * its distance from C4 (C4 unison, C5 x2, C2 x0.25), up to 3, a fourth taking the oldest's voice; none: the voices
- * silent, the dry plays on. T1's FADER BANK B (P_TFLT) = PITCH: the centre x1, down 24 semitones, up 12, all voices.
+ * silent, the dry plays on. T1's FADER BANK B = PITCH (hm_pitch): the centre x1, down 24 semitones, up 12, all voices.
+ * PITCH and FEEDBACK are the harmoniser's own (0 at power-on), not T1's FILTER and DELAY SEND: 67ba07e used those, so
+ * a synth preset's delay send became feedback (a fifth fed back climbed octaves) and its filter a transposition.
  * With T1's SCALE on, each voice is the scale note at that distance above the SUNG note (rounded down into the scale)
  * and the tracker runs (only then): YIN on the dry input at 5.5 kHz (a frame ~20 ms), its note taken once two of the
  * last three frames agree, held through silence. */
@@ -49,6 +51,8 @@ static const uint16_t HM_NOTE_LAG[41] = {18675, 17627, 16637, 15703, 14822, 1399
 /* (hm_on, HOME > HARMONY: smk_vocoder.h, beside the routes that test it) */
 static uint8_t hm_send[4] = {100, 0, 0, 0};   /* FADER BANK E: T1's column = VOICE (the input's level), then the HARM
                                        * sends of T2, T3, the drums; 0 .. 127 (100: 0 dB; kept: vocset) */
+static int16_t hm_pitch;             /* FADER BANK B, T1's fader: -64 .. 63 (0: x1; main.c smk_faders, its dead zone) */
+static int16_t hm_fb;                /* FADER BANK D, T1's fader: FB MAIN 0 .. 127 */
 static int16_t *hm_ring;             /* the memory: smk_fxpool's start (fx.c sets it; slicer.c owns it) */
 #define hm_tring (hm_ring + HM_LEN)                  /* the dry input, 5.5 kHz */
 #define hm_tb (hm_ring + HM_LEN + HM_TRN)            /* the frame's snapshot, scaled */
@@ -231,7 +235,7 @@ static int32_t hm_dinc(int32_t s16)
 static void hm_ratios(const track_t *t)
 {
     uint32_t v, sc = t->p[P_SCALE] != 0, tn = hm.tnote;
-    int32_t f = t->p[P_TFLT], pit = f < 0 ? f * 6 : f * 192 / 63;   /* PITCH: -64 .. 63 -> -24 .. +12 semitones */
+    int32_t f = hm_pitch, pit = f < 0 ? f * 6 : f * 192 / 63;   /* PITCH: -64 .. 63 -> -24 .. +12 semitones */
     for (v = 0; v < 3u; v++) {
         int32_t n = hm.note[v], s;
         if (!n)
@@ -276,7 +280,7 @@ static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, ui
         gt[v] = hm.note[v] ? 32767 : 0;
         nn += hm.note[v] != 0;
     }
-    fbk = t->p[P_DLY] * 246 / (nn ? nn : 1);            /* FB MAIN: 0 .. 127 -> 0 .. 0.95, over the sounding voices */
+    fbk = clamp(hm_fb, 0, 127) * 246 / (nn ? nn : 1);            /* FB MAIN: 0 .. 127 -> 0 .. 0.95, over the sounding voices */
     if (n > VOC_MAXN)
         n = VOC_MAXN;
     for (i = 0; i < n; i++) {

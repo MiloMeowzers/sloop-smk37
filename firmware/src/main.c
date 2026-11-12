@@ -246,6 +246,12 @@ static void smk_faders(void)
 #endif
             {   /* a dead zone in the middle (+-3): a fader resting there is the filter off, not a step of it running */
                 int32_t f = (int32_t)v - 64;
+#ifdef SMK_HARM
+                if (i == 0u && hm_on) {
+                    hm_pitch = (int16_t)(f >= -3 && f <= 3 ? 0 : f);   /* HARMONY: T1's fader is PITCH (its own) */
+                    break;
+                }
+#endif
                 trk[i].p[P_TFLT] = (int16_t)(f >= -3 && f <= 3 ? 0 : f);
             }
             break;
@@ -254,6 +260,12 @@ static void smk_faders(void)
             *pv = (int16_t)v;
             break;
         case 3:
+#ifdef SMK_HARM
+            if (i == 0u && hm_on) {
+                hm_fb = (int16_t)(v > 127u ? 127u : v);   /* HARMONY: T1's fader is FEEDBACK (its own) */
+                break;
+            }
+#endif
             pv = i == TRK_DRUM ? &song.g[G_DRDLY] : &trk[i].p[P_DLY];
             *pv = (int16_t)v;
             break;
