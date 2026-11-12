@@ -78,9 +78,9 @@ static void hp_sdb(char *b, int32_t d)              /* signed whole dB, "+3 DB" 
     fmt_int(b + 1, d < 0 ? -d : d);
     str_cpy(b + str_len(b), " DB", 4);
 }
-static void hp_pct(char *b, uint32_t v127)          /* 0 .. 127 as %, 64: 50 % */
+static void hp_pct(char *b, uint32_t v127)          /* 0 .. 127 as %, 64: 50 %, 127: 100 % (as the FADER BANK screen) */
 {
-    fmt_int(b, (int32_t)((v127 * 100u + 64u) / 128u));
+    fmt_int(b, (int32_t)((v127 * 100u + 63u) / 127u));
     str_cpy(b + str_len(b), " %", 3);
 }
 static void hp_unpick(uint32_t col)                 /* a knob set FADER BANK E's value: its fader waits to pick up */
@@ -126,8 +126,9 @@ static void hp_turn(uint32_t k, int32_t s)
             str_cpy(b + str_len(b), " C", 3);
         }
         hp_say(a, b);
-    } else if (g == 0u && k >= 3u && k < 6u) {          /* LEVEL V1 .. V3 */
-        uint32_t v = k - 3u;
+    } else if ((g == 0u && k >= 3u && k < 6u) || (g == 2u && k >= 1u && k < 4u)) {   /* LEVEL V1 .. V3: G1 K4-K6, and
+                                                         * G3 K2-K4 (the outputs' group: the same values, 2026-11-13) */
+        uint32_t v = g == 0u ? k - 3u : k - 1u;
         hs.lv[v] = (uint8_t)clamp((int32_t)hs.lv[v] + s * 2 * f, 0, 100);
         hp.rv = (uint8_t)v, hp.rv_t = HP_RV_FR;
         hp_vname(a, v);
@@ -501,7 +502,8 @@ static void hp_ivname(char *b, int32_t s)           /* an interval: "U", "+M3", 
 static void hp_paint(const hp_view_t *w)
 {
     static const char *const FL[8] = {"NRM", "EXT", "SHP", "FLT", "DLY", "RND", "FLG", "REV"};
-    static const char *const LEG[3] = {"K1-3 MICRO K4-6 LVL K8 W/D", "K1 IN K3 FB K5 LO K6 HI", "K1 DRY  PADS: OUTPUTS"};
+    static const char *const LEG[3] = {"K1-3 MICRO K4-6 LVL K8 W/D", "K1 IN K3 FB K5/6 EQ K8 W/D",
+                                         "K1 DRY K2-4 V1-V3 K8 W/D"};   /* (every knob that does something) */
     uint32_t v, i, r = w->ratio;
     uint16_t on = w->rv_on ? HP_SEG_ON : RGB(120, 24, 18), W = RGB(220, 220, 220);
     char b[16];
@@ -582,21 +584,22 @@ static void hp_paint(const hp_view_t *w)
     /* the EQ, WET / DRY, IN / OUT */
     if (w->low == HM_LOW_0 && w->high == HM_HIGH_0) {
         cv_text(2, 196, &FONT_S, "EQ FLAT", TE_G3);
-    } else {
+    } else {                                            /* (the feedback's EQ: G2 K5 / K6) */
+        cv_text(2, 196, &FONT_S, "EQ", TE_G3);
         str_cpy(b, "LO", 3);
         hp_sdb(b + 2, (int32_t)w->low - (int32_t)HM_LOW_0);
         b[str_len(b) - 3u] = 0;                         /* (no " DB": the line is narrow) */
-        cv_text(2, 196, &FONT_S, b, W);
+        cv_text(24, 196, &FONT_S, b, W);
         str_cpy(b, "HI", 3);
         hp_sdb(b + 2, (int32_t)w->high - (int32_t)HM_HIGH_0);
         b[str_len(b) - 3u] = 0;
-        cv_text(52, 196, &FONT_S, b, W);
+        cv_text(68, 196, &FONT_S, b, W);
     }
     str_cpy(b, "W/D ", 5);
     hp_pct(b + 4, w->wd);
-    cv_text(110, 196, &FONT_S, b, W);
+    cv_text(118, 196, &FONT_S, b, W);
     if (w->byp)
-        cv_text(196, 196, &FONT_S, "OUT", RGB(255, 40, 40));
+        cv_text(204, 196, &FONT_S, "OUT", RGB(255, 40, 40));
     /* the group's knobs */
     cv_rect(0, 216, 240, 1, TE_G2);
     cv_text(2, 220, &FONT_S, LEG[w->grp % 3u], TE_G3);

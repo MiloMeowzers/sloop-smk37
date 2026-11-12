@@ -474,12 +474,13 @@ menu, another page.
   (hold one and press the other: both, **K+M**).
 - **Bottom:** MAIN 6.25 .. 200 ms (Stage 2), **IN / OUT** (OUT: your input straight through, the memory still
   written), **REPEAT** (tap latches, hold is momentary, as NOTE REPEAT).
-- **K1 INPUT LEVEL** (OFF, -40 .. +12 dB), **K3 FEEDBACK**, **K5 LOW EQ**, **K6 HIGH EQ**, **K8 WET / DRY**.
+- **K1 INPUT LEVEL** (OFF, -40 .. +12 dB), **K3 FEEDBACK**, **K5 LOW EQ**, **K6 HIGH EQ** (the feedback's EQ, shown on
+  the screen as `EQ LO.. HI..`), **K8 WET / DRY**. K2, K4, K7: nothing yet (Stage 2).
 
 **G3 OUTPUTS**
 - **Top:** **DRY**, **V1**, **V2**, **V3** on / off (each pad its meter), DLY, SPLIT, ALGORITHM (Stage 2), **FB
   LIMIT** (SAFE / H949). **Bottom:** DELAY ONLY (Stage 2), **REPEAT**.
-- **K1 DRY LEVEL**, **K8 WET / DRY**.
+- **K1 DRY LEVEL**, **K2-K4 LEVEL V1-V3** (the same as G1's K4-K6), **K8 WET / DRY**. K5-K7: nothing yet (Stage 2).
 
 **The control method** (G2 MANUAL, KEYS & MIDI):
 
