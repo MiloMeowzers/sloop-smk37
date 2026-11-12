@@ -214,6 +214,11 @@ static int replug_pending(void) { return 0; }   /* (the probe: no re-plug) */
  * HARMONY on, E HARM (PITCH, FEEDBACK, VOICE IN, WET / DRY) and F SENDS (T2, T3, the drums into the harmoniser).
  * PICKUP (2026-11-12): a fader acts only once it reaches the value its bank holds (within FB_HOT steps, or moving
  * through it either way), so nothing jumps after a bank change; until then the screen shows it waiting. */
+#if SMK_VOC_LEAN && defined(SMK_HARM)
+#define SMK_HP_FADER(i, w, u) hp_fader((i), (w), (u))   /* (the HARMONY page up: it shows the fader, ui_hpage.c) */
+#else
+#define SMK_HP_FADER(i, w, u) 0
+#endif
 static void smk_faders(void)
 {
     static uint8_t last[4] = {0xFF, 0xFF, 0xFF, 0xFF};
@@ -244,14 +249,17 @@ static void smk_faders(void)
             last[i] = (uint8_t)v;
             smk_fpos[i] = (uint8_t)q;
             if (d->max == d->min) {                       /* (nothing to set: HARMONY's T1 on B, D, F) */
-                fb_touch();
+                if (!SMK_HP_FADER(i, 0, 0))
+                    fb_touch();
                 continue;
             }
             if (!((smk_flive >> i) & 1u)) {
                 if ((q - t <= FB_HOT && t - q <= FB_HOT) || (p - t) * (q - t) < 0)
                     smk_flive |= (uint8_t)(1u << i);
                 else {
-                    fb_touch();                           /* (the screen up: its arrow shows the way) */
+                    if (!SMK_HP_FADER(i, 1, q < t))
+                        fb_touch();                       /* (the screen up: its arrow shows the way; the HARMONY page:
+                                                           * its header says which way) */
                     ui.force = 1;
                     continue;
                 }
@@ -303,7 +311,9 @@ static void smk_faders(void)
             *pv = (int16_t)v;
             break;
         }
-        fb_touch();                                   /* (the FADER BANK screen up: what the fader set is seen) */
+        if (!SMK_HP_FADER(i, 0, 0))
+            fb_touch();                               /* (the FADER BANK screen up: what the fader set is seen; the
+                                                       * HARMONY page up: it stays, its header shows the value) */
         ui.force = 1;
     }
 }

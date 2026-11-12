@@ -101,6 +101,45 @@ static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
     return &TP[TID[b & 3u]];
 }
 
+/* fader i of bank b: its label (10) and its value with the unit (20), as this screen shows them (the HARMONY page's
+ * header too: ui_hpage.c hp_fader); its descriptor, *vp its value */
+static const param_desc_t *fb_text(uint32_t b, uint32_t i, char *lab, char *v2, int16_t **vp)
+{
+    char val[12];
+    const char *unit = "";
+    const param_desc_t *d = fb_param(b, i, vp);
+    str_cpy(lab, i == TRK_DRUM ? "DRUMS" : "TRACK 1", 10);
+    if (i != TRK_DRUM)
+        lab[6] = (char)('1' + i);
+#if SMK_UAC_IN_PROBE
+    if (b == 1u && VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW)
+        str_cpy(lab, "T3 CUTOFF", 10);
+    if (b == 4u) {
+        static const char *const HL[4] = {"PITCH", "FEEDBACK", "VOICE IN", "WET/DRY"};
+        str_cpy(lab, HL[i & 3u], 10);
+    }
+    if (b == 5u) {
+        static const char *const SL[4] = {"T1: HARM", "T2 SEND", "T3 SEND", "DRUM SEND"};
+        str_cpy(lab, SL[i & 3u], 10);
+    }
+    if (d == &FB_NONE && b != 5u)
+        str_cpy(lab, "T1: HARM", 10);
+#endif
+    param_format(d, **vp, val, &unit);
+    if (d == &FB_NONE)
+        str_cpy(val, "--", sizeof val), unit = "";
+#if SMK_UAC_IN_PROBE
+    if (b == 4u && i == 0u) {                          /* PITCH in semitones (smk_harm.h hm_ratios: -24 .. +12) */
+        int32_t f = **vp, t10 = f < 0 ? f * 240 / 64 : f * 120 / 63;
+        val[0] = t10 > 0 ? '+' : t10 < 0 ? '-' : ' ';
+        fmt_fix(val + 1, t10 < 0 ? -t10 : t10, 1);
+        unit = " ST";
+    }
+#endif
+    str_cpy(v2, val, 20);
+    str_cpy(v2 + str_len(v2), unit, 20 - str_len(v2));
+    return d;
+}
 static void fb_draw(void)
 {
     static uint32_t shown;
@@ -142,41 +181,9 @@ static void fb_draw(void)
         } else {
             for (i = 0; i < 4u; i++) {             /* the faders: F1 TRACK 1 ... value, a bar */
                 int32_t y = 4 + (int32_t)i * 24, w;
-                char lab[10] = "TRACK 1", val[12], v2[20];
-                const char *unit = "";
-                const param_desc_t *d = fb_param(b, i, &vp);
+                char lab[10], v2[20];
+                const param_desc_t *d = fb_text(b, i, lab, v2, &vp);
                 char f[3] = {'F', (char)('1' + i), 0};
-                if (i == TRK_DRUM)
-                    str_cpy(lab, "DRUMS", sizeof lab);
-                else
-                    lab[6] = (char)('1' + i);
-#if SMK_UAC_IN_PROBE
-                if (b == 1u && VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW)
-                    str_cpy(lab, "T3 CUTOFF", sizeof lab);
-                if (b == 4u) {
-                    static const char *const HL[4] = {"PITCH", "FEEDBACK", "VOICE IN", "WET/DRY"};
-                    str_cpy(lab, HL[i & 3u], sizeof lab);
-                }
-                if (b == 5u) {
-                    static const char *const SL[4] = {"T1: HARM", "T2 SEND", "T3 SEND", "DRUM SEND"};
-                    str_cpy(lab, SL[i & 3u], sizeof lab);
-                }
-                if (d == &FB_NONE && b != 5u)
-                    str_cpy(lab, "T1: HARM", sizeof lab);
-#endif
-                param_format(d, *vp, val, &unit);
-                if (d == &FB_NONE)
-                    str_cpy(val, "--", sizeof val), unit = "";
-#if SMK_UAC_IN_PROBE
-                if (b == 4u && i == 0u) {              /* PITCH in semitones (smk_harm.h hm_ratios: -24 .. +12) */
-                    int32_t f = *vp, t10 = f < 0 ? f * 240 / 64 : f * 120 / 63;
-                    val[0] = t10 > 0 ? '+' : t10 < 0 ? '-' : ' ';
-                    fmt_fix(val + 1, t10 < 0 ? -t10 : t10, 1);
-                    unit = " ST";
-                }
-#endif
-                str_cpy(v2, val, sizeof v2);
-                str_cpy(v2 + str_len(v2), unit, sizeof v2 - str_len(v2));
                 {   /* PICKUP's box: live, filled in the track's colour; waiting, an amber outline and an arrow the way
                      * to move the fader (to the value the bank holds); nothing to set, dim */
                     int32_t none = d == &FB_NONE, live = (smk_flive >> i) & 1u, t = clamp(*vp - d->min, 0, 127),

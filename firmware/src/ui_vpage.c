@@ -340,8 +340,11 @@ static void vp_input(uint32_t *pressed, uint32_t *home)
     uint32_t k, h = vp_hits;
     vp_hits = 0;
     (void)pressed;
-    if (vis_on && !vis_shown())
-        vis_on = 0;                                     /* (another layer / page: the page goes, as a latched one) */
+    if (vis_on && !vis_shown() && !fb_shown() && !pick_shown())
+        vis_on = 0;                                     /* (another layer / page: the page goes, as a latched one; the
+                                                         * FADER BANK screen and the pad picker are passing overlays: a
+                                                         * fader moved shows its screen, then the page comes back, the
+                                                         * owner 2026-11-13: "the fader appears to close it") */
 #ifdef SMK_HARM
     if (!vis_on || !hm_on)
         vis_pg = 0;                                     /* (back on TRACKS, or HARMONY off: the vocoder page next) */

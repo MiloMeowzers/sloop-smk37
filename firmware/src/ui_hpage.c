@@ -20,6 +20,7 @@
 #error "ui_hpage.c: the harmoniser (smk_harm.h)"
 #endif
 #define HP_LONG_MS 400u                             /* a pad held longer: momentary (as NOTE REPEAT) */
+#define HP_PAD_ON 70u                               /* (a pad that is on: at least this bright, of 255) */
 #define HP_RV_FR 90u                                /* (frames, ~3 s: the knob's voice on the readout) */
 static const char *const HP_GN[3] = {"G1 INTERVALS", "G2 PANEL", "G3 OUTPUTS"};
 static const uint8_t HP_VRGB[3][3] = {{255, 150, 30}, {40, 190, 255}, {180, 100, 255}};   /* V1 orange, V2 cyan, V3 violet */
@@ -273,6 +274,23 @@ static void hp_select(int32_t s)                    /* < > (and SELECT): the gro
     hp.pend = 0;                                        /* (a pad held over the change: it stays as it is) */
 }
 
+/* a fader moved while the page is up (main.c smk_faders): the page stays, its header says what the fader did (the
+ * owner, 2026-11-13: "we should be able to see the large pitch dial and info when operating the faders"), as the
+ * FADER BANK screen would: the value, or which way to move it to pick up. 0: the page is not up (the screen shows) */
+static int hp_fader(uint32_t i, int waiting, int up)
+{
+    char lab[10], v2[20];
+    int16_t *vp;
+    if (!vis_pg || !vis_shown())
+        return 0;
+    (void)fb_text(smk_fbank % FB_N, i, lab, v2, &vp);
+    if (waiting)
+        hp_say(lab, up ? "MOVE UP" : "MOVE DOWN");     /* (PICKUP: the fader waits for the bank's value) */
+    else
+        hp_say(lab, v2);
+    return 1;
+}
+
 /* ---- the meters (once a frame, from hp_leds) ---- */
 static uint32_t hp_step(int32_t pk)                 /* a peak (0 .. 32767) in 8 steps of 6 dB */
 {
@@ -298,9 +316,12 @@ static void hp_meters(void)
             hp.mk[k]--, hp.mkt[k] = 0;
     }
 }
-static void hp_padmeter(uint32_t p, const uint8_t *c, uint32_t k)   /* pad p: colour c by meter k's level */
+static void hp_padmeter(uint32_t p, const uint8_t *c, uint32_t k)   /* pad p: colour c by meter k's level, never under
+                                                     * HP_PAD_ON: a pad that is on shows its colour in silence too (the
+                                                     * 2026-11-13 screenshots: a quiet active pad was darker than an
+                                                     * inactive one, an unmuted voice darker than a muted one) */
 {
-    uint32_t b = VP_MB[hp.mk[k] & 7u];
+    uint32_t b = VP_MB[hp.mk[k] & 7u] < HP_PAD_ON ? HP_PAD_ON : VP_MB[hp.mk[k] & 7u];
     if (hp.red_t[k])
         padled_set(p, 255, 20, 20);
     else if (hp.mk[k] >= 7u)
@@ -337,11 +358,11 @@ static void hp_leds(void)
             if (hs.fsel)
                 padled_set(p, 4, 20, 6);                /* (OUT: Stage 2) */
             else if (p == 2u)
-                padled_set(p, 20, 3, 2);                /* (EXTEND: Stage 2) */
+                padled_set(p, 6, 2, 2);                 /* (EXTEND: Stage 2, nearly dark as the others) */
             else if ((p == 1u && fn == HF_NORM) || (p == 3u && fn == HF_SHARP) || (p == 4u && fn == HF_FLAT))
                 hp_padmeter(p, RED, HM_UP_OUT);         /* (the active function: the voices' level) */
             else
-                padled_set(p, 50, 6, 4);
+                padled_set(p, 22, 3, 2);                /* (an IN function not chosen: dim red) */
         }
         if (hs.vsel)
             vp_padrgb(5, HP_VRGB[(hs.vsel - 1u) % 3u], 0);

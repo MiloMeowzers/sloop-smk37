@@ -213,7 +213,7 @@ UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
             return line ? "ITS CHAIN" : "AUDIO THROUGH";
         if (r == VR_T3)                                 /* (the owner, 2026-11-12: TRACK 3 read as the vocoder only; it
                                                          * is T3's input, dry through its chain in MODE AUDIO) */
-            return voc_mode % VM_N == VM_SAW ? (line ? "THE VOCODER" : "T3 VOICE INTO") : (line ? "DRY, ITS FX" : "T3 AUDIO:");
+            return voc_mode % VM_N == VM_SAW ? (line ? "ITS VOICE" : "T3 VOCODER:") : (line ? "DRY, ITS FX" : "T3 AUDIO:");
         return "";
     }
 #endif

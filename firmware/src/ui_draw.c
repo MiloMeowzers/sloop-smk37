@@ -1149,6 +1149,8 @@ UI_SMALL static void ui_draw(void)
             fb_draw();
         else
             pick_draw();
+        vis_shown_last = 0;                             /* (a page under it, the vocoder / HARMONY page: drawn whole
+                                                         * again when the overlay goes, its screen cleared then) */
         ui_timers();
         ui.force = 0;
         return;
