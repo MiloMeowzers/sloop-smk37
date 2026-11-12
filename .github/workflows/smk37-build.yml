@@ -173,7 +173,7 @@ jobs:
           # web/make_site.py: the installer with its package (checked by its SHA-256 in the page) and the editor,
           # also as one file for the disk (webapp/editor/sloop-editor.html). The installer fetches its package, so
           # it is served from localhost (serve-installer.ps1), not opened as a file
-          v="2.8.1-smk37-$(git rev-parse --short HEAD)"
+          v="2.8.4-smk37-$(git rev-parse --short HEAD)"
           if [ "$VOC_ONLY" = true ]; then      # (the vocoder branch: its own package's site and editor)
             python3 web/make_site.py out/sloop-smk37-elite-vocoder.fwsc "$v" out/installer-elite > /dev/null
             mkdir -p out/installer-pro/webapp/editor
@@ -220,7 +220,7 @@ jobs:
         run: |
           mkdir -p pages
           for m in pro elite mke; do cp -r "out/installer-$m" "pages/$m"; done
-          v="2.8.1-smk37-$(git rev-parse --short HEAD)"
+          v="2.8.4-smk37-$(git rev-parse --short HEAD)"
           sed "s|<footer>BUILD</footer>|<footer>Build $v</footer>|" .github/pages/index.html > pages/index.html
           touch pages/.nojekyll
 
