@@ -201,7 +201,8 @@ UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
     if (i == MI_VINL || i == MI_VINR) {                 /* (what the route needs or does) */
         uint32_t r = (i == MI_VINL ? voc_inl : voc_inr) % VR_N;
         if (r == VR_HARM)
-            return hm_on ? (line ? "ITS INPUT" : "THE HARMONISER") : (line ? "HARMONY ON" : "NEEDS");
+            return hm_on ? (line ? "HARMONISER" : "TO THE") : (line ? "HARMONY ON" : "NEEDS");   /* (13 characters
+                                                         * at most beside HARMONY: "THE HARMONISER" ran off the screen) */
         if (r == VR_T1 && hm_on)
             return line ? "HARMONY ON" : "T1 IS";
         if ((r == VR_T1 || r == VR_T2) && !(VSU_SKIP(voc_setup % VSU_N) >> (r - VR_T1) & 1u))

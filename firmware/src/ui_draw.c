@@ -108,7 +108,7 @@ UI_SMALL static void draw_head(void)
 #ifdef SMK_HARM
     if (rep == 2u)                                    /* REPEAT (NOTE REPEAT on T1): as its LED, steady held, flashing
                                                        * latched */
-        cv_text(126, 1, &FONT_S, "REP", C_AMB);
+        cv_text(130, 1, &FONT_S, "REP", C_AMB);         /* (clear of the octave's "+3", ends before the tape) */
 #endif
     if (FELUCCA_ICONS) {                              /* the selected track: tape + number */
         cv_icon(156, 2, ICON_TAPE, C_GRAY);
