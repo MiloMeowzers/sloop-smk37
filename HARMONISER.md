@@ -1,10 +1,42 @@
 # The harmoniser: user manual (SMK-37 Elite, vocoder build)
 
-> **Draft: describes the planned build. Nothing here is built yet.** This manual is written ahead of the firmware, from
-> the harmoniser spec (§6, 2026-11-07) and the Eventide H949 manual, so the page can be checked before it is coded.
+> **Draft: describes the planned build.** Stage 1a (the sound, below) is built for testing; the rest is written ahead of
+> the firmware, from the harmoniser spec and the Eventide H949 manual, so the page can be checked before it is coded.
 > **Stage 1** marks what the first build plays; **Stage 2** and **Stage 3** mark what comes after it. Points still open
 > are listed in [section 12](#12-open-points-to-settle-before-stage-1). Everything here will be corrected against the
 > unit as each stage is flashed and tested, as the vocoder's manual was.
+
+## Stage 1a: what the test build plays (2026-11-12)
+
+The sound without its page: the H949 screen, the pads and knobs come with Stage 1b. Where this section and the rest of
+the manual differ, this section is what the build does.
+
+- **Turn it on:** HOME menu (PATCH held) **> HARMONY > HARMONY: ON: T1**. Track 1 is the harmoniser; its synth is set
+  aside (OFF gives it back). There is no HARMONY > TRACK: the harmoniser is always T1, and T2, T3 and the drums stay
+  as you set them (T3 a vocoder or not, T2 a synth or off with the SETUP, the drums on or off).
+- **Its input:** HOME > SETUP > **IN L** or **IN R: HARMONY** sends that channel of the USB audio in to it. A channel
+  goes to one place: put your voice on HARMONY **or** TRACK 3 (the vocoder), and give the vocoder another sound (the
+  other channel, a synth, the drums). **FADER BANK E** (it appears while HARMONY is on: FADER BANK steps A .. E) sets
+  the input: fader 1 **VOICE IN** (the audio in's level), faders 2-4 **T2 / T3 / DRUM SEND** (each track's audio into
+  the harmoniser; T3 only while it is not vocoding). AUDIO IN off: it hears the sends only.
+- **Play the harmony:** T1's keys, its sequencer pattern and MIDI in on its channel. Each held note is one harmony
+  voice at its distance from **C4**: C4 the voice itself, G4 a fifth up, C5 an octave up, C3 an octave down, C2 two
+  octaves down. Up to three at once (a fourth takes the oldest's place). No note: no harmony, your voice plays on dry.
+- **SCALE on T1** (as for any track): the keys count from the note you **sing** instead of C4, kept in the scale (E4
+  over a sung D in C major is F, the third the scale has). HOME > HARMONY > **SUNG NOTE** shows what the tracker hears.
+- **FADER BANK B, fader 1: T1 PITCH**: all the voices moved together, the middle 1:1, down to two octaves under, up to
+  an octave over. **FADER BANK D, fader 1: T1 FEEDBK**: the harmony fed back into the memory (rising, falling
+  arpeggios of itself at the top); it always dies away (FB LIMIT SAFE).
+- **REPEAT:** with T1 selected, **NOTE REPEAT** catches the memory (about 0.4 s) and loops it: a tap latches it, held
+  it springs back when let go.
+- Fixed in 1a: WET / DRY 50 %, the splice ALGORITHM 1 (crossfade), the segment NORM (25 ms), the feedback EQ flat.
+  T1 keeps its LEVEL, PAN, reverb and chorus sends, SLICER, STEM FX and stem; it has no FILTER and no DELAY SEND.
+- **LOAD** in the header (where USB shows): voices are being dropped, the combination is too heavy (red: it keeps
+  happening). Everything at once (the harmoniser, T2 a synth, T3 vocoding, the drums, high global FX) is the heaviest:
+  lighter routes to the same sound are an external synth on the audio in as the vocoder's CARRIER (no saw to run), a
+  layer from outside on IN L / IN R instead of T2, the drums off when the audio in carries a drum machine.
+- While HARMONY is on, the vocoder stays at 22.05 kHz (HQ beside the harmoniser is still to be measured) and SLICER
+  STUT records nothing (its memory is the harmoniser's). STEM FX loops are about a fifth shorter.
 
 The harmoniser turns your live voice (the same USB audio in as the [vocoder](VOCODER.md)) into up to **three harmony
 voices that keep your voice's own sound**. The vocoder swaps your voice's timbre for the carrier's; the harmoniser
