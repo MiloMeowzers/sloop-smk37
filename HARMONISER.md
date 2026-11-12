@@ -1,64 +1,202 @@
-# The harmoniser: user manual (SMK-37 Elite, vocoder build)
+# The harmoniser: user manual (SMK-37 Elite, Mewcoder build)
 
-> **Draft: describes the planned build.** Stage 1a (the sound, below) is built for testing; the rest is written ahead of
-> the firmware, from the harmoniser spec and the Eventide H949 manual, so the page can be checked before it is coded.
-> **Stage 1** marks what the first build plays; **Stage 2** and **Stage 3** mark what comes after it. Points still open
-> are listed in [section 12](#12-open-points-to-settle-before-stage-1). Everything here will be corrected against the
-> unit as each stage is flashed and tested, as the vocoder's manual was.
-
-## Stage 1a: what the test build plays (2026-11-12)
-
-The sound without its page: the H949 screen, the pads and knobs come with Stage 1b. Where this section and the rest of
-the manual differ, this section is what the build does.
-
-- **Turn it on:** HOME menu (PATCH held) **> HARMONY > HARMONY: ON: T1**. Track 1 is the harmoniser; its synth is set
-  aside (OFF gives it back). There is no HARMONY > TRACK: the harmoniser is always T1, and T2, T3 and the drums stay
-  as you set them (T3 a vocoder or not, T2 a synth or off with the SETUP, the drums on or off).
-- **Its input:** HOME > SETUP > **IN L** or **IN R: HARMONY** sends that channel of the USB audio in to it. A channel
-  goes to one place: put your voice on HARMONY **or** TRACK 3 (the vocoder), and give the vocoder another sound (the
-  other channel, a synth, the drums). **FADER BANK E** (it appears while HARMONY is on: FADER BANK steps A .. E) sets
-  the input: fader 1 **VOICE IN** (the audio in's level), faders 2-4 **T2 / T3 / DRUM SEND** (each track's audio into
-  the harmoniser; T3 only while it is not vocoding). AUDIO IN off: it hears the sends only.
-- **Play the harmony:** T1's keys, its sequencer pattern and MIDI in on its channel. Each held note is one harmony
-  voice at its distance from **C4**: C4 the voice itself, G4 a fifth up, C5 an octave up, C3 an octave down, C2 two
-  octaves down. Up to three at once (a fourth takes the oldest's place). No note: no harmony, your voice plays on dry.
-- **SCALE on T1** (as for any track): the keys count from the note you **sing** instead of C4, kept in the scale (E4
-  over a sung D in C major is F, the third the scale has). HOME > HARMONY > **SUNG NOTE** shows what the tracker hears.
-- **FADER BANK B, fader 1: T1 PITCH**: all the voices moved together, the middle 1:1, down to two octaves under, up to
-  an octave over. **FADER BANK D, fader 1: T1 FEEDBK**: the harmony fed back into the memory (rising, falling
-  arpeggios of itself at the top); it always dies away (FB LIMIT SAFE).
-- **REPEAT:** with T1 selected, **NOTE REPEAT** catches the memory (about 0.4 s) and loops it: a tap latches it, held
-  it springs back when let go.
-- Fixed in 1a: WET / DRY 50 %, the splice ALGORITHM 1 (crossfade), the segment NORM (25 ms), the feedback EQ flat.
-  T1 keeps its LEVEL, PAN, reverb and chorus sends, SLICER, STEM FX and stem; it has no FILTER and no DELAY SEND.
-- **LOAD** in the header (where USB shows): voices are being dropped, the combination is too heavy (red: it keeps
-  happening). Everything at once (the harmoniser, T2 a synth, T3 vocoding, the drums, high global FX) is the heaviest:
-  lighter routes to the same sound are an external synth on the audio in as the vocoder's CARRIER (no saw to run), a
-  layer from outside on IN L / IN R instead of T2, the drums off when the audio in carries a drum machine.
-- While HARMONY is on, the vocoder stays at 22.05 kHz (HQ beside the harmoniser is still to be measured) and SLICER
-  STUT records nothing (its memory is the harmoniser's). STEM FX loops are about a fifth shorter.
+> **This manual has two parts.** [Part A](#part-a-the-harmoniser-today) is what the current test build does (Stage 1a:
+> the sound, played from the keys and the faders), checked on the unit. [Part B](#part-b-coming-next-the-h949-page)
+> is the design for what comes next: the harmoniser's own page with the H949's big PITCH RATIO readout (Stage 1b), then
+> its effects (Stage 2). Part B is written ahead of the firmware and is corrected as each stage is built and tested.
 
 The harmoniser turns your live voice (the same USB audio in as the [vocoder](VOCODER.md)) into up to **three harmony
 voices that keep your voice's own sound**. The vocoder swaps your voice's timbre for the carrier's; the harmoniser
-pitch-shifts your voice itself. The two are separate and can sound together: a vocoded chord on track 3, your sung
-line harmonised on track 1 or 2.
+pitch-shifts your voice itself. Both can run at once, on different sounds: your voice harmonised on track 1 while the
+vocoder, on track 3, takes a synth, the other input channel or the drums.
 
-It is modelled on the **Eventide H949 Harmonizer** and its keyboard, the HK940. The H949 was much more than a pitch
-shifter: a 400 ms digital memory with an input stage, **two outputs** (MAIN, the pitch / effect output, and DELAY ONLY,
-a plain delay), a **feedback** loop from both outputs with its own EQ, **REPEAT** (capture the memory and loop it) and
-**REVERSE**. This build keeps that architecture, the H949's front-panel switch row on the pads, and its big red **PITCH
-RATIO** readout on the screen. Where it adds to the H949 (three voices in one unit, scale-aware intervals, the
-sequencer, stereo output splits) it says so.
-
-Its sound comes from the method: a memory read by two heads moving at the pitch ratio, spliced every segment.
+It is modelled on the **Eventide H949 Harmonizer** and its keyboard, the HK940: a 400 ms digital memory read by heads
+moving at the pitch ratio, spliced every segment, with feedback and REPEAT. Its sound comes from that method:
 - **The formants move with the pitch.** A fifth up sounds a little smaller and brighter, an octave down larger and
   darker. That is the H949's character, not a fault.
-- **The splice colours it slightly**, most on low notes and big intervals down. ALGORITHM 1 (crossfade) has no
-  glitches but some colour; ALGORITHM 2 (Stage 2) is the H910's hard splice, glitches that come faster as the ratio
-  moves from 1:1. The two sound the same at an octave either way.
-- **Harmonies stay in tune** because each voice multiplies every frequency by its ratio. It is not a frequency shifter.
+- **The splice colours it slightly**, most on low notes and big intervals down: a faint flutter at the splice rate.
+  This build uses the H949's ALGORITHM 1 (a crossfaded splice: no glitches). The H910's hard splice comes in Stage 2.
+- **Harmonies stay in tune**, because each voice multiplies every frequency by its ratio. It is not a frequency
+  shifter.
+- **The memory is stored at 22.05 kHz**, so the harmony's top end stops near 10 kHz, as the H949's did near 12-15. The
+  owner's call: "we are modelling a device that had to use very limited resources and those compromises give it
+  character".
 
-## 1. Getting started
+## Part A: the harmoniser today
+
+### A1. Getting started
+
+![HOME > HARMONY with the harmoniser on; HOME > SETUP with IN R sent to the harmoniser; INTERVALS: SCALE with the sung note](assets/screens/smk37-harm-menu.png)
+
+1. **The audio in:** set up the USB audio in as for the vocoder ([VOCODER.md, Getting sound in](VOCODER.md#1-getting-sound-in),
+   steps 1-3: **HOME > USB > AUDIO IN: ON**).
+2. **HOME menu** (PATCH held) **> HARMONY > HARMONY: ON: T1** (K5). Track 1 is now the harmoniser: its name reads
+   **HARMONY** on HOME and the tracks screen, and its synth sound is set aside (OFF gives it back, as it was). The
+   FADER BANK screen opens on bank **E, HARM** when you close the menu.
+3. **HOME > SETUP > IN R: HARMONY** (or IN L, the side your voice is on). The help beside it reads **TO THE
+   HARMONISER**. One channel goes to one place: your voice goes to the harmoniser **or** to TRACK 3 (the vocoder).
+4. Sing, and hold a key on T1 (select T1 first). **C4** plays your voice at its own pitch, **G4** a fifth above it,
+   **C3** an octave below. Hold up to three keys for three harmony voices. With no key held, you hear your voice dry
+   and no harmony.
+5. Move the faders on bank E: **PITCH**, **FEEDBACK**, **VOICE IN** (the input's level), **WET / DRY** ([A4](#a4-the-faders-banks-e-and-f-and-pickup)).
+
+### A2. Playing the harmony: the keys
+
+The harmony voices are played like any track's notes: **T1's keys, T1's sequencer pattern and MIDI in on T1's
+channel**. Each held note is one voice, and its **distance from C4** is the voice's interval. While HARMONY is on, T1's
+keys are plain chromatic: every key its own semitone, the octave buttons moving them. T1's own SCALE, ROOT, transpose,
+quantise and CHORD settings do not apply (they are kept, and work again when HARMONY is off).
+
+| Key | Interval | Ratio |
+|---|---|---|
+| C2 | two octaves down | 0.250 |
+| C3 | an octave down | 0.500 |
+| G3 | a fourth down | 0.749 |
+| A3 | a minor third down | 0.841 |
+| **C4** | **unison** (your own pitch) | **1.000** |
+| E♭4 | a minor third up | 1.189 |
+| E4 | a major third up | 1.260 |
+| F4 | a fourth up | 1.335 |
+| G4 | a fifth up | 1.498 |
+| A4 | a major sixth up | 1.682 |
+| C5 | an octave up | 2.000 |
+
+- The range is the H949's: **two octaves down to one up**. Keys below C2 play C2's interval, keys above C5 play C5's.
+  Use OCT- / OCT+ to reach the low keys.
+- **Up to three voices.** A fourth key takes the place of the oldest one held. Each voice fades in and out in about
+  1.5 ms, so changing chords does not click.
+- **The sequencer** records and plays them as T1's notes: a pattern of chords on T1 is a harmony line that follows
+  your voice. Your voice itself is never recorded, only the intervals.
+- **C4 with a fifth and an octave** (C4, G4, C5) is the classic thick "power" stack. **E4 + G4** is a major triad over
+  your voice, **E♭4 + G4** a minor one.
+
+### A3. INTERVALS: FIXED or SCALE
+
+**HOME > HARMONY > INTERVALS** (K6) sets how a key becomes an interval:
+- **FIXED** (the default): as in the table above, a fixed interval from C4, whatever you sing. The H949 with its
+  HK940 keyboard worked this way. A held E4 is always a major third above your voice, so on some sung notes it is
+  outside the song's key. That is the expected, predictable behaviour.
+- **SCALE**: the key counts from **the note you are singing**, and the result is kept in the song's key (its ROOT
+  and SCALE, as set on T1: SEL held). The pitch tracker listens to the input and works out the sung note; **SUNG
+  NOTE** (K7) shows what it hears (`--` until it has heard one). The note the key would give is rounded down into the
+  scale: in C major, E4 (a third) over a sung **D** gives **F** (the minor third the scale has), over a sung C gives E.
+  So the harmony stays diatonic as your melody moves. Neighbouring keys can land a whole tone apart: that is the scale,
+  not a fault.
+  - The tracker holds the last note through consonants and pauses, and takes a new one only once two of its last
+    three readings agree (it reads every ~20 ms). It hears sung notes from about 80 to 690 Hz.
+  - With a chromatic song key (SCALE: CHR) SCALE mode keeps the keys' distances, counted from the sung note.
+
+![The FADER BANK screen while HARMONY is on: bank E (HARM), two faders waiting to pick up, bank F (SEND)](assets/screens/smk37-harm-faders.png)
+
+### A4. The faders: banks E and F, and PICKUP
+
+While HARMONY is on, **FADER BANK** steps through six banks, A to F. The harmoniser's live controls are all on **E**:
+
+| Bank E, HARM | Sets |
+|---|---|
+| F1 **PITCH** | every voice moved together: the middle 1:1 (a small dead zone holds it there), down to two octaves under, up to one over, shown in semitones. It works in FIXED and SCALE, on top of the keys: G4 held with PITCH at +2.0 plays a sixth. |
+| F2 **FEEDBACK** | the harmony fed back into the memory: each pass is shifted again, so a fifth up climbs in fifths, an octave down falls in octaves, a cascade that dies away. It always dies away: the loop's gain stays under 1, however high it is set (the H949's FB LIMIT, SAFE). |
+| F3 **VOICE IN** | the audio in's level into the harmoniser (79 % = 0 dB). |
+| F4 **WET / DRY** | your voice against the harmony: 50 % half each, 0 % your voice alone, 100 % the harmony alone. |
+
+**Bank F, SEND**: T2, T3 and the drums each **into** the harmoniser (0 % at first), taken after each track's fader and
+mute. Harmonise a synth line, a drum loop, or T3's audio (T3 only while it plays the dry audio in; not while it is
+vocoding: [A6](#a6-the-input-and-the-sends)). F1 shows `T1: HARM` (nothing to set). On banks B and D, T1's column also
+shows `T1: HARM`: the harmoniser has no filter and no delay send of its own.
+
+**PICKUP (every bank, not only the harmoniser's).** After a bank change the faders are almost never where the new
+bank's values are, so a fader does nothing until it reaches its value: it picks up when it comes within 3 steps of
+it, or moves through it, from above or below. Then it takes over smoothly, without a jump. The screen shows each
+fader's state in the box at its left:
+- **filled**, in the track's colour: live, the fader sets the value;
+- **an outlined box with an arrow**: waiting; the arrow points the way to move the fader, up or down;
+- **dim**: nothing to set.
+
+The bar is the value the bank holds; the **white tick** is where the fader physically is. Move the tick onto the end of
+the bar and it is live.
+
+**Seeing the faders:** moving any fader brings the FADER BANK screen up (for 4 seconds after the last move), so you
+always see what it set. **Hold FADER BANK** (about 0.6 s) to pin the screen up for good; hold it again to let it time
+out again. Its LED is steady while pinned and blinks while the screen is up on its time-out. A tap on FADER BANK while
+the screen is up steps to the next bank; PATCH or KNOB BANK close it.
+
+### A5. FEEDBACK and REPEAT
+
+- **FEEDBACK** (bank E, F2): see [A4](#a4-the-faders-banks-e-and-f-and-pickup). At low settings it thickens the
+  harmony with a short shimmer; high up it turns a held chord into rising (or falling) arpeggios of itself. The EQ in
+  the loop is flat in this build (the H949's LOW / HIGH EQ is Stage 2).
+- **REPEAT**: select T1 and press **NOTE REPEAT**. The memory (about 0.4 s of what the harmoniser heard) is caught and
+  plays round and round, the input cut off, as the H949's REPEAT button did. The voices still play it at their
+  intervals, so keys and PITCH reharmonise the loop.
+  - **A tap latches it**: the NOTE REPEAT LED and **REP** in the header **flash**; tap again to let it go.
+  - **Held longer** (over 0.4 s) it is momentary: steady while held, gone when you let go.
+  - The loop is the whole memory (about 418 ms). Shorter loops synced to the tempo (REPEAT LENGTH) come in Stage 2.
+
+### A6. The input and the sends
+
+- **IN L / IN R: HARMONY** (HOME > SETUP): that channel of the USB audio in goes to the harmoniser. A channel goes to
+  one place, so your voice goes to the harmoniser **or** the vocoder, never both: two heavy processes on one voice
+  overload and tear, and it is the weaker sound. With both running, the pairing in mind is your voice harmonised while
+  the vocoder takes another sound (the other channel, an external synth as CARRIER, T2, the drums).
+- **The sends** (bank F) add the other tracks to the harmoniser's input, mixed with VOICE IN. T3 sends only while it is
+  not vocoding. A send from T3 or the drums reaches the harmoniser one block (about 0.7 ms) late: inaudible.
+- **AUDIO IN off**: the harmoniser hears the sends only (a synth, the drums harmonised).
+- **What it tracks** (INTERVALS SCALE): the harmoniser's whole input, so sends confuse it; one clear voice or
+  instrument tracks best.
+
+### A7. What T1 keeps, and what HARMONY changes elsewhere
+
+- **T1 keeps** its LEVEL, PAN, reverb and chorus sends, DIST, SLICER, STEM FX, its stem on USB and its mute / solo.
+  It has **no FILTER and no DELAY SEND** (the H949 is the delay; its fader positions are the harmoniser's PITCH and
+  FEEDBACK on bank E instead).
+- **T1's synth** is set aside, not lost: patterns, sound and settings come back with HARMONY OFF.
+- **The vocoder** stays at 22.05 kHz while HARMONY is on, whatever the SETUP (HQ beside the harmoniser is still to be
+  measured). HARMONY takes T1 whatever the SETUP says about T1; T2 and the drums follow the SETUP as usual.
+- **SLICER STUT records nothing** while HARMONY is on: its memory is the harmoniser's. **STEM FX** loops are about a fifth
+  shorter (the harmoniser's memory comes off the shared pool first).
+
+### A8. LOAD: when it is too much
+
+**LOAD** appears in the header (where USB shows) when voices are being dropped because the combination is too heavy;
+red while it keeps happening. Everything at once (the harmoniser, T2 a synth, T3 vocoding, the drums, high global
+effects) is the heaviest. Lighter routes to the same sound:
+- an **external synth** on the audio in as the vocoder's **CARRIER** (no saw to run);
+- a layer from outside on IN L / IN R instead of T2;
+- the drums off when the audio in already carries a drum machine;
+- the global effects lower.
+
+### A9. Saving, the editor and the console
+
+- **Kept over a power-off:** HARMONY on / off, INTERVALS, and IN L / IN R (with the vocoder's settings). The editor's
+  vocoder settings show HARMONY and INTERVALS. **Not kept yet:** bank E and F's values (they start at PITCH 0,
+  FEEDBACK 0, VOICE IN 0 dB, WET / DRY 50 %, the sends 0): they are saved with the harmoniser's page (Stage 1b).
+- **T1's pattern** (the intervals) is saved with the project as any track's notes.
+- **The console** (USB serial): `harm` (or `hprobe`) prints the harmoniser's state: the notes held, each voice's
+  ratio, the sung note, PITCH, FEEDBACK, WET / DRY and the peaks; `harm on` / `harm off` switch it.
+
+### A10. Troubleshooting
+
+| What you hear or see | Why, and what to do |
+|---|---|
+| No harmony at all | HARMONY ON? IN L / IN R on HARMONY (the side your voice is on)? A key held on T1 (T1 selected)? VOICE IN up? WET / DRY not at 0 %? |
+| Your voice, but no harmony | No key held: with no key the harmoniser plays your voice dry. |
+| Neighbouring keys uneven | INTERVALS is SCALE: the keys follow the scale over the sung note. Set FIXED for plain intervals. |
+| The harmony climbs or falls away | FEEDBACK is up (bank E, F2). |
+| A fader does nothing | It is waiting to pick up: follow the arrow on the FADER BANK screen to the end of its bar. |
+| SUNG NOTE reads `--` | INTERVALS is FIXED (the tracker is not running), or nothing clear is coming in yet. |
+| LOAD in the header | Too much at once: [A8](#a8-load-when-it-is-too-much). |
+| A faint flutter on sustained low notes | The splice (ALGORITHM 1), most on big intervals down: the H949's colour. |
+
+## Part B: coming next: the H949 page
+
+> **The design, not yet built.** Stage 1b adds the harmoniser's own page: the H949's big red PITCH RATIO readout, the
+> sung note, the voices and their meters, the pads as the H949's switch row and intervals, and the control methods
+> (KEYS & MIDI, MANUAL: the pitch fader playing a voice with no key held, or both). Stage 2 adds the H949's effects
+> (DELAY, EXTEND, RANDOM, FLANGE, REVERSE, REPEAT LENGTH), its feedback EQ, ALGORITHM 2 and the output splits; Stage 3
+> MIDI out of the harmony. Where Part A and Part B differ, Part A is what the build does: in Part B, "HOME > HARMONY >
+> TRACK" is gone (the harmoniser is always T1), PITCH and FEEDBACK are on bank E, and the keys are chromatic.
+
+### 1. Getting started
 
 1. Set up the USB audio in as for the vocoder: [VOCODER.md, Getting sound in](VOCODER.md#1-getting-sound-in), steps 1–3
    (**HOME > USB > AUDIO IN: ON**).
@@ -83,7 +221,7 @@ Its sound comes from the method: a memory read by two heads moving at the pitch 
 Track 3 still plays the voice too (AUDIO or VOCODER, as you set it). For the harmony alone, turn track 3's fader down
 or mute it; to sing over a vocoded chord, leave it up.
 
-## 2. How the sound flows (the H949's block diagram)
+### 2. How the sound flows (the H949's block diagram)
 
 ```mermaid
 flowchart LR
@@ -123,7 +261,7 @@ flowchart LR
   Their faders become the harmoniser's PITCH (bank B) and FEEDBACK (bank D).
 - The voices are the harmoniser's own, outside SLOOP's 8-voice budget: the harmony never steals notes from the synths.
 
-## 3. The screen
+### 3. The screen
 
 The page is built around the H949's **PITCH RATIO readout**, drawn as a red seven-segment LED display, with the
 panel's indicator LEDs beneath it.
@@ -161,7 +299,7 @@ panel's indicator LEDs beneath it.
 - **The strip at the bottom** lists the group's knobs and pads, as on the vocoder page.
 - While you turn a knob, its name and value show large in the header; the readout keeps the ratio.
 
-## 4. The HARMONY page and its groups
+### 4. The HARMONY page and its groups
 
 **Opening it:** with a HARMONY track set, PATCH steps through the pages: **TRACKS → VOCODER → HARMONY → PUNCH IN →
 TRACKS** (VOCODER only with AUDIO IN on; HARMONY only with HARMONY > TRACK set). As on the vocoder page: tap **PATCH**
@@ -181,7 +319,7 @@ to go on, **hold PATCH** for the HOME menu, **<** and **>** (or SELECT) step thr
 - The pads keep their usual jobs everywhere else. On this page they play the harmoniser. **Hold = momentary, tap =
   latch**, as on the punch-in page, for every pad that turns something on.
 
-### 4.1 G1 INTERVALS (Stage 1)
+#### 4.1 G1 INTERVALS (Stage 1)
 
 | Pad | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
@@ -204,7 +342,7 @@ to go on, **hold PATCH** for the HOME menu, **<** and **>** (or SELECT) step thr
 - **WET / DRY:** 0 % the input alone, 50 % (the default) both equal, 100 % the harmoniser alone (the voices and DELAY
   ONLY).
 
-### 4.2 G2 PANEL: the H949's switch row
+#### 4.2 G2 PANEL: the H949's switch row
 
 | Pad | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
@@ -267,7 +405,7 @@ Switches with no job in the current function are drawn dim.
 Stage 1 plays NORM, SHARP, FLAT, VOICE, MANUAL, KEYS & MIDI, IN / OUT, REPEAT, INPUT LEVEL, the feedback with its EQ, the
 DELAY ONLY level and WET / DRY; the rest is drawn dim.
 
-### 4.3 G3 OUTPUTS (Stage 1: the sources, pans, DELAY ONLY, FB LIMIT; Stage 2: the splits, ALGORITHM 2)
+#### 4.3 G3 OUTPUTS (Stage 1: the sources, pans, DELAY ONLY, FB LIMIT; Stage 2: the splits, ALGORITHM 2)
 
 | Pad | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
@@ -287,7 +425,7 @@ DELAY ONLY level and WET / DRY; the rest is drawn dim.
 |---|---|---|---|---|---|---|---|
 | DRY LEVEL | DLY ONLY LEVEL | PAN DRY | PAN V1 | PAN V2 | PAN V3 | PAN DLY ONLY | WET / DRY |
 
-### 4.4 The pads as level meters
+#### 4.4 The pads as level meters
 
 Pitch shifting, feedback and REPEAT all build level quickly, so **every pad that carries a signal shows its level**, in
 its own colour (its voice's, its source's or its function's) with two warning colours on top:
@@ -316,7 +454,7 @@ The other pads (the MSEC switches, VOICE, MANUAL, KEYS & MIDI, ALGORITHM) show t
 **On every group**, whatever its pads show, an input at LIMIT or a clipping output also flashes the screen's header red
 (**INPUT HOT**, **OUT CLIP**, **FB HOT**) for a second, and the input LEDs under the readout keep showing the input.
 
-## 5. The keys and the intervals
+### 5. The keys and the intervals
 
 The keys set intervals as notes, as on the HK940 (whose keys were laid out from an octave down, 1:0.5, through unison,
 1:1, to an octave up, 1:2):
@@ -329,7 +467,7 @@ The keys set intervals as notes, as on the HK940 (whose keys were laid out from 
   stay until new ones are played.
 - **Bend** on the HARMONY track bends all three voices by the track's bend range; the **mod wheel** adds vibrato.
 
-### 5.1 The control method and the pitch fader
+#### 5.1 The control method and the pitch fader
 
 As the H949's CONTROL MODE switches (MANUAL, CV + MAN, KEYBOARD), two pads on G2, top 7 and 8:
 
@@ -396,7 +534,7 @@ carrier's cutoff while vocoding; the HARMONY track has no filter):
   top line; sent drums are harmonised from the drums' own tuning.
 - Your own ratio tables (just intonation, the owner's chromatic, harmonic and circle-of-fifths modes): Stage 2.
 
-## 6. The input routing
+### 6. The input routing
 
 The H949 had one input. Here the harmoniser's input is a small mixer: the USB voice, and any of the other tracks, as a
 studio would feed an H949 from an aux send. Anything can go in: voices, synths, live instruments or samples over USB,
@@ -447,7 +585,7 @@ flowchart LR
 - **IN / OUT** (G2 bottom 7): OUT, the input straight to the outputs, the harmoniser bypassed.
 - The feedback joins after INPUT LEVEL, so turning the input down does not change the feedback.
 
-## 7. The outputs and the splits
+### 7. The outputs and the splits
 
 The H949 had two outputs, MAIN and DELAY ONLY, each on its own connector, so the studio could send them to different
 places: the pitch on one side and a plain delay on the other, the dry kept apart for a later mix. Here there are five
@@ -469,7 +607,7 @@ sources, **DRY, V1, V2, V3, DELAY ONLY**, and the HARMONY track's stereo output,
 - **The sends:** the HARMONY track's reverb send takes its output after the split, as any track's (it has no delay send: the H949 is its delay).
 - Stage 3, possible: DELAY ONLY on a track of its own (an open point).
 
-## 8. Feedback
+### 8. Feedback
 
 As the H949's FEEDBACK CONTROL GROUP: part of the two outputs returns to the memory's input. **Stage 1**, with its EQ
 and FB LIMIT: it is half the H949's sound. Watch the **FB LIMIT pad** (G3): orange as the loop nears unity, red while it
@@ -492,7 +630,7 @@ is being held back.
     uncontrolled oscillation. The HARMONY track's output is still limited, so it cannot overload the mix. Use with
     care.
 
-## 9. REPEAT (the note repeat)
+### 9. REPEAT (the note repeat)
 
 As the H949's REPEAT (**Stage 1**): **press REPEAT and whatever is in the memory at that instant is captured and loops
 for as long as REPEAT is held** (or latched). Two ways to press it:
@@ -514,7 +652,7 @@ for as long as REPEAT is held** (or latched). Two ways to press it:
 - **On the sequencer:** REPEAT is recorded as an event on the HARMONY track, so a pattern can capture and repeat on the
   beat (Stage 2).
 
-## 10. REVERSE
+### 10. REVERSE
 
 As the H949's REVERSE function (G2, FUNCTION SELECT OUT, F4), per voice or for ALL:
 - The memory is read **backwards in segments**: short pieces of your voice, each reversed, in their own order. Like
@@ -526,7 +664,7 @@ As the H949's REVERSE function (G2, FUNCTION SELECT OUT, F4), per voice or for A
 - **With REPEAT:** the captured memory plays reversed for as long as REPEAT holds.
 - **With feedback:** reversed pieces of reversed pieces: the reversed-reverb sound.
 
-## 11. The menu, the sequencer, saving and troubleshooting
+### 11. The menu, the sequencer, saving and troubleshooting
 
 **HOME > HARMONY:**
 
@@ -569,7 +707,7 @@ web editor's **Harmony** tab comes later.
 | A warble or flutter | the splice: most on low voices and big intervals down; EXTEND on sustained sounds (Stage 2) |
 | One side of the stereo only | OUTPUT on MAIN \| DLY or DRY \| WET: MIX for both sides |
 
-## 12. Open points to settle before Stage 1
+### 12. Open points to settle before Stage 1
 
 Settled (the owner, 2026-11-07): the H949's switch rows are the button grid, with the control method group; the pitch
 on bank B and the feedback (the voices' sum, as the H949) on bank D, the HARMONY track's filter and delay send unused;
