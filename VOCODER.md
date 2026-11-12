@@ -71,7 +71,7 @@ vocoder. Everything starts as before: both sides into track 3, every track runni
 | **IN R** | TRACK 3, CARRIER, T1, T2, HARMONY, OFF | where the right side goes |
 
 The help text beside IN L / IN R says what the choice does: **TRACK 3** reads **T3 AUDIO: DRY, ITS FX** (MODE AUDIO) or
-**T3 VOICE INTO THE VOCODER** (MODE VOCODER); **CARRIER** **T3 NOTES GATE IT**; **HARMONY** **TO THE HARMONISER**.
+**T3 VOCODER: ITS VOICE** (MODE VOCODER); **CARRIER** **T3 NOTES GATE IT**; **HARMONY** **TO THE HARMONISER**.
 
 ### 2.1 SETUP: which tracks run
 
@@ -308,7 +308,8 @@ drums' channel is no longer on GLO > DRUMS, nor IN and OUT on GLO > SYSTEM: each
 **Opening it:** on the tracks screen tap **PATCH**. PATCH steps through the pages: **TRACKS → VOCODER → PUNCH IN → TRACKS**
 (with HARMONY on, the harmoniser's page comes between: **TRACKS → VOCODER → HARMONY → PUNCH IN**; [HARMONISER.md
 A11](HARMONISER.md#a11-the-harmony-page-the-h949s-panel)).
-The page stays open until you tap PATCH again or open something else.
+The page stays open until you tap PATCH again or open something else. A fader moved (or the pad picker) shows its
+screen for a moment, then the page comes back.
 
 ```mermaid
 flowchart LR

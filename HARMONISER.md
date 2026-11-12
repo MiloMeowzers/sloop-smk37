@@ -418,11 +418,34 @@ harmoniser (bank F), the SMK-37 becomes a dub instrument. Three things make it w
 
 ### A11. The HARMONY page: the H949's panel
 
-![The HARMONY page: G1 INTERVALS, G2 PANEL, G3 OUTPUTS](assets/screens/smk37-harm-page.png)
+![The HARMONY page with its pads: G1 INTERVALS, G2 PANEL at its defaults and in use, G3 OUTPUTS](assets/screens/smk37-harm-page.png)
+
+*Drawn by the page's own firmware code (ui_hpage.c, compiled on a computer), with the 16 pads lit as the page lights
+them; each pad labelled with its job.*
 
 **Opening it:** tap **HOME** on the TRACKS screen for the vocoder page, then **PATCH**: with HARMONY on, the HARMONY
 page comes next (TRACKS → VOCODER → HARMONY → PUNCH IN → TRACKS). **<** and **>** (or SELECT) step its three groups.
 The keys, PLAY, REC and OCT work as always; **NOTE REPEAT** is REPEAT here whatever track is selected.
+
+**It stays up** (latched, no time-out) until you tap **PATCH** (on to PUNCH IN) or open something else: a layer, the
+menu, another page.
+- **The faders keep the page on screen.** Move one and the header says what it did, as the FADER BANK screen would:
+  `PITCH +3.5 ST`, `FEEDBACK 38 %`, `T2 SEND 50 %`. The readout follows PITCH as you move it. A fader still waiting
+  to pick up says which way to go: `PITCH MOVE UP` / `MOVE DOWN`.
+- **The FADER BANK button** still shows the bank screen (all four faders, the pickup arrows; tap for the next bank,
+  hold to pin it). When it closes, **the page comes back**; so it does after the pad picker.
+- On the vocoder page a fader shows the FADER BANK screen for a moment, and the page comes back after it.
+
+**The pads' lights** (each group's in the sheet above, as the page lights them):
+- **G1:** a pad in use lit in its voice's colour (V1 orange, V2 cyan, V3 violet), brighter with its level; **white**
+  while held; the others dim.
+- **G2:** FUNCTION SELECT red (IN) or green (OUT); the chosen function bright red, the others dim (EXTEND and the OUT
+  functions nearly dark: Stage 2); VOICE white (ALL) or the voice's colour; MANUAL and KEYS & MIDI amber when on; IN /
+  OUT green by the input's level, dark red on OUT; REPEAT violet, flashing while latched.
+- **G3:** DRY white and V1-V3 in their colours by level, **dark red when off**; FB LIMIT green (SAFE) or amber (H949)
+  by the loop's level; REPEAT as on G2.
+- **Any metering pad** turns **orange** from -6 dBFS and **red** from -1 dBFS (held about a second). A pad that is on
+  always shows its colour, even in silence. The MAIN and DELAY ONLY switches (Stage 2) stay nearly dark.
 
 **The screen:**
 - **The PITCH RATIO readout**, the H949's four red digits: the ratio of the **readout voice**: the voice whose knob you
