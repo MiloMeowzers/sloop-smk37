@@ -624,6 +624,23 @@ UI_SMALL static void draw_menu(void)
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
 #endif
+#if BOARD_SMK37
+    if (ui.menu == 1) {                             /* (2026-11-12) every row of the section as it would be drawn: its
+                                                     * value, the value's colour and the guide lines. The list above is
+                                                     * kept by hand and twice missed new items (SETUP's four in
+                                                     * 2b96130, HARMONY in 67ba07e: the knob worked, the screen stayed),
+                                                     * this does not depend on it: whatever a row shows, a change of it
+                                                     * redraws the menu */
+        uint32_t k;
+        for (k = MS_FIRST[sec]; k < MS_FIRST[sec + 1u]; k++) {
+            uint16_t c = 0;
+            const char *v = mi_value(k, &c), *g0 = mi_guide(k, 0), *g1 = mi_guide(k, 1);
+            sig = str_hash(sig, v ? v : "") * 31u + c;
+            sig = str_hash(sig, g0 ? g0 : "");
+            sig = str_hash(sig, g1 ? g1 : "");
+        }
+    }
+#endif
     if (!ui.force && sig == ui.menu_sig)
         return;
     ui.menu_sig = sig;
