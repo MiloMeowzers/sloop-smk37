@@ -1000,13 +1000,21 @@ typedef struct {
                                           * ENVELOPE > BRIDGE MODE (2026-11-11: a spare byte, 0: FIXED); HOME >
                                           * HARMONY (2026-11-12: a spare byte, 0: OFF; bit 0 smk_harm.h hm_on,
                                           * bit 1 INTERVALS hm_int, 0: FIXED) */
+    uint8_t hset[22];                    /* the HARMONY page (Stage 1b, 2026-11-12: smk_harm.h hset_t), and FADER BANK E /
+                                          * F: PITCH, FEEDBACK, WET / DRY, VOICE IN and the sends; hhave 0 (an object
+                                          * of 480 bytes, before them): the defaults */
+    int8_t hpit;
+    uint8_t hfb, hwd, hsend[4], hhave, rsv4[2];
 } vocset_t;
 #define VOCSET_V1 64u                    /* (the object's size before BRIDGE TONE) */
 #define VOCSET_V2 68u                    /* (.. before NORMAL) */
 #define VOCSET_V3 72u                    /* (.. before the vocoder page) */
 #define VOCSET_V4 472u                   /* (.. before ENVELOPE) */
 #define VOCSET_V5 476u                   /* (.. before the 12-step DRY / HF) */
-_Static_assert(sizeof(vocset_t) == VOCSET_V5 + 4u && VOCSET_V5 == VOCSET_V4 + 4u && VOCSET_V4 == VOCSET_V3 + 5u * 80u && sizeof(vocpg_t) == 80u &&
+#define VOCSET_V6 480u                   /* (.. before the HARMONY page) */
+_Static_assert(sizeof(vocset_t) == VOCSET_V6 + 32u && __builtin_offsetof(vocset_t, hset) == VOCSET_V6 &&
+               sizeof(hset_t) == sizeof(((vocset_t *)0)->hset), "vocset: the HARMONY page after the 480 bytes");
+_Static_assert(VOCSET_V6 == VOCSET_V5 + 4u && VOCSET_V5 == VOCSET_V4 + 4u && VOCSET_V4 == VOCSET_V3 + 5u * 80u && sizeof(vocpg_t) == 80u &&
                __builtin_offsetof(vocset_t, tilt) == VOCSET_V1 && __builtin_offsetof(vocset_t, norm) == VOCSET_V2 &&
                __builtin_offsetof(vocset_t, pcur) == VOCSET_V3, "vocset: the magic, 5 x 12 bytes, tone, NORMAL, the page");
 static vocset_t vocset, vocset_saved;
@@ -1064,7 +1072,8 @@ static int vocset_take(const uint8_t *b, uint32_t n)
 {
     static vocset_t s;                                 /* (472 bytes: not on the stack) */
     uint32_t k;
-    if (n != sizeof s && n != VOCSET_V5 && n != VOCSET_V4 && n != VOCSET_V3 && n != VOCSET_V2 && n != VOCSET_V1)
+    if (n != sizeof s && n != VOCSET_V6 && n != VOCSET_V5 && n != VOCSET_V4 && n != VOCSET_V3 && n != VOCSET_V2 &&
+        n != VOCSET_V1)
         return 0;
     memset(&s, 0, sizeof s);                           /* (an older, shorter object: the rest none / OFF) */
     memcpy(&s, b, n);
@@ -1091,6 +1100,17 @@ static int vocset_take(const uint8_t *b, uint32_t n)
         voc_brmode = (uint8_t)(s.brmode & 1u);         /* (older: FIXED) */
         hm_set(s.harm & 1u);                           /* (older: OFF; taken at the next block, fx.c hm_apply) */
         hm_int = (uint8_t)((s.harm >> 1) & 1u);         /* (older: FIXED) */
+        if (s.hhave) {                                 /* the HARMONY page and banks E / F (older: as they are) */
+            hset_t h;
+            memcpy(&h, s.hset, sizeof h);
+            hs_fix(&h);
+            hs = h;
+            hm_pitch = (int16_t)clamp(s.hpit, -64, 63), hm_fb = (int16_t)(s.hfb & 127u), hm_wd = (int16_t)(s.hwd & 127u);
+            for (k = 0; k < 4u; k++)
+                hm_send[k] = (uint8_t)(s.hsend[k] & 127u);
+        } else {
+            hs = HS_DEF;                               /* (saved before the page: its defaults, 1a's sound) */
+        }
         {                                              /* TRIM L / R: signed dB, -18 .. +6 (older: 0 dB) */
             int32_t tl = (int8_t)s.trl, tr = (int8_t)s.trr;
             tl = tl < -(int32_t)VOC_TRIM_0 ? -(int32_t)VOC_TRIM_0 : tl > (int32_t)(VOC_TRIM_N - 1u - VOC_TRIM_0) ? (int32_t)(VOC_TRIM_N - 1u - VOC_TRIM_0) : tl;
@@ -1136,6 +1156,10 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocset.brmode = (uint8_t)(voc_brmode & 1u);
     vocset.harm = (uint8_t)((hm_want & 1u) | (hm_int & 1u) << 1);   /* (as asked: the block's start may not have
                                                      * taken it yet) */
+    memcpy(vocset.hset, &hs, sizeof vocset.hset);
+    vocset.hpit = (int8_t)clamp(hm_pitch, -64, 63), vocset.hfb = (uint8_t)(hm_fb & 127), vocset.hwd = (uint8_t)(hm_wd & 127);
+    memcpy(vocset.hsend, hm_send, sizeof vocset.hsend);
+    vocset.hhave = 1;
 }
 static void vocset_save(void)
 {

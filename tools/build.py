@@ -207,7 +207,7 @@ HOT_TEXT = ["fm1_alnk0_irq", "mix_tail_wait", "cpu1_wait", "tp_pos", "uac6_room"
             "sample_render", "sample_next", "slice_render", "drawbar_render", "grain_render", "phys_render",
             "slicer_track", "drums_mix", "ds_filter", "slicer_drums", "tp_x", "cpu1_units_job", "cpu1_stems_job",
             "cpu1_tail_job", "uac6_tap_ch", "uac_tap48", "uac_render_start", "fm1_timer5_irq", "uac_service", "uin_rx",
-            "hm_render", "hm_lags", "hm_ratios", "hm_dinc", "hm_pick", "hm_snap"]   # (the harmoniser, smk_harm.h: T1's
+            "hm_render", "hm_lags", "hm_ratios", "hm_dinc", "hm_dincf", "hm_note_on", "hm_note_off", "hm_pick", "hm_snap"]   # (the harmoniser, smk_harm.h: T1's
 # engine while HARMONY is on, and what it calls once a block)
 
 

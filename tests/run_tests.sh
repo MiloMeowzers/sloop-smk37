@@ -239,7 +239,7 @@ run "SMK-37 playback input with the real stems (the vocoder build): descriptors,
 $CC -o "$OUT/smk_vocoder_test" tests/smk_vocoder_test.c -lm
 run "SMK-37 vocoder: the VSM201's 20 bands, vocoding (analysis a block ahead), LEVEL, DRY, HF, VOICE (its detector), BRIDGE, BRIDGE TONE, BRIDGE MODE FOLLOW, NORMAL, the AGC, the track" "$OUT/smk_vocoder_test"
 $CC -Ibuild/gen -o "$OUT/smk_harm_test" tests/smk_harm_test.c -lm
-run "SMK-37 harmoniser (Stage 1a): the voices' pitch, PITCH, WET / DRY, the fades, feedback dies away (SAFE), REPEAT, the tracker, SCALE, the sends" "$OUT/smk_harm_test"
+run "SMK-37 harmoniser (Stage 1a, 1b): the voices' pitch, PITCH, WET / DRY, the fades, feedback dies away (SAFE), REPEAT, the tracker, SCALE, the sends; 1a's sound at the page's defaults (bit for bit), MICRO, SHARP / FLAT, LEVEL, the mutes, DRY, IN / OUT, INPUT LEVEL, MANUAL, K+M, the pads, the feedback EQ, SAFE with the EQ, H949" "$OUT/smk_harm_test"
 $CC -DT_CDC=0 -DT_STEMS=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_stems" tests/uac6_test.c -lm
 run "SMK-37 stems, SYNTHS+RET: descriptors, 44.1 -> 48 kHz x 6, the ring and packets, levels" "$OUT/uac6_test_stems"
 $CC -o "$OUT/smk_tpunch_test" tests/smk_tpunch_test.c -lm

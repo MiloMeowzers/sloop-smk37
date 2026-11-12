@@ -1081,6 +1081,7 @@ static void hm_apply(void)
         v->env = v->env_out = 0;
     }
     hm.rep = 0;
+    hm_pad = 0, hm.padl = 0;                            /* (the page's pads: none held) */
     hm_on = (uint8_t)on;
 }
 #endif

@@ -109,6 +109,7 @@ static void vis_select(int32_t s);
 static void vp_input(uint32_t *pressed, uint32_t *home);
 static void vp_leds(void);
 static uint32_t vp_hits;                 /* the pads hit while it was up (ui_input.c) */
+static uint8_t vis_pg;                   /* which page is up there: 0 the vocoder's, 1 HARMONY's (ui_hpage.c) */
 #else
 #include "ui_vis.c"           /* the full-screen visualiser (HOME on HOME, 2.4) */
 #endif

@@ -74,6 +74,11 @@ static struct {
                                                      * channel outlined green (at basic, just turned), the frames left */
     char msg[28];
 } vp;
+#ifdef SMK_HARM
+static void hp_input(uint32_t h);                   /* the HARMONY page (ui_hpage.c, below: vis_pg 1) */
+static void hp_leds(void);
+static void hp_select(int32_t s);
+#endif
 
 static int vis_shown(void)
 {
@@ -87,6 +92,12 @@ static void vis_open(void)
 }
 static void vis_select(int32_t s)                   /* < > (and SELECT): the groups, round */
 {
+#ifdef SMK_HARM
+    if (vis_pg) {
+        hp_select(s);
+        return;
+    }
+#endif
     vp.grp = (uint8_t)((vp.grp + (s > 0 ? 1u : 2u)) % 3u);
     vp.pend = 0;                                    /* (a pad held over the change: nothing) */
 }
@@ -331,7 +342,14 @@ static void vp_input(uint32_t *pressed, uint32_t *home)
     (void)pressed;
     if (vis_on && !vis_shown())
         vis_on = 0;                                     /* (another layer / page: the page goes, as a latched one) */
+#ifdef SMK_HARM
+    if (!vis_on || !hm_on)
+        vis_pg = 0;                                     /* (back on TRACKS, or HARMONY off: the vocoder page next) */
+#endif
     if (!vis_shown()) {
+#ifdef SMK_HARM
+        hm_rep_pad = 0;                                 /* (the HARMONY page's REPEAT pad: not held, the page gone) */
+#endif
         if (vp.hold)
             smk_master_hold = vp.hold_prev, vp.hold = 0;
         return;
@@ -339,8 +357,17 @@ static void vp_input(uint32_t *pressed, uint32_t *home)
     if (!vp.hold)
         vp.hold_prev = smk_master_hold, vp.hold = 1;
     smk_master_hold = 1;                                /* (the volume knob is a K here) */
-    if (*home == BT_TAP) {                              /* PATCH: on to PUNCH IN (PATCH there: TRACKS, layer_unlock) */
+    if (*home == BT_TAP) {                              /* PATCH: on to HARMONY (while it is on), then PUNCH IN (PATCH
+                                                         * there: TRACKS, layer_unlock) */
         *home = BT_NONE;
+#ifdef SMK_HARM
+        if (!vis_pg && hm_on) {
+            vis_pg = 1;
+            ui.force = 1;
+            return;
+        }
+        vis_pg = 0;
+#endif
         vis_on = 0;
         smk_master_hold = vp.hold_prev, vp.hold = 0;
         ly_lock = LY_FX;
@@ -348,6 +375,12 @@ static void vp_input(uint32_t *pressed, uint32_t *home)
         ui.force = 1;
         return;
     }
+#ifdef SMK_HARM
+    if (vis_pg) {
+        hp_input(h);
+        return;
+    }
+#endif
     for (k = 0; k < 8u; k++) {
         int32_t s = vp_knob(k);
         if (s)
@@ -398,6 +431,12 @@ static uint32_t vp_meter(uint32_t ch)
 static void vp_leds(void)                           /* the group's pads: functions and mutes, the selectors lit when on */
 {
     uint32_t g = vp.grp, c, nch = g < 2u ? 7u : 6u;
+#ifdef SMK_HARM
+    if (vis_pg) {
+        hp_leds();
+        return;
+    }
+#endif
     for (c = 0; c < 8u; c++) {
         if (c < nch) {
             uint32_t ch = g * 7u + c;
@@ -633,20 +672,32 @@ static uint32_t vp_sig(void)
         h = (h ^ (uint8_t)ui.msg[i]) * 16777619u;
     return h;
 }
-/* in two bands of 120 rows; the screen cleared once, when the page comes up */
+#ifdef SMK_HARM
+#include "ui_hpage.c"          /* the HARMONY page (harmoniser-spec.md §9): vis_pg 1 */
+#endif
+/* in two bands of 120 rows; the screen cleared once, when the page comes up (or the other page takes its place) */
 static void vis_draw(void)
 {
     static uint32_t shown;
+    static uint8_t pg_last;
     uint32_t pass, sig;
+#ifdef SMK_HARM
+    static hp_view_t hv;
+#endif
     if (vp.msg_t)
         vp.msg_t--;
     if (vp.grn_t)
         vp.grn_t--;
     if (vp.mt)
         vp.mt--;
+#ifdef SMK_HARM
+    sig = vis_pg ? hp_frame(&hv) : vp_sig();
+#else
     sig = vp_sig();
-    if (!vis_shown_last) {
+#endif
+    if (!vis_shown_last || pg_last != vis_pg) {
         vis_shown_last = 1;
+        pg_last = vis_pg;
         lcd_fill(0, 0, 240, 240, C_BLACK);
         shown = sig + 1u;
     }
@@ -656,6 +707,11 @@ static void vis_draw(void)
     for (pass = 0; pass < 2u; pass++) {
         cv_begin(240, 120, C_BLACK);
         cv_oy = -(int32_t)(pass * 120u);
+#ifdef SMK_HARM
+        if (vis_pg)
+            hp_paint(&hv);
+        else
+#endif
         vp_paint();
         cv_oy = 0;
         cv_blit(0, pass * 120u);

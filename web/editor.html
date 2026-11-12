@@ -3421,9 +3421,12 @@ function makeMockDevice(opt = {}) {
     daw: { on: 0, ch: 1, local: 0, user: 0, rel: 0, map: DAW.defaults() },   /* SMK-37 (opt.daw): DAW mode */
     smkset: Uint8Array.from([0x53, 0x4B, 0x53, 0x54, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),   /* project.c smkset_t */
     vocset: (() => {                                   /* project.c vocset_t, the defaults (opt.voc) */
-      const v = new Uint8Array(480);
+      const v = new Uint8Array(512);
       v.set([0x56, 0x4F, 0x43, 0x53, 0, 4, 0, 7, 127, 0, 0, 0, 0, 2, 1, 0], 0);
       v[476] = 1;                                     /* (mixv: DRY / HF on the 12-step scale) */
+      v.set([100, 100, 100], 483);                    /* the HARMONY page (hset_t at 480): LEVEL V1 .. V3 */
+      v.set([1, 41, 12, 12], 490);                    /* .. KEYS & MIDI, INPUT LEVEL 0 dB, the EQ flat */
+      v[496] = 100, v[504] = 64, v[505] = 100, v[509] = 1;   /* .. DRY LEVEL, WET / DRY, VOICE IN, hhave */
       v.set([8, 10, 0, 0], 64);
       v.fill(50, 76, 116);
       v.set([2, 1, 1, 0, 1], 146);
@@ -3864,7 +3867,7 @@ function makeMockDevice(opt = {}) {
             }
             else if (id === 0) { const o = js(); st.tracks = o.tracks; st.sel = o.sel; st.g = o.g; }
             else if (id >= 12 && id <= 14) {                /* SMK-37 (editor.c: stopped only; 13 taken, not modelled) */
-              if (id !== 13 && P.len !== (id === 12 ? 20 : 480)) throw 0;
+              if (id !== 13 && (id === 12 ? P.len !== 20 : P.len !== 480 && P.len !== 512)) throw 0;
               if (st.playing) rc = 3;
               else if (id === 12) st.smkset = P.buf.slice();
               else if (id === 14) st.vocset = P.buf.slice();
@@ -7840,8 +7843,8 @@ $("dawfile").addEventListener("change", async (e) => {
   sayK("dawOpened");
 });
 
-/* SMK-37: its settings (backup object 12, project.c smkset_t, 20 bytes) and the vocoder build's (14, vocset_t, 480
-   bytes), read with BK_LIST / BK_GET and written back whole with BK_PUT (the firmware checks them as at power-on, takes
+/* SMK-37: its settings (backup object 12, project.c smkset_t, 20 bytes) and the vocoder build's (14, vocset_t, 512
+   bytes; 480 before the HARMONY page, whose fields then do not show), read with BK_LIST / BK_GET and written back whole with BK_PUT (the firmware checks them as at power-on, takes
    them and saves). A field: [key, byte offset, label, options [[value, name]], default] */
 const OB_DB = (a, b, st, z) => Array.from({ length: (b - a) / st + 1 }, (_, i) => [i, `${a + i * st > 0 ? "+" : ""}${a + i * st}${z}`]);
 const OB_BEND = [0, 1, 2, 3, 4, 5, 7, 12].map((x) => [x, `${x} ST`]);
@@ -7861,7 +7864,7 @@ const OB = {
     ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0],
     ["gdel", 19, "GATE DELAY (VOCODER)", Array.from({ length: 11 }, (_, i) => [i, `${i * 5} MS`]), 0],
     ["saws", 19, "CARRIER SAWS (VOCODER)", ["AUTO", "1 SAW", "2 SAWS"], 0]] },
-  vocoder: { id: 14, len: 480, magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
+  vocoder: { id: 14, len: 512, lens: [480, 512], magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
     ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0],
     ["vsetup", 71, "SETUP", ["FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"], 0],
     ["vinl", 71, "IN L", ["TRACK 3", "CARRIER", "T1", "T2", "OFF", "HARMONY"], 0],
@@ -7885,7 +7888,12 @@ const OB = {
     ["blend", 66, "BLEND", ["SUM", "FILL"], 0],
     ["eatt", 472, "ATTACK", ["3 MS", "5 MS", "8 MS", "12 MS", "20 MS", "30 MS"], 0],
     ["erel", 473, "RELEASE", ["8 MS", "15 MS", "25 MS", "40 MS", "60 MS", "100 MS"], 0],
-    ["brmode", 477, "BRIDGE MODE", ["FIXED", "FOLLOW"], 0]],
+    ["brmode", 477, "BRIDGE MODE", ["FIXED", "FOLLOW"], 0],
+    ["hctl", 490, "CONTROL (HARMONY)", [[1, "KEYS & MIDI"], [2, "MANUAL"], [3, "BOTH"]], 1],
+    ["hinl", 491, "INPUT LEVEL (HARMONY)", [[0, "OFF"], ...OB_DB(-40, 12, 1, " DB").map(([i, n]) => [i + 1, n])], 41],
+    ["hlow", 492, "FB LOW EQ (HARMONY)", OB_DB(-12, 18, 1, " DB"), 12],
+    ["hhigh", 493, "FB HIGH EQ (HARMONY)", OB_DB(-12, 4, 1, " DB"), 12],
+    ["hfbl", 494, "FB LIMIT (HARMONY)", ["SAFE", "H949"], 0]],
   page: [["byp", 146, "BYPASS", ["OFF", "REPLACEMENT", "SPEECH"], 2], ["brsel", 147, "BRIDGING", ["OFF", "SUM", "INDIVIDUAL"], 1],
     ["addsel", 148, "ADDITION", ["OFF", "SUM", "INDIVIDUAL"], 1], ["actl", 149, "AUTOCONTROL", ["OFF", "ON"], 0],
     ["nzc", 151, "NOISE BLEND", Array.from({ length: 21 }, (_, i) => [100 - i * 5, `${i * 5} %`]).reverse(), 0]] },
@@ -7917,13 +7925,14 @@ function obSet(k, f, v) {
     d[7] = dn === up ? 0 : dn || 0x80;
   } else d[f[1]] = v;
   if (k === "vocoder" && f[1] >= 4 && f[1] < 16) d[14] = 1;   /* (cur.have: the settings taken) */
-  if (k === "vocoder" && f[1] >= OB_PG) d[OB_PG + 78] = 1;    /* (pcur.have) */
+  if (k === "vocoder" && f[1] >= OB_PG && f[1] < 472) d[OB_PG + 78] = 1;    /* (pcur.have) */
+  if (k === "vocoder" && f[1] >= 480) d[509] = 1;              /* (hhave: the HARMONY page taken) */
   OB[k].dirty = true;
   obRender(k);
 }
 function obDefaults(k) {
   const o = OB[k], d = o.d;
-  for (const f of o.fields) obSet(k, f, f[4] < 0 ? obGet(k, o.fields[2]) : f[4]);
+  for (const f of o.fields) if (f[1] < d.length) obSet(k, f, f[4] < 0 ? obGet(k, o.fields[2]) : f[4]);
   if (k === "vocoder") {
     for (const f of o.page) obSet(k, f, f[4]);
     d.fill(0, OB_PG, OB_PG + 4);                      /* nothing muted */
@@ -7939,7 +7948,7 @@ async function obRead(k) {
   const it = L.items.find((x) => x.id === o.id);
   const d = it ? await bkReadObj(rq, it) : null;
   const dv = d ? new DataView(d.buffer, d.byteOffset, d.length) : null;
-  o.d = d && d.length === o.len && dv.getUint32(0, true) === o.magic ? new Uint8Array(d) : null;
+  o.d = d && (o.lens || [o.len]).includes(d.length) && dv.getUint32(0, true) === o.magic ? new Uint8Array(d) : null;
   o.dirty = false;
   obRender(k);
 }
@@ -7953,7 +7962,7 @@ function obRender(k) {
     return el("label", { class: v === def ? "" : "chg" }, el("span", { class: "dim", text: f[2] + " " }),
       dawSel("", obOpts(f), v, (x) => obSet(k, f, x)));
   };
-  box.replaceChildren(...o.fields.map(one));
+  box.replaceChildren(...o.fields.filter((f) => f[1] < o.d.length).map(one));   /* (older firmware: no HARMONY page) */
   if (k !== "vocoder") return;
   const d = o.d, P = OB_PG;
   $("vocpgset").replaceChildren(...o.page.map(one));

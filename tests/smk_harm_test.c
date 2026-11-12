@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Host test of the SMK-37 harmoniser (firmware/src/smk_harm.h, Stage 1a; smk37-devtools harmoniser-spec.md §8):
+/* Host test of the SMK-37 harmoniser (firmware/src/smk_harm.h, Stage 1a and 1b; smk37-devtools harmoniser-spec.md §8,
+ * §9):
  *   pitch     one voice on a 240.1 Hz sine, notes C4 (unison), G4 (x1.498), C5 (x2), C3 (x0.5), C2 (x0.25), E4: the
  *             wet output's strongest frequency within 1 % of 240.1 x ratio (Goertzel over a sweep); PITCH (T1's FADER BANK
  *             B) +12 and -24 at the fader's ends. (240.1 Hz: three cycles between the two taps, half a segment apart, so
@@ -16,6 +17,18 @@
  *   scale     SCALE MAJOR, C: a sung D4, the key E4 (+4) -> F4 (a minor third over D: the scale's), B4 (+11) -> C5;
  *             SCALE off: chromatic (E4 -> +4)
  *   sends     AUDIO IN off: the voice's input not heard, the HARM sends (hm_sb, the last block's) are
+ * Stage 1b (the HARMONY page's settings, hs):
+ *   golden    the page at its defaults: 1a's sound bit for bit (12 s: notes, FEEDBACK, PITCH, WET / DRY, SCALE and the
+ *             tracker, a send, REPEAT; the hash taken from 931b88b's smk_harm.h)
+ *   MICRO     +50 cents on E4: the pitch 2^(50/1200) higher; on a whole step, hm_dinc's exactly
+ *   SHARP / FLAT  no key: the voice sounds, its ratio 1.070 / 0.930 at MICRO 100, ~1.001 near 0
+ *   LEVEL     a voice at 50 %: its part half; OFF (the mute): the dry alone, exactly
+ *   DRY       DRY LEVEL 0: no note, silence exactly; IN / OUT: the input straight through, exactly; INPUT LEVEL -6 dB
+ *   MANUAL    no key: the MANUAL voice at the PITCH fader's ratio; MANUAL alone keeps its voice from the keys; K+M
+ *   pads      G1's pads as notes (60 + the interval), let go: off
+ *   EQ        the LOW shelf +18 dB at 100 Hz, the HIGH -12 dB at 10 kHz (22.05 kHz), flat: no change
+ *   SAFE + EQ FEEDBACK 127 with each shelf at its loudest: still dies away (the loop scaled under the EQ's peak)
+ *   H949      FB LIMIT H949, FEEDBACK 127: the loop rings on after the input stops, and stays bounded (the soft limit)
  * 44.1 kHz, blocks of 32 as the mix. Stubs stand in for core.h, voice.c, the vocoder's input and the console's timing. */
 #include <stdint.h>
 #include <stdio.h>
@@ -58,7 +71,8 @@ static void reset(void)
     memset(hm_sb, 0, sizeof hm_sb);
     hm_ring = pool;
     memset(&trk[0], 0, sizeof trk[0]);
-    hm_send[0] = 100, audio_on = 1, hm_pitch = 0, hm_fb = 0, hm_int = 0;
+    hm_send[0] = 100, audio_on = 1, hm_pitch = 0, hm_fb = 0, hm_int = 0, hm_wd = 64;
+    hs = HS_DEF, hm_pad = 0;                         /* (the HARMONY page at its defaults) */
     trk[0].p[P_TFLT] = -40, trk[0].p[P_DLY] = 90;    /* (a synth preset's FILTER and DELAY SEND: ignored, 67ba07e's
                                                       * octave climb) */
 }
@@ -289,6 +303,219 @@ int main(void)
             es += (double)out1[i] * out1[i];
         check("sends: AUDIO IN off, the voice's input silent", ev == 0.0);
         check("sends: a send heard (the last block's)", es > 1e9);
+    }
+    /* ---- Stage 1b ---- */
+    {   /* golden: the page's defaults are 1a's sound (golden.c's scenario; 0x13DCDBD8 from 931b88b's smk_harm.h) */
+        uint32_t h = 2166136261u, rs = 12345;
+        int32_t o[VOC_MAXN];
+        reset();
+        memset(pool, 0, sizeof pool);
+        trk[0].p[P_SCALE] = 1, trk[0].p[P_TFLT] = 0, trk[0].p[P_DLY] = 0;
+        hm_sbp = 0;
+        for (i = 0; i < 44100u * 12u; i += VOC_MAXN) {
+            uint32_t blk = i / VOC_MAXN;
+            if (blk == 100) hm_note_on(64), hm_note_on(67);
+            if (blk == 3000) hm_fb = 100, hm_pitch = 20;
+            if (blk == 5000) hm_note_on(55), hm_note_off(64), hm_wd = 90;
+            if (blk == 7000) hm_int = 1, hm_send[2] = 80;
+            if (blk == 9000) hm.rep = 1;
+            if (blk == 11000) hm.rep = 0, hm_pitch = -50, hm_note_on(48);
+            if (blk == 14000) hm_all_off(), hm_fb = 127;
+            for (k = 0; k < VOC_MAXN; k++) {
+                double t = (i + k) / 44100.0;
+                rs = rs * 1664525u + 1013904223u;
+                uin_dst[UD_HARM][k] = (int16_t)(9000 * sin(2 * M_PI * 220 * t * (1 + 0.1 * sin(t))) + ((int32_t)(rs >> 20) - 2048));
+                hm_sb[0][hm_sbp][k] = (int32_t)(3000 * sin(2 * M_PI * 330 * t));
+            }
+            hm_sbp ^= 1u;
+            hm_render(&trk[0], o, VOC_MAXN);
+            for (k = 0; k < VOC_MAXN; k++) {
+                uint32_t v = (uint32_t)o[k];
+                h = (h ^ (v & 255u)) * 16777619u, h = (h ^ ((v >> 8) & 255u)) * 16777619u;
+                h = (h ^ ((v >> 16) & 255u)) * 16777619u, h = (h ^ (v >> 24)) * 16777619u;
+            }
+        }
+        memset(hm_sb, 0, sizeof hm_sb);
+        snprintf(b, sizeof b, "golden: the page's defaults, 12 s: 0x%08X (1a: 0x13DCDBD8)", h);
+        check(b, h == 0x13DCDBD8u);
+    }
+    {   /* MICRO */
+        double f;
+        int ok = 1;
+        int32_t s;
+        for (s = -384; s <= 192; s += 16)
+            ok &= hm_dincf(s, 0) == hm_dinc(s) && (s + 16 > 192 || hm_dincf(s, 100) == hm_dinc(s + 16));
+        check("MICRO: 0 cents and whole steps: hm_dinc's exactly", ok);
+        reset();
+        hs.mic[0] = 50;
+        sine(FT, 8000.0, 2 * N1);
+        hm_note_on(64);
+        run(in1, out1, 2 * N1);
+        f = peak_freq(2 * N1, 40.0, 900.0);
+        snprintf(b, sizeof b, "MICRO +50 on E4: %.1f Hz (want %.1f)", f, FT * 1.2599 * pow(2.0, 50.0 / 1200.0));
+        check(b, fabs(f / (FT * 1.2599 * pow(2.0, 50.0 / 1200.0)) - 1.0) < 0.004);
+    }
+    {   /* SHARP / FLAT */
+        uint32_t r1, r2, r3;
+        int on;
+        reset();
+        hs.fn[0] = HF_SHARP, hs.mic[0] = 100;
+        hm_ratios(&trk[0]);
+        on = hm.on[0] && !hm.on[1];
+        r1 = hm_ratio1000(0);
+        hs.fn[0] = HF_FLAT;
+        hm_ratios(&trk[0]);
+        r2 = hm_ratio1000(0);
+        hs.fn[0] = HF_SHARP, hs.mic[0] = 12;
+        hm_ratios(&trk[0]);
+        r3 = hm_ratio1000(0);
+        snprintf(b, sizeof b, "SHARP / FLAT: no key, sounding; MICRO 100: %u / %u; MICRO 12: %u", r1, r2, r3);
+        check(b, on && r1 >= 1068 && r1 <= 1072 && r2 >= 928 && r2 <= 932 && r3 >= 1001 && r3 <= 1002);
+    }
+    {   /* LEVEL and the mutes */
+        double e1 = 0, e2 = 0;
+        int same = 1;
+        reset();
+        sine(FT, 8000.0, N1);
+        hm_note_on(67);
+        run(in1, out1, N1);
+        for (i = N1 / 2; i < N1; i++)
+            e1 += pow(out1[i] / (double)VOICE_FS * 16384.0 - in1[i] / 2.0, 2);
+        reset();
+        hs.lv[0] = 50;
+        hm_note_on(67);
+        run(in1, out1, N1);
+        for (i = N1 / 2; i < N1; i++)
+            e2 += pow(out1[i] / (double)VOICE_FS * 16384.0 - in1[i] / 2.0, 2);
+        snprintf(b, sizeof b, "LEVEL 50 %%: the voice %.2f dB (want -6.02)", 10 * log10(e2 / e1));
+        check(b, fabs(10 * log10(e2 / e1) + 6.02) < 0.2);
+        reset();
+        hs.mute = 2;                                   /* (V1 off) */
+        hm_note_on(67);
+        run(in1, out1, N1);
+        for (i = 0; i < N1; i++)
+            same &= out1[i] == VOC_VS(in1[i] >> 1) || out1[i] == VOC_VS((in1[i] + 1) >> 1) || out1[i] == VOC_VS(in1[i] / 2);
+        check("V1 OFF: the dry alone, exactly", same);
+    }
+    {   /* DRY, IN / OUT, INPUT LEVEL */
+        int z = 1, by = 1;
+        double e1 = 0, e2 = 0;
+        reset();
+        hs.dry = 0;
+        sine(330.0, 12000.0, N1);
+        run(in1, out1, N1);
+        for (i = 0; i < N1; i++)
+            z &= out1[i] == 0;
+        check("DRY LEVEL 0, no note: silence, exactly", z);
+        reset();
+        hs.byp = 1;
+        hm_note_on(67);
+        run(in1, out1, N1);
+        for (i = 0; i < N1; i++)
+            by &= out1[i] == VOC_VS(in1[i]);
+        check("IN / OUT: OUT, a note held: the input straight through, exactly", by);
+        reset();
+        run(in1, out1, N1);
+        for (i = 0; i < N1; i++)
+            e1 += (double)out1[i] * out1[i];
+        reset();
+        hs.inl = HM_INL_0 - 6;
+        run(in1, out1, N1);
+        for (i = 0; i < N1; i++)
+            e2 += (double)out1[i] * out1[i];
+        snprintf(b, sizeof b, "INPUT LEVEL -6 dB: %.2f dB", 10 * log10(e2 / e1));
+        check(b, fabs(10 * log10(e2 / e1) + 6.0) < 0.1);
+    }
+    {   /* MANUAL, K+M */
+        double f;
+        int ok;
+        reset();
+        hs.ctl = HC_MAN, hm_pitch = 63;
+        sine(FT, 8000.0, 2 * N1);
+        run(in1, out1, 2 * N1);
+        f = peak_freq(2 * N1, 40.0, 900.0);
+        snprintf(b, sizeof b, "MANUAL, no key: V1 at the PITCH fader's top, %.1f Hz (want %.1f)", f, FT * 2.0);
+        check(b, fabs(f / (FT * 2.0) - 1.0) < 0.01);
+        reset();
+        hs.ctl = HC_MAN;
+        hm_note_on(64), hm_note_on(67), hm_note_on(72);
+        ok = hm.note[0] == 0 && hm.note[1] && hm.note[2] && (hm.note[1] == 72 || hm.note[2] == 72);
+        check("MANUAL alone: the keys take V2 and V3 only (V1 the fader's)", ok);
+        reset();
+        hs.ctl = 3u, hm_pitch = -32;                    /* (-12 semitones) */
+        hm_ratios(&trk[0]);
+        ok = hm.on[0] && hm_ratio1000(0) == 500u;
+        hm_note_on(64);
+        hm_ratios(&trk[0]);
+        snprintf(b, sizeof b, "K+M: no key, V1 at PITCH (0.500); E4 held, an octave down: %u (0.630)", hm_ratio1000(0));
+        check(b, ok && hm_ratio1000(0) >= 629u && hm_ratio1000(0) <= 631u);
+    }
+    {   /* the pads */
+        int32_t o[VOC_MAXN];
+        int ok;
+        reset();
+        hm_pad = 1u << 4;                               /* (top 5: a 5th up) */
+        hm_render(&trk[0], o, VOC_MAXN);
+        ok = hm.note[0] == 67;
+        hm_pad = 0;
+        hm_render(&trk[0], o, VOC_MAXN);
+        check("pads: top 5 on = G4 (a 5th up), off = let go", ok && hm.note[0] == 0);
+    }
+    {   /* the EQ's curves */
+        static const struct { int lo; uint32_t step; double f, want; } E[] = {
+            {1, HM_LOW_0 + 18, 100.0, 17.9}, {1, HM_LOW_0 - 12, 100.0, -11.9}, {0, HM_HIGH_0 - 12, 10000.0, -12.0},
+            {0, HM_HIGH_0 + 4, 8000.0, 4.0}, {1, HM_LOW_0, 100.0, 0.0}};
+        for (k = 0; k < sizeof E / sizeof E[0]; k++) {
+            int32_t z[4] = {0, 0, 0, 0};
+            double ei = 0, eo = 0;
+            const int32_t *c = E[k].lo ? HM_LOW[E[k].step] : HM_HIGH[E[k].step];
+            for (i = 0; i < 22050u; i++) {
+                int32_t x = (int32_t)(1000.0 * sin(2 * M_PI * E[k].f * i / 22050.0)), y = hm_bq(z, c, x);
+                if (i >= 11025u)
+                    ei += (double)x * x, eo += (double)y * y;
+            }
+            snprintf(b, sizeof b, "EQ %s step %u at %.0f Hz: %+.1f dB (want %+.1f)", E[k].lo ? "LOW" : "HIGH", E[k].step,
+                     E[k].f, 10 * log10(eo / ei), E[k].want);
+            check(b, fabs(10 * log10(eo / ei) - E[k].want) < 0.6);
+        }
+    }
+    {   /* SAFE with the EQ at its loudest; H949 */
+        static int32_t o[31 * 44100];
+        static int16_t x[31 * 44100];
+        uint32_t len = 31 * N1, s = 12345u, t;
+        for (i = 0; i < len; i++) {
+            s = s * 1664525u + 1013904223u;
+            x[i] = i < N1 / 2 ? (int16_t)((int32_t)(s >> 16) - 32768) / 2 : 0;
+        }
+        for (t = 0; t < 3u; t++) {
+            double e0 = 0, e1 = 0;
+            int32_t mx = 0;
+            reset();
+            hm_fb = 127;
+            if (t == 0u)
+                hs.low = HM_LOW_N - 1u;
+            else if (t == 1u)
+                hs.high = HM_HIGH_N - 1u;
+            else
+                hs.fbl = 1;
+            hm_note_on(60), hm_note_on(67), hm_note_on(72);
+            run(x, o, len);
+            for (i = 0; i < N1; i++) {
+                e0 += (double)o[i] * o[i];
+                e1 += (double)o[len - N1 + i] * o[len - N1 + i];
+            }
+            for (i = 0; i < len; i++)
+                mx = abs(o[i]) > mx ? abs(o[i]) : mx;
+            if (t < 2u) {
+                snprintf(b, sizeof b, "SAFE, FEEDBACK 127, %s at its top: the last second %.1f dB under the first",
+                         t ? "HIGH +4" : "LOW +18", 10.0 * log10((e0 + 1) / (e1 + 1)));
+                check(b, e1 * 1e6 < e0 || e1 == 0.0);
+            } else {
+                snprintf(b, sizeof b, "H949, FEEDBACK 127: 30 s after the input, %.1f dB against the first second; peak %.2f FS",
+                         10.0 * log10((e1 + 1) / (e0 + 1)), mx / (double)VOC_VS(32767));
+                check(b, e1 * 100.0 > e0 && mx <= VOC_VS(49152));
+            }
+        }
     }
     printf(fails ? "smk_harm_test: %d FAILED\n" : "smk_harm_test: all passed\n", fails);
     return fails != 0;

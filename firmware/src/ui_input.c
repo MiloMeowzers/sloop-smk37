@@ -325,8 +325,9 @@ UI_SMALL static void ui_leds(void)
                                                     * a while (one bank screen at a time), or while it holds the FX
                                                     * layer open */
 #ifdef SMK_HARM
-    if (hm_on && TSEL == &trk[0])
-        fm1_led[panel.btn[B_LFO]] = hm_rep_shown();   /* NOTE REPEAT: REPEAT held (steady) or latched (flashing) */
+    if (hm_on && (TSEL == &trk[0] || (VP_SHOWN() && vis_pg)))
+        fm1_led[panel.btn[B_LFO]] = hm_rep_shown();   /* NOTE REPEAT: REPEAT held (steady) or latched (flashing); on
+                                                     * the HARMONY page whatever track is selected */
 #endif
     fm1_led[SMK_BTN_KNOB_BANK] = pick_pin || (int32_t)(fm1_ms - pick_k4_until) < 0;   /* KNOB BANK: picker pinned, PRESETS turning */
     smk_pad_pick = (uint16_t)(pick_shown() || VP_SHOWN() ? 0xFFFFu : 0u);   /* (these pads: no notes) */
@@ -1651,7 +1652,8 @@ UI_SMALL static void ui_input(void)
             break;
         case B_LFO:
 #ifdef SMK_HARM
-            if (hm_on && TSEL == &trk[0]) {             /* HARMONY, T1 selected: NOTE REPEAT is REPEAT (the memory
+            if (hm_on && (TSEL == &trk[0] || (VP_SHOWN() && vis_pg))) {   /* HARMONY, T1 selected or its page up:
+                                                         * NOTE REPEAT is REPEAT (the memory
                                                          * plays round, nothing written: smk_harm.h); a tap latches,
                                                          * held longer it springs back when let go */
                 hm.rep = (uint8_t)!hm.rep;
