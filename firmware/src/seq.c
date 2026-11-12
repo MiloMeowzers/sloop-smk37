@@ -184,10 +184,21 @@ static void lk_push(uint32_t layer, uint32_t k, uint32_t down)
 
 /* ------------------------------------------------------------- keys --- */
 /* the keys of track t play through its scale (kb_pitch): not the drum track, not the GM kit, not SLICE (their own maps) */
+/* (2026-11-12) HARMONY's T1 (smk_harm.h): its keys are the intervals, plain from C4: no SCALE / QNT / ROOT / TRN
+ * mapping, no CHORD (a synth preset's settings, inherited, made silent black keys, uneven steps and chords of voices) */
+#ifdef SMK_HARM
+#define TRK_CHORD(t) (HM_T(t) ? 0 : (t)->p[P_CHORD])
+#else
+#define TRK_CHORD(t) ((t)->p[P_CHORD])
+#endif
 static int kb_scaled(const track_t *t)
 {
     if (is_drum(t))
         return 0;
+#ifdef SMK_HARM
+    if (HM_T(t))
+        return 0;
+#endif
     if (ENGINES[t->eng_req % NENGINES] == &ENG_SAMPLE && drum_set() >= 0 &&   /* (the engine it switches to) */
         (uint32_t)t->p[P_E0] % SMP_NSETS == (uint32_t)drum_set())
         return 0;
@@ -249,6 +260,10 @@ static uint32_t kb_map(const track_t *t, uint32_t k)
 #if FELUCCA_SLICE
     if (ENGINES[t->eng_req % NENGINES] == &ENG_SLICE)   /* SLICE: lowest key = slice 0 (C4 + ROOT), no scale */
         return (uint32_t)clamp(SLC_BASE + t->p[P_ROOT] + 12 * song.octave + (int32_t)k, 0, 127);
+#endif
+#ifdef SMK_HARM
+    if (HM_T(t))                                         /* HARMONY: chromatic, the octave buttons only (kb_pitch's base) */
+        return (uint32_t)clamp(53 + 12 * song.octave + (int32_t)k, 0, 127);
 #endif
     return kb_pitch(t, k, song.octave);
 }
@@ -2159,7 +2174,7 @@ static void chord_revoice(uint32_t sel)
     for (k = 0; k < 27u; k++) {
         uint8_t nw[4];
         uint32_t nn;
-        if (kb_kind[k] != KS_NOTE || kb_trk[k] != sel || !t->p[P_CHORD] || is_drum(t))
+        if (kb_kind[k] != KS_NOTE || kb_trk[k] != sel || !TRK_CHORD(t) || is_drum(t))
             continue;
         nn = chord_play_notes(t, kb_root[k], mods, nw);
         for (i = 0; i < kb_n[k]; i++) {             /* the notes it loses */
@@ -2337,8 +2352,8 @@ static void key_down(uint32_t k)
             uint32_t n = kb_map(t, k);
             if (n == KB_SILENT)
                 return;
-            kb_n[k] = (uint8_t)(t->p[P_CHORD] ? chord_notes(t, n, kb_nt[k]) : 1u);
-            if (!t->p[P_CHORD])
+            kb_n[k] = (uint8_t)(TRK_CHORD(t) ? chord_notes(t, n, kb_nt[k]) : 1u);
+            if (!TRK_CHORD(t))
                 kb_nt[k][0] = (uint8_t)n;
             for (i = 0; i < kb_n[k]; i++)
                 er_notes[(kb_nt[k][i] >> 5) & 3u] |= 1u << (kb_nt[k][i] & 31u);
@@ -2372,7 +2387,7 @@ static void key_down(uint32_t k)
     {
         uint32_t n = kb_map(t, k);
         if (n == KB_SILENT) {
-            if (t->p[P_CHORD] && layer == LY_PLAY && chord_mod_of_key(k)) {   /* CHORD+: a modifier key */
+            if (TRK_CHORD(t) && layer == LY_PLAY && chord_mod_of_key(k)) {   /* CHORD+: a modifier key */
                 kb_kind[k] = KS_MOD;
                 chord_revoice(sel);
             }
@@ -2388,7 +2403,7 @@ static void key_down(uint32_t k)
         kb_kind[k] = KS_NOTE;
         kb_root[k] = (uint8_t)n;
         kb_oct[k] = (int8_t)song.octave;
-        if (t->p[P_CHORD]) {
+        if (TRK_CHORD(t)) {
             kb_n[k] = (uint8_t)chord_play_notes(t, n, chord_mods(), kb_nt[k]);   /* (the modifiers held, voiced) */
         } else {
             kb_nt[k][0] = (uint8_t)n;
