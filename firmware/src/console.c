@@ -510,6 +510,17 @@ static void hp_console(const char *p)
         con_putc(' ');
         con_dec(hm.note[v]);
     }
+    con_puts(" ratio x1000");                         /* (each voice's, as it plays: (1 - dinc / 32768)) */
+    for (v = 0; v < 3u; v++) {
+        con_putc(' ');
+        con_dec(1000 - hm.dinc[v] * 1000 / 32768);
+    }
+    con_puts(" pitch ");
+    con_dec(hm_pitch);
+    con_puts(" fb ");
+    con_dec(hm_fb);
+    con_puts(" wd ");
+    con_dec(hm_wd);
     con_puts(" out ");
     con_dec(hm.pk_out);
     con_puts(hm.rep ? " repeat" : "");
