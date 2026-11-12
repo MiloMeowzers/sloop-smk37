@@ -37,6 +37,8 @@ static struct {
                                                      * frames; each meter's red hold */
     uint8_t mk[6], mkt[6];                          /* the meters (HM_UP_*): their steps, held, and the hold's frames */
     uint32_t hit[16];                               /* each pad's last hit (ms): HP_DEBOUNCE_MS */
+    uint32_t s2_until;                              /* a Stage 2 pad pressed: it flashes amber until then (ms) */
+    uint8_t s2_p;                                   /* .. which */
     uint16_t pend;                                  /* the pads down whose release counts (momentary, REPEAT) */
     uint32_t t0[16];
     char msg[24];
@@ -163,6 +165,15 @@ static void hp_turn(uint32_t k, int32_t s)
 }
 
 /* ---- the pads (reading order: 0 .. 7 the top row) ---- */
+/* a Stage 2 pad pressed: the header says so, the pad flashes amber (it does nothing yet; the owner, 2026-11-13: "a pad
+ * that doesn't seem to do anything is confusing") */
+static void hp_s2(uint32_t p, const char *name)
+{
+    str_cpy(hp.msg, name, sizeof hp.msg);              /* ("EXTEND: STAGE 2") */
+    str_cpy(hp.msg + str_len(hp.msg), ": STAGE 2", sizeof hp.msg - str_len(hp.msg));
+    hp.msg_t = 45;
+    hp.s2_p = (uint8_t)p, hp.s2_until = fm1_ms + 300u;
+}
 static void hp_rep_press(uint32_t p)                /* REPEAT, as NOTE REPEAT: a tap latches, held it springs back */
 {
     hm.rep = (uint8_t)!hm.rep;
@@ -208,9 +219,9 @@ static void hp_press(uint32_t p)
             hp_say("FUNCTION", hs.fsel ? "OUT" : "IN");
         } else if (p <= 4u) {
             if (hs.fsel) {
-                hp_say(FOUT[p - 1u], "STAGE 2");
+                hp_s2(p, FOUT[p - 1u]);
             } else if (p == 2u) {
-                hp_say("EXTEND", "STAGE 2");
+                hp_s2(p, "EXTEND");
             } else {
                 uint32_t m = hp_vmask(), f = p == 1u ? HF_NORM : p == 3u ? HF_SHARP : HF_FLAT;
                 for (v = 0; v < 3u; v++)
@@ -233,7 +244,7 @@ static void hp_press(uint32_t p)
             hp_ctlname(a);
             hp_say("CONTROL", a);
         } else if (p < 14u) {
-            hp_say(MS[p - 8u], "STAGE 2");
+            hp_s2(p, MS[p - 8u]);
         } else {
             hs.byp ^= 1u;
             hp_say("IN/OUT", hs.byp ? "OUT" : "IN");
@@ -251,7 +262,7 @@ static void hp_press(uint32_t p)
         hs.fbl ^= 1u;
         hp_say("FB LIMIT", hs.fbl ? "H949" : "SAFE");
     } else if (p == 4u || p == 5u || p == 6u || p < 14u) {
-        hp_say(p == 4u ? "DELAY ONLY" : p == 5u ? "SPLIT" : p == 6u ? "ALGORITHM" : "DELAY ONLY", "STAGE 2");
+        hp_s2(p, p == 4u ? "DLY ONLY" : p == 5u ? "SPLIT" : p == 6u ? "ALGORITHM" : "DLY ONLY");
     }
 }
 static void hp_release(uint32_t p, uint32_t held)
@@ -412,6 +423,8 @@ static void hp_leds(void)
         padled_set(15, 220, 120, 255);                  /* REPEAT (G2, G3): violet, flashing while latched */
     else
         padled_set(15, 30, 16, 40);
+    if ((int32_t)(hp.s2_until - fm1_ms) > 0)
+        padled_set(hp.s2_p, 255, 140, 0);               /* (a Stage 2 pad just pressed: amber) */
 }
 
 /* ---- the view ---- */

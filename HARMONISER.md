@@ -445,7 +445,8 @@ menu, another page.
 - **G3:** DRY white and V1-V3 in their colours by level, **dark red when off**; FB LIMIT green (SAFE) or amber (H949)
   by the loop's level; REPEAT as on G2.
 - **Any metering pad** turns **orange** from -6 dBFS and **red** from -1 dBFS (held about a second). A pad that is on
-  always shows its colour, even in silence. The MAIN and DELAY ONLY switches (Stage 2) stay nearly dark.
+  always shows its colour, even in silence. The Stage 2 switches (EXTEND, the OUT functions, MAIN, DELAY ONLY, DLY,
+  SPLIT, ALGORITHM) stay nearly dark; pressed, one flashes amber and the header says so (`EXTEND: STAGE 2`).
 
 **The screen:**
 - **The PITCH RATIO readout**, the H949's four red digits: the ratio of the **readout voice**: the voice whose knob you
