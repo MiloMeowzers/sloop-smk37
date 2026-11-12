@@ -427,6 +427,9 @@ them; each pad labelled with its job.*
 page comes next (TRACKS → VOCODER → HARMONY → PUNCH IN → TRACKS). **<** and **>** (or SELECT) step its three groups.
 The keys, PLAY, REC and OCT work as always; **NOTE REPEAT** is REPEAT here whatever track is selected.
 
+**On every group:** **K7 is PITCH** and **K8 is WET / DRY** (the same values as bank E's F1 and F4: a knob turned leaves
+that fader waiting to pick up). K7 stops at 0 (unison) on the way through.
+
 **It stays up** (latched, no time-out) until you tap **PATCH** (on to PUNCH IN) or open something else: a layer, the
 menu, another page.
 - **The faders keep the page on screen.** Move one and the header says what it did, as the FADER BANK screen would:
@@ -457,8 +460,9 @@ menu, another page.
   function lit.
 - **The voices:** each one's interval (`+M3`, `-P5`, `U`; **SHP** / **FLT**; **MAN**), its MICRO in amber when not 0,
   its LEVEL bar and its meter; **OFF** in red when muted.
-- **The status line:** the input lights (five, as the H949's: -40, -18, -12, -6, -1 dBFS), FB LIMIT (SAFE / H949),
-  and **OUT** in red while IN / OUT bypasses.
+- **The status line:** the input lights (five, as the H949's: -40, -18, -12, -6, -1 dBFS), **K7 PITCH** in semitones
+  (the same knob on every group, so always here), and FB LIMIT (SAFE / H949) at the right. **OUT** in red beside the
+  control method (top left) while IN / OUT bypasses.
 - **The knobs:** the group's knobs, each as a coloured tag (K1 / K5 blue, K2 / K6 green, K3 / K7 yellow, K4 / K8
   orange, as the menu's) with its name and value beside it: G1 `K1-3 MICRO`, `K4-6 LEVEL`, `K8 W/D 50 %`; G2 `K1 IN 0`,
   `K3 FB 30 %`, `K5 LO 0`, `K6 HI 0`, `K8 W/D`; G3 `K1 DRY`, `K2-4 LEVEL`, `K8 W/D`. MICRO and LEVEL's values are in
@@ -471,7 +475,8 @@ menu, another page.
   back (it stays latched). A second hit within 0.15 s of the first is the same strike (the drum pads can register a
   firm hit twice) and is ignored. A pad plays as a T1 key (60 plus its interval), sharing the three voices with the keys. Lit in its
   voice's colour by level, white while held.
-- **K1-K3 MICRO** V1-V3: ±100 cents, a stop at 0. **K4-K6 LEVEL** V1-V3 (0 dB by default). **K8 WET / DRY**.
+- **K1-K3 MICRO** V1-V3: ±100 cents, a stop at 0. **K4-K6 LEVEL** V1-V3 (0 dB by default). **K7 PITCH**. **K8 WET /
+  DRY**.
 
 **G2 PANEL** (the H949's switch row)
 - **Top:** FUNCTION SELECT (IN red / OUT green), F1-F4 (IN: **NORM**, EXTEND (Stage 2), **SHARP**, **FLAT**; OUT:
@@ -480,12 +485,13 @@ menu, another page.
 - **Bottom:** MAIN 6.25 .. 200 ms (Stage 2), **IN / OUT** (OUT: your input straight through, the memory still
   written), **REPEAT** (tap latches, hold is momentary, as NOTE REPEAT).
 - **K1 INPUT LEVEL** (OFF, -40 .. +12 dB), **K3 FEEDBACK**, **K5 LOW EQ**, **K6 HIGH EQ** (the feedback's EQ, shown on
-  the screen as `EQ LO.. HI..`), **K8 WET / DRY**. K2, K4, K7: nothing yet (Stage 2).
+  the screen as `EQ LO.. HI..`), **K7 PITCH**, **K8 WET / DRY**. K2, K4: nothing yet (Stage 2).
 
 **G3 OUTPUTS**
 - **Top:** **DRY**, **V1**, **V2**, **V3** on / off (each pad its meter), DLY, SPLIT, ALGORITHM (Stage 2), **FB
   LIMIT** (SAFE / H949). **Bottom:** DELAY ONLY (Stage 2), **REPEAT**.
-- **K1 DRY LEVEL**, **K2-K4 LEVEL V1-V3** (the same as G1's K4-K6), **K8 WET / DRY**. K5-K7: nothing yet (Stage 2).
+- **K1 DRY LEVEL**, **K2-K4 LEVEL V1-V3** (the same as G1's K4-K6), **K7 PITCH**, **K8 WET / DRY**. K5, K6: nothing
+  yet (Stage 2).
 
 **The control method** (G2 MANUAL, KEYS & MIDI):
 
@@ -519,7 +525,7 @@ record the intervals from the keys.
 
 | What you hear or see | Why, and what to do |
 |---|---|
-| No harmony at all | HARMONY ON? IN L / IN R on HARMONY (the side your voice is on)? A key held on T1 (T1 selected)? VOICE IN up? WET / DRY not at 0 %? On the HARMONY page: V1-V3 not OFF (G3), their LEVEL up (G1 K4-K6), IN / OUT on IN (G2; **OUT** in red on the screen means bypassed), INPUT LEVEL not OFF (G2 K1)? |
+| No harmony at all | HARMONY ON? IN L / IN R on HARMONY (the side your voice is on)? A key held on T1 (T1 selected)? VOICE IN up? WET / DRY not at 0 %? On the HARMONY page: V1-V3 not OFF (G3), their LEVEL up (G1 K4-K6), IN / OUT on IN (G2; **OUT** in red at the top left of the screen means bypassed), INPUT LEVEL not OFF (G2 K1)? |
 | Your voice, but no harmony | No key held: with no key the harmoniser plays your voice dry. |
 | Neighbouring keys uneven | INTERVALS is SCALE: the keys follow the scale over the sung note. Set FIXED for plain intervals. |
 | The harmony climbs or falls away | FEEDBACK is up (bank E, F2). |

@@ -51,6 +51,7 @@ typedef struct {
         clip, h949_red;
     uint8_t on[3], fnv[3], lv[3], mute[3], mk[3], red[3];
     int8_t iv[3], mic[3];
+    int8_t pit;                                     /* PITCH (K7 on every group, = bank E's F1) */
 } hp_view_t;
 
 static void hp_say(const char *a, const char *b)    /* the header, a second and a half */
@@ -71,7 +72,7 @@ static void hp_db(char *b, uint32_t pct)            /* a linear 0 .. 100 % level
     }
     t = (VP_DB[pct > 100u ? 100u : pct] - 120) / 2;  /* (VP_DB: 400 log10(p / 50); 20 log10(p / 100) in tenths) */
     b[0] = t < 0 ? '-' : '+';
-    fmt_fix(b + 1, t < 0 ? -t : t, 1);
+    fmt_fixz(b + 1, (uint32_t)(t < 0 ? -t : t), 1);
     str_cpy(b + str_len(b), " DB", 4);
 }
 static void hp_sdb(char *b, int32_t d)              /* signed whole dB, "+3 DB" */
@@ -84,6 +85,12 @@ static void hp_pct(char *b, uint32_t v127)          /* 0 .. 127 as %, 64: 50 %, 
 {
     fmt_int(b, (int32_t)((v127 * 100u + 63u) / 127u));
     str_cpy(b + str_len(b), " %", 3);
+}
+static void hp_pitch(char *b, int32_t f)            /* PITCH -64 .. 63 in semitones, "+3.5" (smk_harm.h hm_ratios) */
+{
+    int32_t t10 = f < 0 ? -((-f * 240) / 64) : f * 120 / 63;
+    b[0] = t10 > 0 ? '+' : t10 < 0 ? '-' : ' ';
+    fmt_fixz(b + 1, (uint32_t)(t10 < 0 ? -t10 : t10), 1);
 }
 static void hp_unpick(uint32_t col)                 /* a knob set FADER BANK E's value: its fader waits to pick up */
 {
@@ -104,6 +111,19 @@ static void hp_turn(uint32_t k, int32_t s)
     uint32_t g = hp.grp % 3u;
     int32_t f = s > 1 || s < -1 ? 3 : 1, n;
     char a[12], b[16];
+    if (k == 6u) {                                      /* K7, every group: PITCH (= bank E's F1; the owner, 2026-11-13:
+                                                         * "allocate 1 knob that controls pitch"), a stop at 0 */
+        int32_t o = hm_pitch;
+        n = clamp(o + s * f, -64, 63);
+        if ((o < 0 && n > 0) || (o > 0 && n < 0))
+            n = 0;
+        hm_pitch = (int16_t)n;
+        hp_unpick(0u);
+        hp_pitch(b, n);
+        str_cpy(b + str_len(b), " ST", 4);
+        hp_say("PITCH", b[0] == ' ' ? b + 1 : b);
+        return;
+    }
     if (k == 7u) {                                      /* K8, every group: WET / DRY (= bank E's F4) */
         hm_wd = (int16_t)clamp(hm_wd + s * f, 0, 127);
         hp_unpick(3u);
@@ -121,7 +141,7 @@ static void hp_turn(uint32_t k, int32_t s)
         hp_vname(a, k);
         str_cpy(a + 2, " MICRO", 8);
         if (hs.fn[k] == HF_SHARP || hs.fn[k] == HF_FLAT) {
-            fmt_fix(b, (int32_t)hm_ratio1000(k), 3);   /* (SHARP / FLAT: the ratio it makes) */
+            fmt_fixz(b, hm_ratio1000(k), 3);           /* (SHARP / FLAT: the ratio it makes; 0.930) */
         } else {
             b[0] = n < 0 ? '-' : '+';
             fmt_int(b + 1, n < 0 ? -n : n);
@@ -455,6 +475,7 @@ static void hp_mkview(hp_view_t *w)
     w->rep = (uint8_t)hm_rep_shown();
     w->fn = hs.fn[w->rv];
     w->fsel = hs.fsel, w->vsel = hs.vsel, w->byp = hs.byp, w->fbl = hs.fbl, w->low = hs.low, w->high = hs.high;
+    w->pit = (int8_t)clamp(hm_pitch, -64, 63);
     w->inl = hs.inl, w->fb = (uint8_t)hm_fb, w->wd = (uint8_t)hm_wd, w->dry = hs.dry, w->dmute = hs.mute & 1u;
     w->lamps = (uint8_t)(pk >= 7u ? 5u : pk >= 6u ? 4u : pk >= 5u ? 3u : pk >= 4u ? 2u : pk >= 2u ? 1u : 0u);
     w->clip = hp.red_t[HM_UP_IN] != 0;
@@ -534,6 +555,8 @@ static void hp_paint(const hp_view_t *w)
     cv_text(4, 34, &FONT_L, b, HP_VCOL(w->rv));
     str_cpy(b, w->ctl == 3u ? "K+M" : w->ctl == HC_MAN ? "MAN" : "KEYS", 5);
     cv_text(4, 66, &FONT_S, b, W);
+    if (w->byp)
+        cv_text(42, 66, &FONT_S, "OUT", RGB(255, 40, 40));   /* (IN / OUT on OUT: bypassed) */
     if (w->scale && w->note)
         note_name(b, w->note);
     else
@@ -588,10 +611,16 @@ static void hp_paint(const hp_view_t *w)
         uint16_t c = i == 0u ? RGB(255, 210, 0) : i == 4u ? RGB(255, 30, 30) : RGB(40, 230, 60);
         cv_rect(24 + (int32_t)i * 12, 181, 9, 10, (i < w->lamps || (i == 4u && w->clip)) ? c : TE_G1);
     }
-    cv_text(96, 178, &FONT_S, "LIMIT", TE_G3);
-    cv_text(146, 178, &FONT_S, w->fbl ? "H949" : "SAFE", w->fbl ? (w->h949_red ? RGB(255, 40, 40) : RGB(255, 150, 0)) : TE_G4);
-    if (w->byp)
-        cv_text(204, 178, &FONT_S, "OUT", RGB(255, 40, 40));
+    {   /* K7 PITCH: the same knob on every group, so the same place (with the fader's semitones) */
+        int32_t x = 90, kw = text_w(&FONT_S, "K7") + 4;
+        cv_rect(x, 178, kw, 17, TE_COL[2]);
+        cv_text(x + 2, 178, &FONT_S, "K7", C_BLACK);
+        x = cv_text(x + kw + 4, 178, &FONT_S, "PITCH", TE_G4) + 4;
+        hp_pitch(b, w->pit);
+        cv_text(x, 178, &FONT_S, b[0] == ' ' ? b + 1 : b, C_WHITE);
+    }
+    cv_text(236 - text_w(&FONT_S, w->fbl ? "H949" : "SAFE"), 178, &FONT_S, w->fbl ? "H949" : "SAFE",
+            w->fbl ? (w->h949_red ? RGB(255, 40, 40) : RGB(255, 150, 0)) : TE_G4);   /* FB LIMIT */
     /* the group's knobs, each with its value beside it (the owner, 2026-11-13: the knob and its number together, the K
      * tags coloured, nothing twice): left to right, two rows. MICRO and LEVEL's values are the voices' strips above */
     {

@@ -101,6 +101,21 @@ static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
     return &TP[TID[b & 3u]];
 }
 
+/* v (>= 0) with dec decimals and its leading zero: "0.5", "0.930" (libc.c fmt_fix writes ".5": its callers on the
+ * FM-1 never pass less than 1, and it stays as it is there) */
+static void fmt_fixz(char *b, uint32_t v, int dec)
+{
+    uint32_t p = 1;
+    int k;
+    for (k = 0; k < dec; k++)
+        p *= 10u;
+    if (v >= p) {
+        fmt_fix(b, (int32_t)v, dec);
+        return;
+    }
+    fmt_fix(b, (int32_t)(v + p), dec);                 /* ("1.5" for 0.5) */
+    b[0] = '0';
+}
 /* fader i of bank b: its label (10) and its value with the unit (20), as this screen shows them (the HARMONY page's
  * header too: ui_hpage.c hp_fader); its descriptor, *vp its value */
 static const param_desc_t *fb_text(uint32_t b, uint32_t i, char *lab, char *v2, int16_t **vp)
@@ -132,7 +147,7 @@ static const param_desc_t *fb_text(uint32_t b, uint32_t i, char *lab, char *v2, 
     if (b == 4u && i == 0u) {                          /* PITCH in semitones (smk_harm.h hm_ratios: -24 .. +12) */
         int32_t f = **vp, t10 = f < 0 ? f * 240 / 64 : f * 120 / 63;
         val[0] = t10 > 0 ? '+' : t10 < 0 ? '-' : ' ';
-        fmt_fix(val + 1, t10 < 0 ? -t10 : t10, 1);
+        fmt_fixz(val + 1, (uint32_t)(t10 < 0 ? -t10 : t10), 1);   /* ("0.0", not ".0") */
         unit = " ST";
     }
 #endif
