@@ -463,7 +463,8 @@ menu, another page.
 - **Pads:** the HK940's intervals. Top row up: unison, 2nd, 3rd (major), 4th, 5th, 6th (major), 7th (minor), octave.
   Bottom row down: 2nd, 3rd, 4th, 5th, 6th, 7th, octave, two octaves. **Tap** latches (tap again to let go), **hold**
   (over 0.6 s) is momentary. A latched pad whose voice a key or the sequence took over shows dim: tap it to bring it
-  back (it stays latched). A pad plays as a T1 key (60 plus its interval), sharing the three voices with the keys. Lit in its
+  back (it stays latched). A second hit within 0.15 s of the first is the same strike (the drum pads can register a
+  firm hit twice) and is ignored. A pad plays as a T1 key (60 plus its interval), sharing the three voices with the keys. Lit in its
   voice's colour by level, white while held.
 - **K1-K3 MICRO** V1-V3: ±100 cents, a stop at 0. **K4-K6 LEVEL** V1-V3 (0 dB by default). **K8 WET / DRY**.
 

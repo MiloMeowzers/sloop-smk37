@@ -20,6 +20,9 @@
 #error "ui_hpage.c: the harmoniser (smk_harm.h)"
 #endif
 #define HP_LONG_MS 400u                             /* REPEAT's pad held longer: momentary (as NOTE REPEAT) */
+#define HP_DEBOUNCE_MS 150u                         /* a second hit on the same pad within this: ignored (a drum pad's
+                                                     * firm strike can register twice; the second toggled the latch
+                                                     * back off, 2026-11-13) */
 #define HP_IV_LONG_MS 600u                          /* an interval pad held longer: momentary (a slow tap latched at
                                                      * 400 ms let go, 2026-11-13: as the vocoder page's pads, 600) */
 #define HP_PAD_ON 70u                               /* (a pad that is on: at least this bright, of 255) */
@@ -33,6 +36,7 @@ static struct {
     uint8_t grp, msg_t, rv, rv_t, red_t[6];         /* the group; the header's message frames; the knob's voice, its
                                                      * frames; each meter's red hold */
     uint8_t mk[6], mkt[6];                          /* the meters (HM_UP_*): their steps, held, and the hold's frames */
+    uint32_t hit[16];                               /* each pad's last hit (ms): HP_DEBOUNCE_MS */
     uint16_t pend;                                  /* the pads down whose release counts (momentary, REPEAT) */
     uint32_t t0[16];
     char msg[24];
@@ -172,6 +176,9 @@ static void hp_press(uint32_t p)
     static const char *const FOUT[4] = {"DELAY", "RANDOM", "FLANGE", "REVERSE"};
     static const char *const MS[6] = {"6.25 MS", "12.5 MS", "25 MS", "50 MS", "100 MS", "200 MS"};
     char a[8];
+    if (fm1_ms - hp.hit[p] < HP_DEBOUNCE_MS)
+        return;                                         /* (the same strike, registered twice) */
+    hp.hit[p] = fm1_ms;
     if (g == 0u) {                                      /* an interval: latched again = let go; else on, maybe held */
         uint32_t nt = (uint32_t)(60 + HM_PADIV[p]), held = 0;
         for (v = 0; v < 3u; v++)
