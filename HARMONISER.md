@@ -155,15 +155,56 @@ the screen is up steps to the next bank; PATCH or KNOB BANK close it.
 - **SLICER STUT records nothing** while HARMONY is on: its memory is the harmoniser's. **STEM FX** loops are about a fifth
   shorter (the harmoniser's memory comes off the shared pool first).
 
-### A8. LOAD: when it is too much
+### A8. LOAD: managing the load
 
-**LOAD** appears in the header (where USB shows) when voices are being dropped because the combination is too heavy;
-red while it keeps happening. Everything at once (the harmoniser, T2 a synth, T3 vocoding, the drums, high global
-effects) is the heaviest. Lighter routes to the same sound:
-- an **external synth** on the audio in as the vocoder's **CARRIER** (no saw to run);
-- a layer from outside on IN L / IN R instead of T2;
-- the drums off when the audio in already carries a drum machine;
-- the global effects lower.
+The SMK-37 has two cores and a fixed time to make each block of sound. When a combination needs more than that, SLOOP
+**sheds voices**: it fades one out (no click), first a note already in its release tail, then the oldest held note,
+never a chord's bass or a mono lead. Dense chords thin out from the top. **LOAD** appears in the header (where USB
+shows) when that happens: orange after a shed, **red** while it keeps happening (two or more a second), gone about 2 s
+after the last one. An orange flash in a busy fill is harmless: most of the time it is a release tail ending early.
+Red, or held notes audibly thinning, means it is time to lighten the patch.
+
+**What costs what** (measured on the unit, 2026-11-12, against the main case: T1 HARMONY, T2 a synth, T3 vocoding with
+two saws, the drums, STEM FX SLICER):
+
+| Part | Cost | What to do about it |
+|---|---|---|
+| The harmoniser's three voices | ~460 µs a block, about what T1's synth gave back | Nothing: they fit on their own. |
+| The sung-note tracker (INTERVALS **SCALE** only) | ~160 µs: the biggest single item you can switch off | **FIXED** if you don't need the song's key. In the test run: ~3.7 sheds/s down to ~1.5. |
+| The vocoder's internal carrier (CARRIER **1 SAW** / **2 SAWS** / AUTO) | synth voices, every block | **EXT L / EXT R**: an external synth on the audio in as the carrier. |
+| T2's synth | grows with the notes held: big pads and chords cost most | Fewer notes, a thinner patch, or the layer from outside on IN L / IN R. |
+| The drums | a steady part of the budget | Off when the audio in already carries a drum machine. |
+| The global effects | the same song shed more with them higher | Lower or off for the heaviest sections. |
+
+**Step by step:** work down the chart; stop as soon as LOAD stays quiet. The early steps cost the least sound.
+
+```mermaid
+flowchart TD
+    A([LOAD red, or notes cutting out]) --> B{INTERVALS on SCALE?}
+    B -- yes --> B1[Do you need the song's key?<br/>If not: INTERVALS FIXED<br/>the biggest single saving]
+    B -- no --> C
+    B1 --> C{T3 vocoding on its<br/>own saws?}
+    C -- yes --> C1[An external synth on the audio in:<br/>CARRIER EXT L / EXT R]
+    C -- no --> D
+    C1 --> D{T2 holding big chords<br/>or a thick pad?}
+    D -- yes --> D1[Fewer notes or a thinner patch,<br/>or bring the layer in on IN L / IN R]
+    D -- no --> E
+    D1 --> E{The drums on, and a drum<br/>machine on the audio in?}
+    E -- yes --> E1[The drums off]
+    E -- no --> F
+    E1 --> F{Global effects high?}
+    F -- yes --> F1[Lower them, or off<br/>for the busy section]
+    F -- no --> G
+    F1 --> G([Still red? Choose one:<br/>the harmoniser OR the vocoder for this part:<br/>HARMONY off, or T3 to audio])
+```
+
+**Plan for it before the gig:**
+- **Build the heaviest section first** and play it for a minute with an eye on the header: if it stays quiet, the rest
+  of the song will too.
+- **Split the work between the box and the outside world.** Whatever is already coming in on the audio in (a synth as
+  CARRIER, a drum machine, a pad on IN L / IN R) costs the SMK-37 almost nothing.
+- **Harmoniser or vocoder on the voice, not both** (A6): the voice through the harmoniser, the vocoder on another
+  source, is lighter and usually the better sound.
 
 ### A9. Saving, the editor and the console
 
@@ -184,7 +225,7 @@ effects) is the heaviest. Lighter routes to the same sound:
 | The harmony climbs or falls away | FEEDBACK is up (bank E, F2). |
 | A fader does nothing | It is waiting to pick up: follow the arrow on the FADER BANK screen to the end of its bar. |
 | SUNG NOTE reads `--` | INTERVALS is FIXED (the tracker is not running), or nothing clear is coming in yet. |
-| LOAD in the header | Too much at once: [A8](#a8-load-when-it-is-too-much). |
+| LOAD in the header | Too much at once: [A8](#a8-load-managing-the-load). |
 | A faint flutter on sustained low notes | The splice (ALGORITHM 1), most on big intervals down: the H949's colour. |
 
 ## Part B: coming next: the H949 page
