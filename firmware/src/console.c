@@ -526,6 +526,47 @@ static void hp_console(const char *p)
     con_puts(hm.rep ? " repeat" : "");
     con_putc(13);
     con_putc(10);
+    {   /* the HARMONY page's settings (2026-11-13: "nothing seems to give control": each one that can silence the
+         * harmony or take it from the keys, on one line) */
+        uint32_t v;
+        con_puts("  page: sel T");
+        con_dec((int32_t)song.sel + 1);
+        con_puts(" ctl ");
+        con_dec(hs.ctl);
+        con_puts(" vsel ");
+        con_dec(hs.vsel);
+        con_puts(" byp ");
+        con_dec(hs.byp);
+        con_puts(" mute ");
+        con_dec(hs.mute);
+        con_puts(" inl ");
+        con_dec(hs.inl);
+        con_puts(" dry ");
+        con_dec(hs.dry);
+        con_puts(" fbl ");
+        con_dec(hs.fbl);
+        con_puts(" eq ");
+        con_dec(hs.low);
+        con_puts("/");
+        con_dec(hs.high);
+        con_puts(" | fn/lv/mic/on");
+        for (v = 0; v < 3u; v++) {
+            con_puts(" ");
+            con_dec(hs.fn[v]);
+            con_puts("/");
+            con_dec(hs.lv[v]);
+            con_puts("/");
+            con_dec(hs.mic[v]);
+            con_puts("/");
+            con_dec(hm.on[v]);
+        }
+        con_puts(" | pads ");
+        con_dec(hm_pad);
+        con_puts(" voice-in ");
+        con_dec(hm_send[0]);
+        con_putc(13);
+        con_putc(10);
+    }
     hm.pk_in = hm.pk_out = 0;
 }
 #endif
