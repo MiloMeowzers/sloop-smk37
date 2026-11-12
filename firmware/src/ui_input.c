@@ -23,6 +23,7 @@ static uint8_t fb_pin;                             /* (2026-11-12, the owner: "a
  * ones (a bit each), for the screen (ui_fbank.c: a box each, an arrow while it waits) */
 #define FB_HOT 3
 static uint8_t smk_fpos[4], smk_flive;
+#define SMK_FB_STATE 1                             /* (ui_fbank.c: these are here; a test of it alone declares its own) */
 /* the banks: A .. D, and E (HARM) and F (SENDS) while HARMONY is on */
 #if SMK_UAC_IN_PROBE
 #define FB_N ((hm_on || hm_want) ? 6u : 4u)     /* (HARMONY: E HARM, F SENDS; as asked, before the block takes it) */

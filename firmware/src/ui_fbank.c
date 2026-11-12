@@ -4,7 +4,11 @@
  * FADER BANK opens it and then steps the bank, as < > and SELECT (K2, or K6) do; PATCH closes it, or it closes by itself. */
 static const char *const FB_NAME[6] = {"LEVEL", "FILTER", "REVERB", "DELAY", "HARM", "SENDS"};
 static const param_desc_t FB_NONE = {"--", F_PCT, 0, 0, 0, 0, 0};   /* (a fader with nothing to set: min == max) */
-/* (FB_N, the banks: ui_input.c; a test that includes this file alone: four) */
+/* (FB_N, the banks, and the pin and PICKUP state: ui_input.c; a test that includes this file alone: four banks, and
+ * the state here) */
+#ifndef SMK_FB_STATE
+static uint8_t fb_pin, smk_fpos[4], smk_flive;
+#endif
 #ifndef FB_N
 #define FB_N 4u
 #endif
