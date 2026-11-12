@@ -36,6 +36,7 @@ static int audio_on = 1;
 #define VOC_AUDIO_ON audio_on
 #define VOC_VS(x) ((int32_t)(((int64_t)(x) * VOICE_FS) >> 14))
 static uint8_t hm_on = 1;                          /* (smk_vocoder.h's) */
+static uint32_t fm1_ms;                            /* (the UI's clock: REPEAT's flash) */
 #define TIM_VOC_T(v) uint32_t v = 0
 #define TIM_ADD(a, b) ((void)(b))
 #define TIM_NOW() 0u
