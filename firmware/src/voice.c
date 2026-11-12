@@ -15,6 +15,9 @@ static uint32_t vage;                                   /* voice ages: one clock
 #include "smk_timing.h"       /* SMK-37, the vocoder build's console: where an audio half's time goes (TIM_*) */
 #if SMK_UAC_IN_PROBE
 #include "smk_vocoder.h"      /* SMK-37: the audio track (track 3) and the vocoder (the vocoder build) */
+#if BOARD_SMK37
+#include "smk_harm.h"         /* SMK-37, the vocoder build: the harmoniser (HOME > HARMONY: track 1) */
+#endif
 /* the external carrier (IN L / IN R = CARRIER, vocoder-ui-spec.md §7j): the channel in place of the saws, gated by
  * track 3's notes as the built-in carrier is (any held: open in ~1.5 ms; all let go: GATE DELAY, then closed in ~12 ms:
  * the synth comes back through the DAW late). Its notes go out as MIDI on track 3's channel (seq.c, GLO > MIDI) */
@@ -603,6 +606,12 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
 #endif
     vis_hit |= (uint8_t)(1u << ((uint32_t)(t - trk) & 3u));
     vis_note[(uint32_t)(t - trk) & 3u] = (uint8_t)note;
+#ifdef SMK_HARM
+    if (HM_T(t)) {                                      /* HARMONY: T1's notes are the voices' intervals (smk_harm.h) */
+        hm_note_on(note);
+        return;
+    }
+#endif
     if (is_drum(t)) {                                   /* the drum track: GM drums (drums.c) */
         if (note == 35u || note == 36u)
             vis_kick_hit = 1;
@@ -669,6 +678,10 @@ static void trk_note_off(track_t *t, uint32_t note)
     uint32_t i, k = 0, mode = TRK_VMODE(t);
     if (is_drum(t))
         return;                                         /* one-shots */
+#ifdef SMK_HARM
+    if (t == &trk[0])
+        hm_note_off(note);                              /* (HARMONY: the voice's interval let go; off: none held) */
+#endif
     strum_cancel(t, note, 0);
     for (i = 0; i < t->xp_n; i++)                       /* not sounding yet (engine switch): forget it */
         if (t->xp_note[i] != note) {
@@ -717,6 +730,10 @@ static void trk_all_off(track_t *t)
     t->nmono = 0;
     t->mono_note = 0;
     t->xp_n = 0;
+#ifdef SMK_HARM
+    if (t == &trk[0])
+        hm_all_off();
+#endif
 }
 
 /* note i of a chord of n (notes[]): at once, or strummed (rank: its place from the lowest, or the highest) */
@@ -944,6 +961,18 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     }
     vsaw = vst == 1u + VM_SAW;
     vext = vsaw && VOC_EXT_CARR;
+#ifdef SMK_HARM
+    if (t == &trk[0]) {
+        if (hm_on) {                                    /* HARMONY: the harmoniser is T1's engine (smk_harm.h) */
+            uint32_t r;
+            TIM_VOC_T(th);
+            r = hm_render(t, out, n);
+            TIM_ADD(TS_HARM, TIM_NOW() - th);
+            return r;
+        }
+        hm.run = 0;                                     /* (off: a fresh start when it comes back) */
+    }
+#endif
 #endif
     for (i = 0; i < n; i++)
         out[i] = 0;

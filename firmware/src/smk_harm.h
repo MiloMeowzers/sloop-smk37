@@ -1,119 +1,163 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* SMK-37, the vocoder build: the harmoniser's MEASUREMENT PROBE (smk37-devtools harmoniser-spec.md §7g; HARMONISER.md).
- * Not the harmoniser: its DSP at full size, silent, to time it on the unit (console "timing": the "harm" line, inside
- * pre_in) and to check the pitch tracker on real input (console "hprobe"). Off at power-on. "hprobe on" runs it on the
- * USB voice (AUDIO IN on) in the SLICER STUT memory (smk_fxpool's start: STUT records nothing while it runs; refused
- * while STEM FX lends that memory out). Each output sample (44.1 kHz):
- * - the memory (HP_LEN samples at 22.05 kHz, a pair's mean, as smk_tpunch.h PUNCH) written with the input + feedback;
+/* SMK-37, the vocoder build: the HARMONISER, Stage 1a (smk37-devtools harmoniser-spec.md §8; HARMONISER.md).
+ * HOME > HARMONY ON: track 1 is the harmoniser, an Eventide H949 model, instead of a synth. Its "engine" (voice.c
+ * track_render calls hm_render) runs in T1's unit, so it renders after core 1 has its job, beside it (§7i: the probe's
+ * serial place before the hand-off held core 1 back). The track's chain runs on it (DIST, SLICER, LEVEL, PAN, its
+ * reverb and chorus sends, STEM FX, its stem), less its FILTER and its DELAY SEND (fx.c: the H949 is the delay).
+ * Each output sample (44.1 kHz):
+ * - the input: IN L / IN R routed to HARMONY (usb.c uin_block, uin_dst[UD_HARM]) x VOICE (FADER BANK E, T1's column)
+ *   plus the HARM sends of T2, T3 (not while it vocodes) and the drums (FADER BANK E), taken post-fader in the units
+ *   (fx.c) a block before (hm_sb: the units of both cores write this block's, the harmoniser reads the last's);
+ * - the memory (HM_LEN samples at 22.05 kHz, a pair's mean, as smk_tpunch.h PUNCH; SLICER STUT's part of smk_fxpool,
+ *   STUT off meanwhile) written with the input + the feedback, soft-limited; REPEAT (NOTE REPEAT on T1) stops the
+ *   writing, the slot still moving: the memory (~418 ms) plays round;
  * - three voices, each two taps half a segment apart read at the voice's ratio with a triangle crossfade (punch.c
- *   PX_OCT generalised: H949 ALGORITHM 1, segment NORM 25 ms), interpolated (ring_q16 style);
- * - DELAY ONLY, one tap;
- * - the feedback: the voices' sum and DELAY ONLY, through the LOW / HIGH shelves (two one-poles), soft-limited;
- * - the tracker (probe 2, 2026-11-10): a YIN difference function on the DRY input (its own ring at 11.025 kHz, a
- *   4-sample mean: not the memory, where the feedback's x0.5 voice made it read an octave down), window HP_TW, lags
- *   1 .. HP_TLN, HP_TLB lags a block (the normalised curve kept a lag, one hardware divide each), searched at the frame's
- *   end: the first dip under 0.15, its bottom, an octave check (a dip near half the lag nearly as deep wins), a parabola.
- *   Its own time in "trk" (inside "harm").
- * Probe 3 (2026-11-11, harmoniser-spec.md §7h's cuts, set live on the console, "hprobe" alone lists them):
- *   tlb N    lags a block (10: a frame every ~10 ms; 5: ~20 ms)
- *   div 4|8  the tracker's rate: 11.025 kHz (4) or 5.5 kHz (8; its window and lags halved: the same time and range)
- *   trk on|off  the tracker at all (off: the voices, DELAY ONLY and the feedback only)
- *   t1 on|off   T1 not rendered (engine, chain, mix: fx.c voc_setup_block), as a HARMONY T1 would free it: the net
- * The output goes nowhere: its peak is kept for the console (so the work cannot be optimised away) */
-#define SMK_HARM_PROBE 1
-#define HP_LEN 9216u                 /* the memory: 22.05 kHz samples, ~418 ms (the H949's 400 + a margin) */
-#define HP_SEG 551u                  /* the segment (NORM): 25 ms at 22.05 kHz */
-#define HP_D0 4u                     /* the taps' least delay (storage samples) */
-#define HP_DLY 4823u                 /* DELAY ONLY in the probe: 218.75 ms (the switches 6.25 + 12.5 + 200) */
-#define HP_TW 128u                   /* the tracker's window, 11.025 kHz samples (11.6 ms) */
-#define HP_TLN 143u                  /* .. its lags 1 .. 143 (the search from HP_TLMIN: 689 .. 77 Hz) */
-#define HP_TLMIN 16u
-#define HP_TLB 10u                   /* .. lags a block (a frame: 15 blocks, ~10 ms) */
-#define HP_TB (HP_TW + HP_TLN + 1u)  /* .. the snapshot */
-#define HP_TRN 512u                  /* the tracker's dry ring (11.025 kHz, a power of two), in the pool after the memory */
-_Static_assert(HP_LEN + HP_TRN + HP_TB <= NTRK * SL_LEN, "the memory, the dry ring and the snapshot fit the SLICER STUT "
-                                                          "recordings' part of smk_fxpool");
-_Static_assert(HP_TB < HP_TRN, "the snapshot fits the dry ring");
-_Static_assert(2u * HP_TB + HP_SEG + HP_D0 < HP_LEN && HP_DLY + 2u < HP_LEN, "the reads stay in the memory");
-static int16_t *const hp_ring = smk_fxpool;
-static int16_t *const hp_tring = smk_fxpool + HP_LEN;            /* the dry input, 11.025 kHz */
-static int16_t *const hp_tb = smk_fxpool + HP_LEN + HP_TRN;      /* the frame's snapshot, scaled */
-static const int32_t HP_DINC[3] = {-8520, -16318, 16384};   /* (1 - ratio) x 32768: x1.260, x1.498, x0.500 (Q16
-                                                             * storage samples an output sample) */
+ *   PX_OCT generalised: ALGORITHM 1, segment NORM 25 ms), interpolated, each faded in and out (~1.5 ms) with its note;
+ * - the feedback FB MAIN (T1's FADER BANK D): the sounding voices' mean x FB (at most 0.95), into the memory through
+ *   the soft limit, whose slope is never over 1: the loop's gain stays under 1 (FB LIMIT SAFE; the EQ flat in 1a);
+ * - the output: the input (dry) and the voices' sum, half each (WET / DRY 50 %), on the track's scale.
+ * The notes: T1's (keys, its sequencer pattern, MIDI in on its channel: voice.c trk_note_on) each set one voice to
+ * its distance from C4 (C4 unison, C5 x2, C2 x0.25), up to 3, a fourth taking the oldest's voice; none: the voices
+ * silent, the dry plays on. T1's FADER BANK B (P_TFLT) = PITCH: the centre x1, down 24 semitones, up 12, all voices.
+ * With T1's SCALE on, each voice is the scale note at that distance above the SUNG note (rounded down into the scale)
+ * and the tracker runs (only then): YIN on the dry input at 5.5 kHz (a frame ~20 ms), its note taken once two of the
+ * last three frames agree, held through silence. */
+#define SMK_HARM 1
+#define HM_LEN 9216u                 /* the memory: 22.05 kHz samples, ~418 ms (the H949's 400 + a margin) */
+#define HM_SEG 551u                  /* the segment (NORM): 25 ms at 22.05 kHz */
+#define HM_D0 4u                     /* the taps' least delay (storage samples) */
+#define HM_TW 64u                    /* the tracker's window, 5.5 kHz samples (11.6 ms) */
+#define HM_TLN 71u                   /* .. its lags 1 .. 71 (the search from HM_TLMIN: 689 .. 78 Hz) */
+#define HM_TLMIN 8u
+#define HM_TLB 5u                    /* .. lags a block (a frame: 15 blocks, ~20 ms) */
+#define HM_TB (HM_TW + HM_TLN + 1u)  /* .. the snapshot */
+#define HM_TRN 256u                  /* the tracker's dry ring (5.5 kHz, a power of two), in the pool after the memory */
+#define HM_MEM (HM_LEN + HM_TRN + HM_TB)   /* (int16s of smk_fxpool; even) */
+#define HM_FADE 512                  /* a voice's gain step a sample (Q15): ~64 samples in or out */
+#define HM_GAIN(v) ((int32_t)(v) * 32768 / 100)   /* FADER BANK E's 0 .. 127 as a gain, Q15: 100 = 0 dB exactly, 127
+                                                   * +2.1 dB */
+_Static_assert((HM_MEM & 1u) == 0u, "the harmoniser's part of the pool stays 32-bit aligned after it");
+_Static_assert(HM_TB < HM_TRN, "the snapshot fits the dry ring");
+_Static_assert(2u * HM_TB + HM_SEG + HM_D0 < HM_LEN, "the reads stay in the memory");
+/* the tracker's lags (Q8, 5.5 kHz) between MIDI note 38 + k and 39 + k (a quarter tone either side of each note) */
+#define HM_NLO 38u
+static const uint16_t HM_NOTE_LAG[41] = {18675, 17627, 16637, 15703, 14822, 13990, 13205, 12464, 11764, 11104, 10481,
+                                         9893,  9337,  8813,  8319,  7852,  7411,  6995,  6603,  6232,  5882,  5552,
+                                         5240,  4946,  4669,  4407,  4159,  3926,  3706,  3498,  3301,  3116,  2941,
+                                         2776,  2620,  2473,  2334,  2203,  2080,  1963,  1853};
+
+/* (hm_on, HOME > HARMONY: smk_vocoder.h, beside the routes that test it) */
+static uint8_t hm_send[4] = {100, 0, 0, 0};   /* FADER BANK E: T1's column = VOICE (the input's level), then the HARM
+                                       * sends of T2, T3, the drums; 0 .. 127 (100: 0 dB; kept: vocset) */
+static int16_t *hm_ring;             /* the memory: smk_fxpool's start (fx.c sets it; slicer.c owns it) */
+#define hm_tring (hm_ring + HM_LEN)                  /* the dry input, 5.5 kHz */
+#define hm_tb (hm_ring + HM_LEN + HM_TRN)            /* the frame's snapshot, scaled */
+static int32_t hm_sb[2][2][VOC_MAXN];   /* the HARM sends: [core][block parity], Q15 (fx.c writes, hm_render reads) */
+static uint8_t hm_sbp;               /* this block's parity (fx.c, core 0, before the units) */
+#define HM_T(t) (hm_on && (t) == &trk[0])
 static struct {
-    volatile uint8_t on;             /* the console's hprobe */
+    uint8_t note[3];                 /* each voice's note (0: none) */
+    uint32_t age[3], seq;            /* .. its order (the oldest the lowest); the next */
+    volatile uint8_t rep;            /* REPEAT: the memory not written */
+    uint8_t run;                     /* running (its memory cleared at the start) */
     uint32_t w, t;                   /* the write slot; output samples (the pair's phase) */
     int32_t half;                    /* the pair's first sample */
-    int32_t ph[3];                   /* each voice's segment phase, Q16 storage samples, 0 .. HP_SEG << 16 */
-    int32_t fb, lpl, lph;            /* the feedback for the next write; the shelves' one-poles */
+    int32_t ph[3], g[3], dinc[3];    /* each voice: its segment phase (Q16 storage samples), gain (Q15), the delay's
+                                      * change an output sample ((1 - ratio) x 32768, Q16) */
+    int32_t fb;                      /* the feedback for the next write */
     uint32_t tw;                     /* the dry ring's write count */
-    int32_t dacc;                    /* .. the 4-sample sum */
-    uint32_t lag;                    /* the next lag (0: take a snapshot) */
-    uint32_t sum;                    /* the running sum of d (lags 1 ..) */
-    uint16_t cm[HP_TLN + 1u];        /* the normalised d, Q12 (4096 = 1), each lag */
-    uint8_t tlb, div, notrk, skip1;  /* probe 3: lags a block; 4 or 8 input samples a tracker sample; tracker off; T1 off */
-    uint32_t twn, tln, tlmin;        /* .. the window and the lags at that rate (HP_TW, HP_TLN, HP_TLMIN at div 4) */
-    volatile uint32_t per;           /* the last frame's period, 11.025 kHz samples Q8 (0: no pitch) */
+    int32_t dacc;                    /* .. the 8-sample sum */
+    uint32_t lag, sum;               /* the next lag (0: take a snapshot); the running sum of d */
+    uint16_t cm[HM_TLN + 1u];        /* the normalised d, Q12 (4096 = 1), each lag */
+    uint8_t p1, p2;                  /* the last two frames' notes (0: unvoiced) */
+    volatile uint8_t tnote;          /* the sung note (0: none yet) */
+    volatile uint32_t per;           /* the last frame's period, 5.5 kHz samples Q8 (0: no pitch) */
     volatile uint32_t frames, voiced;
-    volatile int32_t peak;           /* the output's peak since the console read it */
-} hp;
+    volatile int32_t pk_in, pk_out;  /* the peaks since the console read them */
+} hm;
+static uint32_t scale_mask(const track_t *t);        /* (seq.c) */
+
+/* the notes (voice.c trk_note_on / off / all_off, on T1 while HARMONY is on) */
+static void hm_note_on(uint32_t note)
+{
+    uint32_t v, k = 3u;
+    for (v = 0; v < 3u; v++)
+        if (hm.note[v] == note)
+            return;                                     /* (held already) */
+    for (v = 0; v < 3u && k == 3u; v++)                 /* a free voice */
+        if (!hm.note[v])
+            k = v;
+    if (k == 3u)                                        /* else the oldest's */
+        for (k = 0, v = 1; v < 3u; v++)
+            if (hm.age[v] < hm.age[k])
+                k = v;
+    hm.age[k] = ++hm.seq;
+    hm.note[k] = (uint8_t)(note ? note : 1u);
+}
+static void hm_note_off(uint32_t note)
+{
+    uint32_t v;
+    for (v = 0; v < 3u; v++)
+        if (hm.note[v] == note)
+            hm.note[v] = 0;
+}
+static void hm_all_off(void) { hm.note[0] = hm.note[1] = hm.note[2] = 0; }
 
 /* the memory at a delay of d (Q16 storage samples) behind the newest slot, interpolated */
-static inline int32_t hp_read(int32_t wq, int32_t d)
+static inline int32_t hm_read(int32_t wq, int32_t d)
 {
     int32_t p = wq - d, a, b;
     uint32_t i;
     if (p < 0)
-        p += (int32_t)(HP_LEN << 16);
+        p += (int32_t)(HM_LEN << 16);
     i = (uint32_t)p >> 16;
-    a = hp_ring[i];
-    b = hp_ring[i + 1u >= HP_LEN ? 0u : i + 1u];
+    a = hm_ring[i];
+    b = hm_ring[i + 1u >= HM_LEN ? 0u : i + 1u];
     return a + (((b - a) * (int32_t)(((uint32_t)p >> 1) & 0x7FFFu)) >> 15);
 }
 
-/* the tracker's frame: the newest HP_TB samples of the dry ring, scaled so the squared differences fit 32 bits (the
- * peak under 1024) */
-static void hp_snap(void)
+/* the tracker (the probe's, at div 8, tlb 5: harmoniser-spec.md §7i). The frame: the newest HM_TB samples of the dry
+ * ring, scaled so the squared differences fit 32 bits (the peak under 1024) */
+static void hm_snap(void)
 {
-    uint32_t j, s = 0, tb = hp.twn + hp.tln + 1u, i = hp.tw - tb;
+    uint32_t j, s = 0, i = hm.tw - HM_TB;
     int32_t pk = 0;
-    for (j = 0; j < tb; j++) {
-        int32_t x = hp_tring[(i + j) & (HP_TRN - 1u)], ax = x < 0 ? -x : x;
-        hp_tb[j] = (int16_t)x;
+    for (j = 0; j < HM_TB; j++) {
+        int32_t x = hm_tring[(i + j) & (HM_TRN - 1u)], ax = x < 0 ? -x : x;
+        hm_tb[j] = (int16_t)x;
         pk = ax > pk ? ax : pk;
     }
     while ((pk >> s) >= 1024)
         s++;
-    for (j = 0; j < tb; j++)
-        hp_tb[j] = (int16_t)(hp_tb[j] >> s);
-    hp.sum = 0;
+    for (j = 0; j < HM_TB; j++)
+        hm_tb[j] = (int16_t)(hm_tb[j] >> s);
+    hm.sum = 0;
 }
-
 /* the frame's end: its period from the normalised curve (Q8 lags, 0: none) */
-static uint32_t hp_pick(void)
+static uint32_t hm_pick(void)
 {
-    uint32_t t, best = 0, h, k, tln = hp.tln, tlmin = hp.tlmin;
-    const uint16_t *cm = hp.cm;
-    for (t = tlmin; t < tln; t++)                    /* the first dip under 0.15, to its bottom */
+    uint32_t t, best = 0, h, k;
+    const uint16_t *cm = hm.cm;
+    for (t = HM_TLMIN; t < HM_TLN; t++)                 /* the first dip under 0.15, to its bottom */
         if (cm[t] < 614u) {
-            while (t + 1u < tln && cm[t + 1u] < cm[t])
+            while (t + 1u < HM_TLN && cm[t + 1u] < cm[t])
                 t++;
             best = t;
             break;
         }
-    if (!best) {                                      /* none: the deepest, if under 0.35 */
+    if (!best) {                                        /* none: the deepest, if under 0.35 */
         uint32_t m = 1434u;
-        for (t = tlmin; t < tln; t++)
+        for (t = HM_TLMIN; t < HM_TLN; t++)
             if (cm[t] < m)
                 m = cm[t], best = t;
         if (!best)
             return 0;
     }
-    if (best + 1u >= tln)                             /* at the lags' end: below the range (~77 Hz), not a pitch */
+    if (best + 1u >= HM_TLN)                            /* at the lags' end: below the range, not a pitch */
         return 0;
-    for (k = 3u; k >= 2u; k--) {                      /* the octave check: a dip near lag / 3, lag / 2 nearly as deep */
+    for (k = 3u; k >= 2u; k--) {                        /* the octave check: a dip near lag / 3, lag / 2 nearly as deep */
         h = (best + k / 2u) / k;
-        if (h > tlmin && h + 1u < tln) {
+        if (h > HM_TLMIN && h + 1u < HM_TLN) {
             uint32_t c = h;
             c = cm[h - 1u] < cm[c] ? h - 1u : c;
             c = cm[h + 1u] < cm[c] ? h + 1u : c;
@@ -124,100 +168,181 @@ static uint32_t hp_pick(void)
         }
     }
     {   /* a parabola through the dip */
-        int32_t a = cm[best - 1u], b = cm[best], c = best + 1u <= tln ? cm[best + 1u] : b, den = a - 2 * b + c, fr = 0;
+        int32_t a = cm[best - 1u], b = cm[best], c = cm[best + 1u], den = a - 2 * b + c, fr = 0;
         if (den > 0)
             fr = ((a - c) * 128) / den;
         return (best << 8) + (uint32_t)clamp(fr, -128, 128);
     }
 }
-
-/* HP_TLB lags of the frame; at its end, the period */
-static void hp_lags(void)
+/* a period's note (MIDI), or 0 */
+static uint32_t hm_per_note(uint32_t per)
+{
+    uint32_t k = 0;
+    if (!per)
+        return 0;
+    while (k < 41u && HM_NOTE_LAG[k] > per)
+        k++;
+    return HM_NLO + k;
+}
+/* HM_TLB lags of the frame; at its end, the period and the note (two of the last three frames agreeing) */
+static void hm_lags(void)
 {
     uint32_t k, j;
-    for (k = 0; k < hp.tlb; k++) {
-        uint32_t tau = hp.lag, d = 0;
+    for (k = 0; k < HM_TLB; k++) {
+        uint32_t tau = hm.lag, d = 0;
         if (tau == 0u) {
-            hp_snap();
-            hp.lag = 1;
+            hm_snap();
+            hm.lag = 1;
             continue;
         }
-        for (j = 0; j < hp.twn; j++) {
-            int32_t e = hp_tb[j] - hp_tb[j + tau];
+        for (j = 0; j < HM_TW; j++) {
+            int32_t e = hm_tb[j] - hm_tb[j + tau];
             d += (uint32_t)(e * e);
         }
-        d >>= 8;                                        /* (<= 2.1M: d x lag and the sum fit 32 bits) */
-        hp.sum += d;
+        d >>= 8;                                        /* (<= 1.1M: d x lag and the sum fit 32 bits) */
+        hm.sum += d;
         {   /* the normalised d = d x lag / sum, Q12 (one hardware divide) */
-            uint32_t sh = hp.sum >> 12, c = sh ? d * tau / sh : 65535u;
-            hp.cm[tau] = (uint16_t)(c > 65535u ? 65535u : c);
+            uint32_t sh = hm.sum >> 12, c = sh ? d * tau / sh : 65535u;
+            hm.cm[tau] = (uint16_t)(c > 65535u ? 65535u : c);
         }
-        if (++hp.lag > hp.tln) {                         /* the frame's end */
-            hp.per = hp_pick();
-            hp.frames++;
-            hp.voiced += hp.per != 0u;
-            hp.lag = 0;
+        if (++hm.lag > HM_TLN) {                        /* the frame's end */
+            uint32_t nt;
+            hm.per = hm_pick();
+            nt = hm_per_note(hm.per);
+            hm.frames++;
+            hm.voiced += nt != 0u;
+            if (nt && (nt == hm.p1 || nt == hm.p2))
+                hm.tnote = (uint8_t)nt;                 /* (unvoiced, or no two agreeing: the last note held) */
+            hm.p2 = hm.p1, hm.p1 = (uint8_t)nt;
+            hm.lag = 0;
         }
     }
 }
 
-/* fx.c mix_block, core 0, after the USB voice is in (voc_in, Q15 mono, n <= CTL) */
-static void __attribute__((noinline)) hp_block(uint32_t n)
+/* a voice's (1 - ratio) x 32768 (Q16 storage samples an output sample): s16 = its distance in 1/16 semitones */
+static int32_t hm_dinc(int32_t s16)
 {
-    uint32_t i, v;
-    int32_t pk = hp.peak;
+    uint32_t b = pitch_inc(960u), r;                    /* (C4: the table holds two octaves down, one up from it) */
+    s16 = clamp(s16, -384, 192);
+    r = (uint32_t)(((uint64_t)pitch_inc((uint32_t)(960 + s16)) << 16) / b);   /* the ratio, Q16 */
+    return 32768 - (int32_t)(r >> 1);
+}
+/* the voices' ratios this block (T1's notes, SCALE, PITCH) */
+static void hm_ratios(const track_t *t)
+{
+    uint32_t v, sc = t->p[P_SCALE] != 0, tn = hm.tnote;
+    int32_t f = t->p[P_TFLT], pit = f < 0 ? f * 6 : f * 192 / 63;   /* PITCH: -64 .. 63 -> -24 .. +12 semitones */
+    for (v = 0; v < 3u; v++) {
+        int32_t n = hm.note[v], s;
+        if (!n)
+            continue;                                   /* (fading out: the ratio it had) */
+        s = n - 60;
+        if (sc && tn) {                                 /* SCALE: the scale note s above the sung note, rounded down */
+            uint32_t mask = scale_mask(t), root = (uint32_t)t->p[P_ROOT] % 12u;
+            int32_t m = (int32_t)tn + s, guard = 12;
+            while (guard-- && !((mask >> (uint32_t)((m - (int32_t)root + 120) % 12)) & 1u))
+                m--;
+            s = m - (int32_t)tn;
+        }
+        hm.dinc[v] = hm_dinc(s * 16 + pit);
+    }
+}
+
+/* the harmoniser's start: no stale memory, the voices at rest (the held notes kept) */
+static void hm_start(void)
+{
+    uint8_t nt[3] = {hm.note[0], hm.note[1], hm.note[2]};
+    uint32_t ag[3] = {hm.age[0], hm.age[1], hm.age[2]}, sq = hm.seq;
+    memset(hm_ring, 0, HM_MEM * sizeof hm_ring[0]);
+    memset(&hm, 0, sizeof hm);
+    memcpy(hm.note, nt, sizeof nt), memcpy(hm.age, ag, sizeof ag), hm.seq = sq;
+    hm.ph[1] = (int32_t)(HM_SEG << 14), hm.ph[2] = (int32_t)(HM_SEG << 15);
+    hm.run = 1;
+}
+
+/* the harmoniser: T1's engine (voice.c track_render), n <= VOC_MAXN samples on the track's scale into out; 1 (the
+ * chain runs: the dry plays even with no note) */
+static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, uint32_t n)
+{
+    uint32_t i, v, sp = hm_sbp ^ 1u, sc = t->p[P_SCALE] != 0;
+    int32_t pk = hm.pk_in, po = hm.pk_out, gt[3], fbk, nn = 0;
+    int32_t vg = VOC_AUDIO_ON ? HM_GAIN(hm_send[0]) : 0;   /* VOICE (AUDIO IN off: the sends only) */
+    const int16_t *in = uin_dst[UD_HARM];
+    const int32_t *s0 = hm_sb[0][sp], *s1 = hm_sb[1][sp];
+    if (!hm.run)
+        hm_start();
+    hm_ratios(t);
+    for (v = 0; v < 3u; v++) {
+        gt[v] = hm.note[v] ? 32767 : 0;
+        nn += hm.note[v] != 0;
+    }
+    fbk = t->p[P_DLY] * 246 / (nn ? nn : 1);            /* FB MAIN: 0 .. 127 -> 0 .. 0.95, over the sounding voices */
+    if (n > VOC_MAXN)
+        n = VOC_MAXN;
     for (i = 0; i < n; i++) {
-        int32_t x = voc_in[i], vs = 0, dl, y, wq;
-        hp.dacc += x;                                   /* the tracker's dry ring: a 4- (8-) sample mean, 11.025
-                                                         * (5.5) kHz */
-        if ((hp.t & (hp.div - 1u)) == hp.div - 1u) {
-            hp_tring[hp.tw & (HP_TRN - 1u)] = (int16_t)(hp.dacc >> (hp.div == 8u ? 3 : 2));
-            hp.tw++;
-            hp.dacc = 0;
+        int32_t x = ((in[i] * vg) >> 15) + s0[i] + s1[i], vs = 0, wq, y, ax;
+        x = clamp(x, -32767, 32767);
+        ax = x < 0 ? -x : x;
+        pk = ax > pk ? ax : pk;
+        if (sc) {
+            hm.dacc += x;                               /* the tracker's dry ring: an 8-sample mean, 5.5 kHz */
+            if ((hm.t & 7u) == 7u) {
+                hm_tring[hm.tw & (HM_TRN - 1u)] = (int16_t)(hm.dacc >> 3);
+                hm.tw++;
+                hm.dacc = 0;
+            }
         }
-        if (!(hp.t & 1u)) {
-            hp.half = x;
+        if (!(hm.t & 1u)) {
+            hm.half = x;
         } else {                                        /* a pair: one stored sample, the feedback in, soft-limited */
-            int32_t s = ((hp.half + x) >> 1) + hp.fb;
-            s = clamp(s, -32767, 32767);
-            s -= (((s * s) >> 15) * s >> 15) * 10923 >> 15;   /* x - x^3 / 3 (gentle; full scale -> 2/3) */
-            hp_ring[hp.w] = (int16_t)s;
-            hp.w = hp.w + 1u >= HP_LEN ? 0u : hp.w + 1u;
+            if (!hm.rep) {
+                int32_t s = clamp(((hm.half + x) >> 1) + hm.fb, -32767, 32767);
+                s -= (((s * s) >> 15) * s >> 15) * 10923 >> 15;   /* x - x^3 / 3 (slope <= 1; full scale -> 2/3) */
+                hm_ring[hm.w] = (int16_t)s;
+            }
+            hm.w = hm.w + 1u >= HM_LEN ? 0u : hm.w + 1u;
         }
-        wq = (int32_t)(hp.w << 16) - (int32_t)((~hp.t & 1u) << 15);   /* the newest slot, the half-pair's phase */
+        wq = (int32_t)(hm.w << 16) - (int32_t)((~hm.t & 1u) << 15);   /* the newest slot, the half-pair's phase */
         for (v = 0; v < 3u; v++) {                      /* the voices: two taps, a triangle crossfade */
-            int32_t p = hp.ph[v] + HP_DINC[v], p2, g1, a1, a2;
+            int32_t p, p2, g1, a1, a2, g = hm.g[v];
+            g = g < gt[v] ? (g + HM_FADE > gt[v] ? gt[v] : g + HM_FADE) : (g - HM_FADE < gt[v] ? gt[v] : g - HM_FADE);
+            hm.g[v] = g;
+            if (!g)
+                continue;
+            p = hm.ph[v] + hm.dinc[v];
             if (p < 0)
-                p += (int32_t)(HP_SEG << 16);
-            else if (p >= (int32_t)(HP_SEG << 16))
-                p -= (int32_t)(HP_SEG << 16);
-            hp.ph[v] = p;
-            p2 = p + (int32_t)(HP_SEG << 15);
-            if (p2 >= (int32_t)(HP_SEG << 16))
-                p2 -= (int32_t)(HP_SEG << 16);
-            g1 = p < (int32_t)(HP_SEG << 15) ? p : (int32_t)(HP_SEG << 16) - p;   /* 0 .. HP_SEG << 15 */
-            g1 = (int32_t)(((uint64_t)(uint32_t)g1 * (0xFFFFFFFFu / HP_SEG)) >> 32);   /* -> Q15 */
-            a1 = hp_read(wq, p + (int32_t)(HP_D0 << 16));
-            a2 = hp_read(wq, p2 + (int32_t)(HP_D0 << 16));
-            vs += (a1 * g1 + a2 * (32767 - g1)) >> 15;
+                p += (int32_t)(HM_SEG << 16);
+            else if (p >= (int32_t)(HM_SEG << 16))
+                p -= (int32_t)(HM_SEG << 16);
+            hm.ph[v] = p;
+            p2 = p + (int32_t)(HM_SEG << 15);
+            if (p2 >= (int32_t)(HM_SEG << 16))
+                p2 -= (int32_t)(HM_SEG << 16);
+            g1 = p < (int32_t)(HM_SEG << 15) ? p : (int32_t)(HM_SEG << 16) - p;   /* 0 .. HM_SEG << 15 */
+            g1 = (int32_t)(((uint64_t)(uint32_t)g1 * (0xFFFFFFFFu / HM_SEG)) >> 32);   /* -> Q15 */
+            a1 = hm_read(wq, p + (int32_t)(HM_D0 << 16));
+            a2 = hm_read(wq, p2 + (int32_t)(HM_D0 << 16));
+            vs += (((a1 * g1 + a2 * (32767 - g1)) >> 15) * g) >> 15;
         }
-        dl = hp_read(wq, (int32_t)(HP_DLY << 16));      /* DELAY ONLY */
-        if (hp.t & 1u) {                                /* the feedback (22.05 kHz): FB MAIN 40 %, FB DLY ONLY 30 %,
-                                                         * then LOW / HIGH (the one-poles: ~500 Hz, ~3 kHz) */
-            int32_t f = (vs * 4369 + dl * 9830) >> 15;  /* (the voices' sum / 3 x 0.4 ..) */
-            hp.lpl += ((f - hp.lpl) * 4349) >> 15;      /* 500 Hz */
-            hp.lph += ((f - hp.lph) * 18842) >> 15;     /* 3 kHz */
-            hp.fb = f + ((hp.lpl * 1229) >> 12) - (((f - hp.lph) * 1229) >> 12);   /* LOW +3 dB, HIGH -3 dB: a darker loop */
+        if (hm.t & 1u) {                                /* (22.05 kHz: the next pair's), rounded toward 0: a floor held
+                                                         * the loop on a small offset for ever (-47 at FB 127, the host
+                                                         * test); toward 0 it always dies away */
+            int32_t f = vs * fbk;
+            hm.fb = (f + (f < 0 ? 32767 : 0)) >> 15;
         }
-        y = (vs + dl) >> 2;
-        y = y < 0 ? -y : y;
-        pk = y > pk ? y : pk;
-        hp.t++;
+        y = (x + vs) >> 1;                              /* WET / DRY 50 % */
+        ax = y < 0 ? -y : y;
+        po = ax > po ? ax : po;
+        out[i] = VOC_VS(y);
+        hm.t++;
     }
-    hp.peak = pk;
-    if (!hp.notrk) {
+    hm.pk_in = pk, hm.pk_out = po;
+    if (sc) {
         TIM_VOC_T(tt);
-        hp_lags();
+        hm_lags();
         TIM_ADD(TS_TRK, TIM_NOW() - tt);
+    } else {
+        hm.tnote = 0, hm.p1 = hm.p2 = 0, hm.lag = 0;   /* (SCALE off: the tracker at rest, a fresh start later) */
     }
+    return 1u;
 }

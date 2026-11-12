@@ -7864,8 +7864,9 @@ const OB = {
   vocoder: { id: 14, len: 480, magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
     ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0],
     ["vsetup", 71, "SETUP", ["FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"], 0],
-    ["vinl", 71, "IN L", ["TRACK 3", "CARRIER", "T1", "T2", "OFF"], 0],
-    ["vinr", 71, "IN R", ["TRACK 3", "CARRIER", "T1", "T2", "OFF"], 0],
+    ["vinl", 71, "IN L", ["TRACK 3", "CARRIER", "T1", "T2", "OFF", "HARMONY"], 0],
+    ["vinr", 71, "IN R", ["TRACK 3", "CARRIER", "T1", "T2", "OFF", "HARMONY"], 0],
+    ["harm", 478, "HARMONY", ["OFF", "ON: T1"], 0],
     ["trl", 474, "TRIM L", OB_TRIM, 0], ["trr", 475, "TRIM R", OB_TRIM, 0],
     ["mode", 4, "T3", ["AUDIO", "VOCODER"], 0],
     ["lvl", 5, "LEVEL", OB_DB(-12, 18, 3, " DB"), 4],

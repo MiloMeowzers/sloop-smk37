@@ -907,6 +907,18 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         int32_t gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
         int32_t c = t->p[P_CHOR] * 258, d = send_thr(t->p[P_DLY] * 258, thr_dly), r = send_thr(t->p[P_REV] * 258, thr_rev);
         int32_t pk = t->peak;
+#ifdef SMK_HARM
+        int32_t *hs = 0, hk = 0;                        /* the HARM send (FADER BANK E: T2, T3 not vocoding) into the
+                                                         * harmoniser's input, a block later (smk_harm.h hm_sb); Q15 of
+                                                         * the track's scale (VOC_VS's inverse: x 16384 / VOICE_FS) */
+        if (hm_on) {
+            uint32_t k = (uint32_t)(t - trk);
+            if (k == 0u)
+                d = 0;                                  /* (HARMONY: no DELAY SEND, the H949 is the delay) */
+            else if (k < NPART && hm_send[k] && !(VOC_TRK_AUDIO(t) && voc_mode % VM_N == VM_SAW))
+                hs = hm_sb[mx != &acc[0]][hm_sbp], hk = (HM_GAIN(hm_send[k]) * 22370) >> 15;
+        }
+#endif
         int32_t xmax = c > d ? c : d;
         int32_t ga = mulq15(g0, duck.g0), gb = mulq15(g1, duck.g1);   /* mute x duck, ramped over the block */
         xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);   /* sends: loud chords at a high LEVEL */
@@ -922,8 +934,12 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
             tsvf_t fc;                                  /* the track's FILTER (P_TFLT), after the SLICER */
             djf_t *f = &tflt[(uint32_t)(t - trk) % NTRK];
 #if SMK_UAC_IN_PROBE
-            if (!(VOC_TRK_AUDIO(t) && voc_mode % VM_N == VM_SAW))   /* (track 3 vocoding: no FILTER; its fader and
+            if (!(VOC_TRK_AUDIO(t) && voc_mode % VM_N == VM_SAW)   /* (track 3 vocoding: no FILTER; its fader and
                                                          * FX's K4 are CARRIER CUTOFF, the owner 2026-11-02) */
+#ifdef SMK_HARM
+                && !HM_T(t)                             /* (HARMONY: no FILTER; its fader is PITCH, smk_harm.h) */
+#endif
+                )
 #endif
             if (djf_block(f, t->p[P_TFLT], &fc, tflt_reso()))
                 tflt_run(f, &fc, b, n, 0);
@@ -963,6 +979,10 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
                 mx->sd[i] += mulq15(xs, d);
             if (r)
                 mx->sr[i] += mulq15(xs, r);
+#ifdef SMK_HARM
+            if (hs)
+                hs[i] += ((x >> 4) * hk) >> 11;         /* (x up to 2^19: >> 4 first, 32 bits) */
+#endif
             gl = gl0 + ((dgl * (int32_t)i) >> CTL_LOG2), gr = gr0 + ((dgr * (int32_t)i) >> CTL_LOG2);   /* (2.7) */
             mx->l[i] += (x * (gl >> 4) + 128) >> 8;     /* (x may pass 2^19: PAN's Q12 to Q8, exact at rest: 64 a step;
                                                          * #4: x >> 4 floored the part to 16 LSB) */
@@ -1043,8 +1063,26 @@ static TAILINL void djf_process(int32_t *l, int32_t *r, uint32_t n)
 #include "punch.c"            /* PUNCH-IN FX on the whole mix (FX held + a white key) */
 #if BOARD_SMK37
 #include "smk_tpunch.h"       /* SMK-37 STEM FX: the rhythmic punch-ins on the stems */
-#if SMK_UAC_IN_PROBE
-#include "smk_harm.h"         /* the vocoder build: the harmoniser's measurement probe (console hprobe) */
+#ifdef SMK_HARM
+/* HOME > HARMONY (ui_menu.c, the console, a project's load): T1 the harmoniser or a synth, taken at the next block's
+ * start (core 0, before the units: hm_apply). Either way T1's notes are released and its voices silenced at once (the
+ * harmoniser has no voices; a synth's left by it would never end: no engine rendered them), and the harmoniser starts
+ * afresh (voice.c: hm.run) */
+static volatile uint8_t hm_want;
+static void hm_set(uint32_t on) { hm_want = (uint8_t)(on != 0u); }
+static void hm_apply(void)
+{
+    uint32_t i, on = hm_want;
+    trk_all_off(&trk[0]);
+    for (i = 0; i < NVOICE; i++) {
+        voice_t *v = &trk[0].v[i];
+        v->active = v->gate = 0;
+        v->stage = 0;
+        v->env = v->env_out = 0;
+    }
+    hm.rep = 0;
+    hm_on = (uint8_t)on;
+}
 #endif
 /* a silent track while a stems' punch-in plays: its ring's replay, panned and sent as mix_part_run does (the level and
  * mute are in what the ring recorded) */
@@ -1242,7 +1280,8 @@ _Static_assert(TRK_DRUM == NPART && U_DRUMS == 1u << TRK_DRUM && U_DRUMS == VSU_
  * playing an input render (voice.c voc_tin_block), as they do while that fades */
 static uint32_t voc_setup_block(void)
 {
-    uint32_t want = VSU_SKIP(VOC_SETUP_ON), k, skip;
+    uint32_t want = VSU_SKIP(VOC_SETUP_ON) & ~(uint32_t)(hm_on ? 1u : 0u), k, skip;   /* (HARMONY: T1 renders,
+                                                         * whatever the SETUP) */
     if (want != voc_skip_want) {
         for (k = 0; k < VOC_TRK; k++)
             if ((want & ~(uint32_t)voc_skip_want) >> k & 1u)
@@ -1258,10 +1297,8 @@ static uint32_t voc_setup_block(void)
     for (k = 0; k < VOC_TRK; k++)
         if (VOC_TRK_IN(k) || voc_tin_g[k])
             skip &= ~(1u << k);
-#ifdef SMK_HARM_PROBE
-    if (hp.on && hp.skip1)
-        skip |= 1u;                                     /* (probe 3: T1 as a HARMONY track would free it) */
-#endif
+    if (hm_on)
+        skip &= ~1u;                                    /* (HARMONY: at once, as an input track) */
     return skip;
 }
 #define VOC_SETUP_BLOCK() voc_setup_block()
@@ -1280,6 +1317,22 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
             TIM_UNIT(mx, k);
         }
     if (mask & U_DRUMS) {
+#ifdef SMK_HARM
+        if (hm_on && hm_send[3] && n <= VOC_MAXN) {    /* the drums' HARM send (FADER BANK E): their part of this set's
+                                                         * sums (the metronome's too), as the parts' (mix_part_run) */
+            static int32_t d0[2][VOC_MAXN];
+            int32_t *h = hm_sb[mx != &acc[0]][hm_sbp], *z = d0[mx != &acc[0]];
+            int32_t hk = (HM_GAIN(hm_send[3]) * 22370) >> 15;
+            uint32_t i;
+            for (i = 0; i < n; i++)
+                z[i] = mx->l[i] + mx->r[i];
+            mix_drums(n, mx);
+            for (i = 0; i < n; i++)
+                h[i] += (((mx->l[i] + mx->r[i] - z[i]) >> 5) * hk) >> 11;   /* (the mean of L and R: >> 1 more) */
+            TIM_UNIT(mx, 3u);
+            return;
+        }
+#endif
         mix_drums(n, mx);
         TIM_UNIT(mx, 3u);
     }
@@ -1668,20 +1721,25 @@ static void mix_block(int32_t *out, uint32_t n)
     if (VOC_AUDIO_ON && n <= CTL)
         uin_block(n);                                   /* the input, split to its destinations (smk_vocoder.h uin_dst),
                                                          * before either core's units run */
-#if BOARD_SMK37
-    if (hp.on && !tp_on && VOC_AUDIO_ON && n <= CTL) {            /* the harmoniser's probe (smk_harm.h, on voc_in: the
-                                                                   * side(s) routed to TRACK 3): its time in "harm" too */
-        TIM_VOC_T(th);
-        hp_block(n);
-        TIM_ADD(TS_HARM, TIM_NOW() - th);
-    }
 #endif
+#ifdef SMK_HARM
+    if (hm_want != hm_on)
+        hm_apply();
+    hm_ring = smk_fxpool;                               /* the harmoniser (T1's unit, either core): its memory; the HARM
+                                                         * sends' buffers of this block cleared before the units write
+                                                         * them (it reads the last block's) */
+    hm_sbp ^= 1u;
+    memset(hm_sb[0][hm_sbp], 0, sizeof hm_sb[0][0]);
+    memset(hm_sb[1][hm_sbp], 0, sizeof hm_sb[1][0]);
 #endif
     TIM_MARK(TS_PIN);
 #if BOARD_SMK37
     {   /* STEM FX: the memory shared out again when the mode changes (the menu's STEM FX, live), the stems' punch-ins'
          * timeline for this block */
         uint32_t mode = (stem_fx % SFX_N) | (uint32_t)stem_layout << 2;
+#ifdef SMK_HARM
+        mode |= (uint32_t)hm_on << 4;                   /* (HARMONY takes the pool's start: smk_tpunch.h TP_HM) */
+#endif
         if (mode != tp.mode) {
 #if MIX_PIPE
             mix_tail_wait();                            /* (the punch-in's ring and state: the tail's) */

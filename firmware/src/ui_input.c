@@ -10,7 +10,18 @@
 /* The LED picture is built off-line and copied one byte per column: clearing
  * and relighting would let the 10 kHz scan catch the dark gap and flicker. */
 #if BOARD_SMK37
-static uint8_t smk_fbank, smk_fbank_new;           /* FADER BANK: 0 level, 1 filter, 2 reverb, 3 delay (main.c smk_faders) */
+static uint8_t smk_fbank, smk_fbank_new;           /* FADER BANK: 0 level, 1 filter, 2 reverb, 3 delay, 4 the HARM sends
+                                                     * (HARMONY on: ui_fbank.c FB_N) (main.c smk_faders) */
+#ifdef SMK_HARM
+static uint32_t hm_rep_t0;                         /* NOTE REPEAT = REPEAT (HARMONY, T1): its press (ms), held */
+static uint8_t hm_rep_held;
+#endif
+/* the banks: A .. D, and E (the HARM sends, smk_harm.h hm_send) while HARMONY is on */
+#if SMK_UAC_IN_PROBE
+#define FB_N (hm_on ? 5u : 4u)
+#else
+#define FB_N 4u
+#endif
 static uint8_t pad_steps;                          /* the pads on the PLAY layer: 0 DRUM KIT (the default), 1 STEPS;
                                                     * KNOB BANK + FADER BANK (smk_input.h, seq.c pad_drum); not kept */
 /* SMK-37 Pro: one flag per id. Ids 0..18 are the button LEDs (smk_input.h), the note keys (no LEDs of
@@ -1340,7 +1351,7 @@ UI_SMALL static void ui_input(void)
         if (pick_shown())
             pick_turn(d);
         else if (fb_shown())                              /* the FADER BANK screen: the banks */
-            fb_set(smk_fbank + (d > 0 ? 1u : 3u));
+            fb_set(smk_fbank + (d > 0 ? 1u : FB_N - 1u));
         else
         if (ui.layer == LY_STEP || smk_pad_steps) {      /* (the pads' STEPS too) */
             uint32_t pages = (trk_len(TSEL) + 15u) / 16u;
@@ -1393,7 +1404,7 @@ UI_SMALL static void ui_input(void)
     if (fb_shown()) {                                           /* SELECT (K2, or K6) turns the bank there */
         int32_t t = panel_enc(EN_SELECT);
         if (t)
-            fb_set(smk_fbank + (t > 0 ? 1u : 3u));
+            fb_set(smk_fbank + (t > 0 ? 1u : FB_N - 1u));
     }
 #endif
     uint32_t home = btn_hold(&ui.home_t0, B_HOME, now, 1);
@@ -1604,12 +1615,34 @@ UI_SMALL static void ui_input(void)
             open_family(FAM_ENV);
             break;
         case B_LFO:
+#ifdef SMK_HARM
+            if (hm_on && TSEL == &trk[0]) {             /* HARMONY, T1 selected: NOTE REPEAT is REPEAT (the memory
+                                                         * plays round, nothing written: smk_harm.h); a tap latches,
+                                                         * held longer it springs back when let go */
+                hm.rep = (uint8_t)!hm.rep;
+                hm_rep_t0 = now, hm_rep_held = 1;
+                ui_message(hm.rep ? "REPEAT ON" : "REPEAT OFF");
+                break;
+            }
+#endif
             open_family(FAM_LFO);
             break;
         default:
             break;
         }
     }
+#ifdef SMK_HARM
+    if (hm_rep_held && !((fm1_in.buttons >> panel.btn[B_LFO]) & 1u)) {   /* NOTE REPEAT let go: held over 400 ms,
+                                                         * momentary (back as it was) */
+        hm_rep_held = 0;
+        if (now - hm_rep_t0 > 400u && hm_on) {
+            hm.rep = (uint8_t)!hm.rep;
+            ui_message(hm.rep ? "REPEAT ON" : "REPEAT OFF");
+        }
+    }
+    if (!hm_on)
+        hm.rep = 0;
+#endif
     if (song.seq_mode && cur_page()->scope == SC_STEP && !ui.sheet)
         seq_entry(notes);                                 /* (and the MIDI keyboard's: midi_entry) */
 

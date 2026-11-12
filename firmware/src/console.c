@@ -481,77 +481,41 @@ static void con_bled(const char *p)
 }
 #endif
 
-#ifdef SMK_HARM_PROBE
-/* the vocoder build: the harmoniser's measurement probe (smk_harm.h) */
-/* probe 3's settings: the tracker's rate (its window and lags with it), lags a block, the tracker, T1 */
-static void hp_set_div(uint32_t d)
-{
-    hp.on = 0;                                          /* (not mid-frame: the frame starts again) */
-    hp.div = (uint8_t)(d == 8u ? 8u : 4u);
-    hp.twn = hp.div == 8u ? HP_TW / 2u : HP_TW;
-    hp.tln = hp.div == 8u ? HP_TLN / 2u : HP_TLN;
-    hp.tlmin = hp.div == 8u ? HP_TLMIN / 2u : HP_TLMIN;
-    hp.lag = 0, hp.per = 0;
-}
-/* the console: hprobe [on | off | tlb N | div 4|8 | trk on|off | t1 on|off] */
+#ifdef SMK_HARM
+/* the vocoder build: the harmoniser (smk_harm.h). "hprobe" (or "harm"): its state, the tracker's last period as Hz,
+ * frames, voiced frames, the input's peak (as the probe printed them: the scratchpad's track.ps1 reads that part), then
+ * the sung note, the voices' notes, the output's peak, REPEAT; the peaks cleared. "hprobe on|off" = HOME > HARMONY */
 static void hp_console(const char *p)
 {
-    int on = con_word(&p, "on") ? 1 : con_word(&p, "off") ? 0 : -1, ok = 0;
-    uint32_t was;
-    if (!hp.div)
-        hp.tlb = HP_TLB, hp_set_div(4u);                /* (the defaults: probe 2's) */
-    was = hp.on;
-    if (con_word(&p, "tlb")) {
-        uint32_t v = con_num(&p, &ok);
-        if (ok && v >= 1u && v <= 40u)
-            hp.tlb = (uint8_t)v;
-    } else if (con_word(&p, "div")) {
-        hp_set_div(con_num(&p, &ok));
-        hp.on = (uint8_t)was;
-    } else if (con_word(&p, "trk")) {
-        hp.notrk = (uint8_t)con_word(&p, "off");
-    } else if (con_word(&p, "t1")) {
-        hp.skip1 = (uint8_t)con_word(&p, "on");
-    }
-    if (on == 1 && !hp.on) {
-        if (tp_on) {
-            con_puts("hprobe: STEM FX lends the memory out now; STEM FX off first\r\n");
-            return;
-        }
-        sl_mem_lent = 1;                                /* SLICER STUT records nothing (its memory is the probe's) */
-        memset(hp_ring, 0, (HP_LEN + HP_TRN + HP_TB) * sizeof hp_ring[0]);   /* the memory, the dry ring, the snapshot */
-        memset(hp.ph, 0, sizeof hp.ph);
-        hp.ph[1] = (int32_t)(HP_SEG << 14), hp.ph[2] = (int32_t)(HP_SEG << 15);
-        hp.w = hp.t = hp.tw = 0, hp.dacc = 0, hp.fb = hp.lpl = hp.lph = 0, hp.lag = 0, hp.per = 0, hp.frames = hp.voiced = 0, hp.peak = 0;
-        hp.on = 1;
-    } else if (on == 0 && hp.on) {
-        hp.on = 0;
-        sl_mem_lent = tp_on;
-    }
+    int on = con_word(&p, "on") ? 1 : con_word(&p, "off") ? 0 : -1;
+    uint32_t per = hm.per, f10 = per ? (uint32_t)(5512u * 2560u / per) : 0u, v;   /* deci-Hz at 5.5125 kHz (44100 / 8) */
+    if (on >= 0)
+        hm_set((uint32_t)on);
     con_puts("hprobe ");
-    con_puts(hp.on ? "on" : "off");
-    if (hp.on) {
-        uint32_t per = hp.per, f10 = per ? (uint32_t)(44100u / hp.div * 2560u / per) : 0u;   /* deci-Hz (the note: the
-                                                         * host's) */
-        con_puts(" f0 ");
-        con_dec((int32_t)(f10 / 10u));
-        con_putc('.');
-        con_dec((int32_t)(f10 % 10u));
-        con_puts(" Hz frames ");
-        con_dec((int32_t)hp.frames);
-        con_puts(" voiced ");
-        con_dec((int32_t)hp.voiced);
-        con_puts(" peak ");
-        con_dec(hp.peak);
-        hp.peak = 0;
+    con_puts(hm_on ? "on" : "off");
+    con_puts(" f0 ");
+    con_dec((int32_t)(f10 / 10u));
+    con_putc('.');
+    con_dec((int32_t)(f10 % 10u));
+    con_puts(" Hz frames ");
+    con_dec((int32_t)hm.frames);
+    con_puts(" voiced ");
+    con_dec((int32_t)hm.voiced);
+    con_puts(" peak ");
+    con_dec(hm.pk_in);
+    con_puts(" | sung ");
+    con_dec(hm.tnote);
+    con_puts(" notes");
+    for (v = 0; v < 3u; v++) {
+        con_putc(' ');
+        con_dec(hm.note[v]);
     }
-    con_puts(" | tlb ");                               /* (probe 3's settings) */
-    con_dec(hp.tlb);
-    con_puts(" div ");
-    con_dec(hp.div);
-    con_puts(hp.notrk ? " trk off" : " trk on");
-    con_puts(hp.skip1 ? " t1 off" : " t1 on");
-    con_puts("\r\n");
+    con_puts(" out ");
+    con_dec(hm.pk_out);
+    con_puts(hm.rep ? " repeat" : "");
+    con_putc(13);
+    con_putc(10);
+    hm.pk_in = hm.pk_out = 0;
 }
 #endif
 
@@ -603,8 +567,8 @@ static void con_exec(const char *p)
     else if (con_word(&p, "bled"))
         con_bled(p);
 #endif
-#ifdef SMK_HARM_PROBE
-    else if (con_word(&p, "hprobe"))
+#ifdef SMK_HARM
+    else if (con_word(&p, "hprobe") || con_word(&p, "harm"))
         hp_console(p);
 #endif
     else if (con_word(&p, "memr"))

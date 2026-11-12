@@ -69,9 +69,13 @@ static uint8_t voc_res;
  * channels into a buffer a destination (uin_dst), summed where both go to one (both TRACK 3: L + R averaged, as
  * before). All only while AUDIO IN is on */
 enum { VSU_FULL, VSU_DRUMS, VSU_SYNTH, VSU_ALONE, VSU_N };   /* FULL, VOC + DRUMS, VOC + SYNTH, VOC ALONE */
-enum { VR_T3, VR_CARR, VR_T1, VR_T2, VR_OFF, VR_N };          /* IN L / IN R: TRACK 3, CARRIER, T1, T2, OFF */
-enum { UD_T3, UD_CARR, UD_T1, UD_T2, UD_N };                  /* the destinations' buffers (VR_T3 .. VR_T2) */
+enum { VR_T3, VR_CARR, VR_T1, VR_T2, VR_OFF, VR_HARM, VR_N };   /* IN L / IN R: TRACK 3, CARRIER, T1, T2, OFF,
+                                                               * HARMONY (2026-11-12, last: the stored values kept) */
+enum { UD_T3, UD_CARR, UD_T1, UD_T2, UD_HARM, UD_N };         /* the destinations' buffers */
+/* a route's buffer (usb.c uin_block; UD_N: none) */
+#define VOC_UDST(r) ((r) == VR_HARM ? (uint32_t)UD_HARM : (r) == VR_OFF ? (uint32_t)UD_N : (uint32_t)(r))
 static uint8_t voc_setup, voc_inl, voc_inr;
+static uint8_t hm_on;                    /* HOME > HARMONY: track 1 the harmoniser (smk_harm.h; kept, project.c vocset) */
 static uint8_t voc_gdel;                 /* GATE DELAY (external carrier): 0 .. 10, x 5 ms */
 /* SETUP > CARRIER (2026-11-11, the owner): the built-in saws, AUTO (one; two in VOC ALONE), 1 SAW, 2 SAWS (not in FULL:
  * it does not fit), or EXT L / EXT R (shown from IN L / IN R = CARRIER, set there by choosing it: ui_menu.c) */
@@ -98,8 +102,9 @@ static uint16_t uin_pk[2];
 #define VSU_UDR 8u                       /* (the drums' bit: fx.c U_DRUMS, asserted there) */
 #define VSU_SKIP(s) ((s) == VSU_DRUMS ? 3u : (s) == VSU_SYNTH ? VSU_UDR : (s) == VSU_ALONE ? 3u | VSU_UDR : 0u)
 #define VOC_ROUTE(r) (VOC_AUDIO_ON ? (r) % VR_N : (uint32_t)VR_T3)
-/* track k (0, 1) plays an input: the SETUP has it off and IN L or IN R goes to it */
-#define VOC_TRK_IN(k) ((VSU_SKIP(VOC_SETUP_ON) >> (k) & 1u) && \
+/* track k (0, 1) plays an input: the SETUP has it off and IN L or IN R goes to it (T1 not while HARMONY is on: it is
+ * the harmoniser, smk_harm.h) */
+#define VOC_TRK_IN(k) ((VSU_SKIP(VOC_SETUP_ON) >> (k) & 1u) && !((k) == 0u && hm_on) && \
                        (VOC_ROUTE(voc_inl) == VR_T1 + (k) || VOC_ROUTE(voc_inr) == VR_T1 + (k)))
 #define VOC_EXT_CARR (VOC_ROUTE(voc_inl) == VR_CARR || VOC_ROUTE(voc_inr) == VR_CARR)
 /* the units the SETUP turns off (fx.c voc_setup_block): want at once (no new notes there: voice.c trk_note_on; their
@@ -835,6 +840,7 @@ static void __attribute__((noinline)) voc_process_hq(int32_t *b, uint32_t n)   /
 /* HQ: every SETUP but FULL, and only once the units it turns off have stopped (fx.c voc_setup_block: they come back only
  * once HQ is off): the two never run together (2026-11-11: FULL's units and HQ at once, the switch broke up) */
 #define VOC_HQ_WANT(req) ((req) == 1u + VM_SAW && VOC_SETUP_ON != VSU_FULL && !(voc_dbg & 1u) && !voc_skip_wait && \
+                          !hm_on &&   /* (HARMONY: 22.05 kHz until HQ beside it is measured, harmoniser-spec.md §8) */ \
                           voc_skip == VSU_SKIP(VOC_SETUP_ON))
 static uint32_t voc_state(void)
 {

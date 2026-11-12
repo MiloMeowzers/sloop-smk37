@@ -36,6 +36,25 @@ UI_SMALL static int32_t batt_shown(void)
     return batt_level();
 }
 
+#if SMK_UAC_IN_PROBE
+/* the load warning (harmoniser-spec.md §8, the owner 2026-11-12: "a load warning somewhere if struggling while
+ * running"): voices shed (voice.c shed_count) in the last ~2 s: 1 (LOAD, amber); 2 or more a second in each of the last
+ * two seconds: 2 (red, it keeps shedding). Gone ~2 s after the last. The thresholds: to confirm on the unit */
+UI_SMALL static uint32_t ui_load(void)
+{
+    static uint32_t c0, t0, w0, w1, last_t;
+    uint32_t c = shed_count, now = fm1_ms;
+    if (c != c0) {
+        w0 += c - c0;
+        c0 = c, last_t = now;
+    }
+    if (now - t0 >= 1000u)                             /* (a second's window: this one and the one before) */
+        w1 = w0, w0 = 0, t0 = now;
+    if (now - last_t > 2000u || !c0)
+        return 0;
+    return w0 + 0u >= 2u && w1 >= 2u ? 2u : 1u;
+}
+#endif
 /* top bar: transport, BPM, octave | USB, battery, CPU; messages replace it */
 UI_SMALL static void draw_head(void)
 {
@@ -46,6 +65,10 @@ UI_SMALL static void draw_head(void)
     uint32_t sig = (uint32_t)song.playing * 3u + rec * 5u + (uint32_t)(song.octave + 8) * 11u + song.sel * 13131u +
                    (ui.msg_t ? str_hash(7u, ui.msg) : 0u) + (uint32_t)song.g[G_BPM] * 101u + (ui.bpm_t != 0) * 31u +
                    (uint32_t)batt_shown() * 7777u + (usb.config && !usb.suspended) * 99991u + mlu.on * 7919u;
+#if SMK_UAC_IN_PROBE
+    uint32_t load = ui_load();
+    sig += load * 524287u;
+#endif
     if (!ui.force && sig == ui.head_sig)
         return;
     ui.head_sig = sig;
@@ -100,6 +123,11 @@ UI_SMALL static void draw_head(void)
         cv_rect(bx + 17, 6, 2, 5, C_GRAY);
         for (k = 0; k < lvl; k++)
             cv_rect(bx + 2 + k * 5, 6, 3, 5, lvl == 1 && batt_level() <= 1 ? C_WHITE : C_HI);
+#if SMK_UAC_IN_PROBE
+        if (load)                                       /* (in USB's place: a heavy combination, voices being shed) */
+            cv_text(bx - 34, 1, &FONT_S, "LOAD", load > 1u ? TE_RED : C_AMB);
+        else
+#endif
         if (usb.config && !usb.suspended)
             cv_text(bx - 28, 1, &FONT_S, "USB", C_DIM);
     }

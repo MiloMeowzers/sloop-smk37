@@ -1928,12 +1928,13 @@ enum { UD_N = 1 };
 static int16_t uin_dst[UD_N][32];
 static const uint8_t voc_inl = 0, voc_inr = 0;
 #define VOC_ROUTE(r) ((void)(r), 0u)
+#define VOC_UDST(r) (r)
 static const uint8_t voc_trim[2] = {18u, 18u};
 static const uint16_t VOC_TRIM_Q12[19] = {[18] = 4096u};
 #define VOC_TRIM_N 19u
 static uint16_t uin_pk[2];
 #endif
-static uint8_t uin_rt_l, uin_rt_r;                      /* this block's routes (smk_vocoder.h VR_*: VR_OFF none) */
+static uint8_t uin_rt_l, uin_rt_r;                      /* this block's destinations (smk_vocoder.h UD_*: UD_N none) */
 static int32_t uin_tg_l = 4096, uin_tg_r = 4096;        /* this block's TRIM L / R (Q12; 4096: 0 dB, exact) */
 static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
 {
@@ -2029,7 +2030,7 @@ static void uin_mix(int32_t *out, uint32_t n)           /* audio.c: the monitor 
 static void uin_block(uint32_t n)                       /* fx.c mix_block: the input for this block, each channel to its
                                                          * destination (smk_vocoder.h IN L / IN R) */
 {
-    uin_rt_l = (uint8_t)VOC_ROUTE(voc_inl), uin_rt_r = (uint8_t)VOC_ROUTE(voc_inr);
+    uin_rt_l = (uint8_t)VOC_UDST(VOC_ROUTE(voc_inl)), uin_rt_r = (uint8_t)VOC_UDST(VOC_ROUTE(voc_inr));
     uin_tg_l = VOC_TRIM_Q12[voc_trim[0] % VOC_TRIM_N], uin_tg_r = VOC_TRIM_Q12[voc_trim[1] % VOC_TRIM_N];
     uin_take(0, uin_dst[0], n);
 }

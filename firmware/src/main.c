@@ -257,6 +257,12 @@ static void smk_faders(void)
             pv = i == TRK_DRUM ? &song.g[G_DRDLY] : &trk[i].p[P_DLY];
             *pv = (int16_t)v;
             break;
+#if SMK_UAC_IN_PROBE
+        case 4:                                       /* E (HARMONY on): T1 the harmoniser's VOICE, the others' HARM
+                                                       * sends (smk_harm.h hm_send) */
+            hm_send[i & 3u] = (uint8_t)(v > 127u ? 127u : v);
+            break;
+#endif
         default:
             pv = i == TRK_DRUM ? &song.g[G_DRLVL] : &trk[i].p[P_LEVEL];
             *pv = (int16_t)v;
