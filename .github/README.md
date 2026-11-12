@@ -9,7 +9,7 @@ Enhanced versions of the SLOOP groovebox firmware on the M-Vave SMK-37 keyboard,
 
 ![The stem punch-in page, HOME > USB and HOME > PUNCH](/assets/screens/smk37-stems-screens.png)
 
-SLOOP 2.8.1 as a **6-channel USB audio interface**: your DAW records each track and drum group on a channel of its
+SLOOP 2.8.4 as a **6-channel USB audio interface**: your DAW records each track and drum group on a channel of its
 own, with **punch-in effects on every channel**, the punch-in page on the pads, sequencer effects (FLIP, LOOP BACK,
 RAMP) and DAW mode. Every engine and the built-in samples. For the SMK-37 Pro, Elite, MKE-P37 and Starrykey 37 Play.
 
@@ -23,7 +23,7 @@ RAMP) and DAW mode. Every engine and the built-in samples. For the SMK-37 Pro, E
 **[Install](https://milomeowzers.github.io/sloop-smk37/)** ·
 **[Editor](https://milomeowzers.github.io/sloop-smk37/elite/webapp/editor/)** ·
 [Manual](/SMK37.md) ·
-[Release](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/v2.8.1-smk37.1)
+[Release](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/v2.8.4-smk37.1)
 
 ## Mewcoder (vocoder)
 
@@ -61,7 +61,7 @@ engine pitch-shifted into up to three harmony voices.
 | | Multichannel USB audio | Mewcoder |
 |---|---|---|
 | Branch | `ci` (built on `smk37`, `editor-slot-readback`, `stems`) | `mewcoder` |
-| Release tag | `v2.8.1-smk37.1` | `mewcoder-v0.1` |
+| Release tag | `v2.8.4-smk37.1` | `mewcoder-v0.1` |
 | Current build | `stems-baseline` | `mewcoder-baseline` |
 
 Every build is checked before it is published: the FM-1 build byte-identical to SLOOP's, the host and web tests clean.

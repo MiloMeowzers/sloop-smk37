@@ -18,7 +18,7 @@ html = page.read_text(encoding="utf-8")
 
 HEAD = {
     "stems": (f"SLOOP for the {model}: Multichannel USB audio",
-              "SLOOP 2.8.1 as a 6-channel USB audio interface: your DAW records each track and drum group on a channel "
+              "SLOOP 2.8.4 as a 6-channel USB audio interface: your DAW records each track and drum group on a channel "
               "of its own. Punch-in effects on every channel, the punch-in page on the pads, sequencer effects and DAW "
               "mode. Every engine, 153 sounds and the built-in samples.",
               [("6", "USB audio channels to the DAW"), ("27", "punch-in effects, on every channel"),
