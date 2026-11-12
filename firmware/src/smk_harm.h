@@ -52,7 +52,9 @@ static const uint16_t HM_NOTE_LAG[41] = {18675, 17627, 16637, 15703, 14822, 1399
 static uint8_t hm_send[4] = {100, 0, 0, 0};   /* FADER BANK E: T1's column = VOICE (the input's level), then the HARM
                                        * sends of T2, T3, the drums; 0 .. 127 (100: 0 dB; kept: vocset) */
 static int16_t hm_pitch;             /* FADER BANK B, T1's fader: -64 .. 63 (0: x1; main.c smk_faders, its dead zone) */
-static int16_t hm_fb;                /* FADER BANK D, T1's fader: FB MAIN 0 .. 127 */
+static int16_t hm_fb;                /* FB MAIN 0 .. 127 */
+static int16_t hm_wd = 64;           /* WET / DRY 0 .. 127 (64: half each, exactly) */
+/* (PITCH, FEEDBACK, VOICE IN, WET / DRY: FADER BANK E, HARM; the sends: F, SENDS; ui_fbank.c, main.c) */
 static int16_t *hm_ring;             /* the memory: smk_fxpool's start (fx.c sets it; slicer.c owns it) */
 #define hm_tring (hm_ring + HM_LEN)                  /* the dry input, 5.5 kHz */
 #define hm_tb (hm_ring + HM_LEN + HM_TRN)            /* the frame's snapshot, scaled */
@@ -80,6 +82,11 @@ static struct {
     volatile int32_t pk_in, pk_out;  /* the peaks since the console read them */
 } hm;
 static uint32_t scale_mask(const track_t *t);        /* (seq.c) */
+/* NOTE REPEAT = REPEAT (HARMONY, T1 selected; ui_input.c): its press (ms), held; as the LED and the header show it:
+ * steady while held, flashing while latched (the owner, 2026-11-12) */
+static uint32_t hm_rep_t0;
+static uint8_t hm_rep_held;
+static int hm_rep_shown(void) { return hm.rep && (hm_rep_held || ((fm1_ms / 250u) & 1u)); }
 
 /* the notes (voice.c trk_note_on / off / all_off, on T1 while HARMONY is on) */
 static void hm_note_on(uint32_t note)
@@ -269,7 +276,7 @@ static void hm_start(void)
 static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, uint32_t n)
 {
     uint32_t i, v, sp = hm_sbp ^ 1u, sc = t->p[P_SCALE] != 0;
-    int32_t pk = hm.pk_in, po = hm.pk_out, gt[3], fbk, nn = 0;
+    int32_t pk = hm.pk_in, po = hm.pk_out, gt[3], fbk, wg, nn = 0;
     int32_t vg = VOC_AUDIO_ON ? HM_GAIN(hm_send[0]) : 0;   /* VOICE (AUDIO IN off: the sends only) */
     const int16_t *in = uin_dst[UD_HARM];
     const int32_t *s0 = hm_sb[0][sp], *s1 = hm_sb[1][sp];
@@ -280,7 +287,8 @@ static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, ui
         gt[v] = hm.note[v] ? 32767 : 0;
         nn += hm.note[v] != 0;
     }
-    fbk = clamp(hm_fb, 0, 127) * 246 / (nn ? nn : 1);            /* FB MAIN: 0 .. 127 -> 0 .. 0.95, over the sounding voices */
+    fbk = clamp(hm_fb, 0, 127) * 246 / (nn ? nn : 1);
+    wg = hm_wd >= 127 ? 32768 : clamp(hm_wd, 0, 127) * 256;   /* WET / DRY, Q15: 64 = 16384 */            /* FB MAIN: 0 .. 127 -> 0 .. 0.95, over the sounding voices */
     if (n > VOC_MAXN)
         n = VOC_MAXN;
     for (i = 0; i < n; i++) {
@@ -334,7 +342,8 @@ static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, ui
             int32_t f = vs * fbk;
             hm.fb = (f + (f < 0 ? 32767 : 0)) >> 15;
         }
-        y = (x + vs) >> 1;                              /* WET / DRY 50 % */
+        vs = clamp(vs, -65535, 65535);                  /* (x 32768 in 32 bits) */
+        y = ((x * (32768 - wg)) >> 15) + ((vs * wg) >> 15);   /* WET / DRY (64: x / 2 + vs / 2) */
         ax = y < 0 ? -y : y;
         po = ax > po ? ax : po;
         out[i] = VOC_VS(y);

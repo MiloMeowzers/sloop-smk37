@@ -210,8 +210,10 @@ static int replug_pending(void) { return 0; }   /* (the probe: no re-plug) */
 
 #if BOARD_SMK37
 /* the SMK-37 Pro's 4 faders, tracks 1..4 (4 = drums), by FADER BANK (ui_input.c smk_fbank): A level, B the
- * track's filter (P_TFLT: low-pass left, open in the middle, high-pass right), C reverb send, D delay send.
- * A fader takes over only once it moves (also after a bank change), so nothing jumps. */
+ * track's filter (P_TFLT: low-pass left, open in the middle, high-pass right), C reverb send, D delay send; with
+ * HARMONY on, E HARM (PITCH, FEEDBACK, VOICE IN, WET / DRY) and F SENDS (T2, T3, the drums into the harmoniser).
+ * PICKUP (2026-11-12): a fader acts only once it reaches the value its bank holds (within FB_HOT steps, or moving
+ * through it either way), so nothing jumps after a bank change; until then the screen shows it waiting. */
 static void smk_faders(void)
 {
     static uint8_t last[4] = {0xFF, 0xFF, 0xFF, 0xFF};
@@ -220,22 +222,42 @@ static void smk_faders(void)
         smk_fbank_new = 1;                                /* each waits to move again */
         return;
     }
-    if (smk_fbank_new) {                                  /* a new bank: wait for each fader to move */
+    if (smk_fbank_new) {                                  /* a new bank: each fader waits to pick up */
         smk_fbank_new = 0;
-        for (i = 0; i < 4u; i++)
-            last[i] = 0xFF;
+        smk_flive = 0;
+        ui.force = 1;
     }
     for (i = 0; i < 4u && i < NTRK; i++) {
         uint32_t v = fm1_in.fader[i];
         int16_t *pv;
         if (last[i] == 0xFF || fm1_in.frames < 200u) {   /* (the first readings settle) */
             last[i] = (uint8_t)v;
+            smk_fpos[i] = (uint8_t)(v > 127u ? 127u : v);
             continue;
         }
         if (v == last[i])
             continue;
-        last[i] = (uint8_t)v;
-        switch (smk_fbank) {
+        {   /* PICKUP: not yet live, it acts once it is near the bank's value or has passed it */
+            int16_t *tv;
+            const param_desc_t *d = fb_param(smk_fbank % FB_N, i, &tv);
+            int32_t t = clamp(*tv - d->min, 0, 127), p = last[i], q = (int32_t)(v > 127u ? 127u : v);
+            last[i] = (uint8_t)v;
+            smk_fpos[i] = (uint8_t)q;
+            if (d->max == d->min) {                       /* (nothing to set: HARMONY's T1 on B, D, F) */
+                fb_touch();
+                continue;
+            }
+            if (!((smk_flive >> i) & 1u)) {
+                if ((q - t <= FB_HOT && t - q <= FB_HOT) || (p - t) * (q - t) < 0)
+                    smk_flive |= (uint8_t)(1u << i);
+                else {
+                    fb_touch();                           /* (the screen up: its arrow shows the way) */
+                    ui.force = 1;
+                    continue;
+                }
+            }
+        }
+        switch (smk_fbank % FB_N) {
         case 1:
 #if SMK_UAC_IN_PROBE
             if (VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW) {
@@ -246,12 +268,6 @@ static void smk_faders(void)
 #endif
             {   /* a dead zone in the middle (+-3): a fader resting there is the filter off, not a step of it running */
                 int32_t f = (int32_t)v - 64;
-#ifdef SMK_HARM
-                if (i == 0u && hm_on) {
-                    hm_pitch = (int16_t)(f >= -3 && f <= 3 ? 0 : f);   /* HARMONY: T1's fader is PITCH (its own) */
-                    break;
-                }
-#endif
                 trk[i].p[P_TFLT] = (int16_t)(f >= -3 && f <= 3 ? 0 : f);
             }
             break;
@@ -260,19 +276,26 @@ static void smk_faders(void)
             *pv = (int16_t)v;
             break;
         case 3:
-#ifdef SMK_HARM
-            if (i == 0u && hm_on) {
-                hm_fb = (int16_t)(v > 127u ? 127u : v);   /* HARMONY: T1's fader is FEEDBACK (its own) */
-                break;
-            }
-#endif
             pv = i == TRK_DRUM ? &song.g[G_DRDLY] : &trk[i].p[P_DLY];
             *pv = (int16_t)v;
             break;
-#if SMK_UAC_IN_PROBE
-        case 4:                                       /* E (HARMONY on): T1 the harmoniser's VOICE, the others' HARM
-                                                       * sends (smk_harm.h hm_send) */
-            hm_send[i & 3u] = (uint8_t)(v > 127u ? 127u : v);
+#ifdef SMK_HARM
+        case 4:                                       /* E, HARM: PITCH (its dead zone, as the filter's), FEEDBACK,
+                                                       * VOICE IN, WET / DRY (smk_harm.h) */
+            if (i == 0u) {
+                int32_t f = (int32_t)v - 64;
+                hm_pitch = (int16_t)(f >= -3 && f <= 3 ? 0 : f);
+            } else if (i == 1u) {
+                hm_fb = (int16_t)(v > 127u ? 127u : v);
+            } else if (i == 2u) {
+                hm_send[0] = (uint8_t)(v > 127u ? 127u : v);
+            } else {
+                hm_wd = (int16_t)(v > 127u ? 127u : v);
+            }
+            break;
+        case 5:                                       /* F, SENDS: T2, T3, the drums (T1's column: nothing) */
+            if (i)
+                hm_send[i & 3u] = (uint8_t)(v > 127u ? 127u : v);
             break;
 #endif
         default:

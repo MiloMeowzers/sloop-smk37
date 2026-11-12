@@ -2,7 +2,8 @@
  * SMK-37 Pro: Copyright (C) 2026 M. Geisler (genkigenki/makkuro) */
 /* The FADER BANK screen: the four banks, the active one lit, what faders 1..4 set (track colours).
  * FADER BANK opens it and then steps the bank, as < > and SELECT (K2, or K6) do; PATCH closes it, or it closes by itself. */
-static const char *const FB_NAME[5] = {"LEVEL", "FILTER", "REVERB", "DELAY", "HARM"};
+static const char *const FB_NAME[6] = {"LEVEL", "FILTER", "REVERB", "DELAY", "HARM", "SENDS"};
+static const param_desc_t FB_NONE = {"--", F_PCT, 0, 0, 0, 0, 0};   /* (a fader with nothing to set: min == max) */
 /* (FB_N, the banks: ui_input.c; a test that includes this file alone: four) */
 #ifndef FB_N
 #define FB_N 4u
@@ -50,23 +51,34 @@ static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
 {
     static const uint8_t TID[4] = {P_LEVEL, P_TFLT, P_REV, P_DLY}, GID[4] = {G_DRLVL, 0, G_DRREV, G_DRDLY};
 #if SMK_UAC_IN_PROBE
-    if (b == 4u) {                                 /* E: T1's column the harmoniser's VOICE, the others' HARM sends */
-        static int16_t hv[4];
-        static const param_desc_t HS = {"HARM", F_PCT, 0, 127, 0, 0, 0};
+    static int16_t zero, hv[4];
+    if (b == 4u) {                                 /* E, HARM: PITCH (semitones, fb_draw), FEEDBACK, VOICE IN, WET / DRY */
+        static const param_desc_t PIT = {"PITCH", F_BIPCT, -64, 63, 0, 0, 0}, PCT = {"HARM", F_PCT, 0, 127, 0, 0, 0};
+        if (i == 0u) {
+            *vp = &hm_pitch;
+            return &PIT;
+        }
+        if (i == 2u) {
+            hv[0] = (int16_t)hm_send[0];
+            *vp = &hv[0];
+        } else {
+            *vp = i == 1u ? &hm_fb : &hm_wd;
+        }
+        return &PCT;
+    }
+    if (b == 5u) {                                 /* F, SENDS: T2, T3, the drums into the harmoniser (T1: it) */
+        static const param_desc_t SND = {"SEND", F_PCT, 0, 127, 0, 0, 0};
+        if (i == 0u) {
+            *vp = &zero;
+            return &FB_NONE;
+        }
         hv[i & 3u] = (int16_t)hm_send[i & 3u];
         *vp = &hv[i & 3u];
-        return &HS;
+        return &SND;
     }
-    if (b == 3u && i == 0u && hm_on) {             /* .. and its D is FEEDBACK (its own: not T1's DELAY SEND) */
-        static const param_desc_t FBK = {"FEEDBK", F_PCT, 0, 127, 0, 0, 0};
-        *vp = &hm_fb;
-        return &FBK;
-    }
-    if (b == 1u && i == 0u && hm_on) {             /* HARMONY: T1's B is PITCH (the FILTER is off, fx.c), shown in
-                                                    * semitones (fb_draw) */
-        static const param_desc_t PIT = {"PITCH", F_BIPCT, -64, 63, 0, 0, 0};
-        *vp = &hm_pitch;
-        return &PIT;
+    if ((b == 1u || b == 3u) && i == 0u && (hm_on || hm_want)) {   /* HARMONY: T1 has no FILTER, no DELAY SEND (E) */
+        *vp = &zero;
+        return &FB_NONE;
     }
     if (b == 1u && VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW) {   /* track 3 vocoding: CARRIER CUTOFF */
         static int16_t cut;
@@ -97,7 +109,9 @@ static void fb_draw(void)
     for (i = 0; i < 4u; i++) {
         fb_param(b, i, &vp);
         sig = sig * 31u + (uint32_t)(*vp + 200);
+        sig = sig * 31u + smk_fpos[i];             /* (the faders' places: the ticks, the arrows) */
     }
+    sig = sig * 31u + smk_flive;
     sig = sig * 31u + nb;                          /* (the bank count and the labels, which change with HARMONY: E,
                                                     * T1 PITCH / FEEDBK; not only the values) */
 #if SMK_UAC_IN_PROBE
@@ -110,14 +124,15 @@ static void fb_draw(void)
         cv_begin(240, 120, C_BLACK);
         if (!half) {
             cv_text(4, 2, &FONT_L, "FADER BANK", C_WHITE);
-            for (i = 0; i < nb; i++) {             /* the banks (E: 48 px each) */
-                int32_t bw = (int32_t)(240u / nb), x = (int32_t)i * bw + 2, on = i == b;
+            for (i = 0; i < nb; i++) {             /* the banks (six with HARMONY: 40 px each) */
+                int32_t bw = (int32_t)(240u / nb), x = (int32_t)i * bw + 2, on = i == b, nw = text_w(&FONT_S, FB_NAME[i]);
                 char l[2] = {(char)('A' + i), 0};
                 cv_rect(x, 42, bw - 4, 74, on ? C_WHITE : TE_G2);
                 if (!on)
                     cv_rect(x + 1, 43, bw - 6, 72, TE_G1);
                 cv_text(x + (bw - 4) / 2 - text_w(&FONT_L, l) / 2, 48, &FONT_L, l, on ? C_BLACK : TE_G3);
-                cv_text(x + (bw - 4) / 2 - text_w(&FONT_S, FB_NAME[i]) / 2, 90, &FONT_S, FB_NAME[i], on ? C_BLACK : TE_G3);
+                if (nw <= bw - 6 || on)                /* (a long name in a narrow box: the open bank's only) */
+                    cv_text(x + (bw - 4) / 2 - nw / 2, 90, &FONT_S, FB_NAME[i], on ? C_BLACK : TE_G3);
             }
         } else {
             for (i = 0; i < 4u; i++) {             /* the faders: F1 TRACK 1 ... value, a bar */
@@ -134,15 +149,21 @@ static void fb_draw(void)
                 if (b == 1u && VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW)
                     str_cpy(lab, "T3 CUTOFF", sizeof lab);
                 if (b == 4u) {
-                    static const char *const HL[4] = {"VOICE IN", "T2 SEND", "T3 SEND", "DRUM SEND"};
+                    static const char *const HL[4] = {"PITCH", "FEEDBACK", "VOICE IN", "WET/DRY"};
                     str_cpy(lab, HL[i & 3u], sizeof lab);
                 }
-                if (hm_on && i == 0u && (b == 1u || b == 3u))
-                    str_cpy(lab, b == 1u ? "T1 PITCH" : "T1 FEEDBK", sizeof lab);
+                if (b == 5u) {
+                    static const char *const SL[4] = {"T1: HARM", "T2 SEND", "T3 SEND", "DRUM SEND"};
+                    str_cpy(lab, SL[i & 3u], sizeof lab);
+                }
+                if (d == &FB_NONE && b != 5u)
+                    str_cpy(lab, "T1: HARM", sizeof lab);
 #endif
                 param_format(d, *vp, val, &unit);
+                if (d == &FB_NONE)
+                    str_cpy(val, "--", sizeof val), unit = "";
 #if SMK_UAC_IN_PROBE
-                if (hm_on && i == 0u && b == 1u) {     /* PITCH in semitones (smk_harm.h hm_ratios: -24 .. +12) */
+                if (b == 4u && i == 0u) {              /* PITCH in semitones (smk_harm.h hm_ratios: -24 .. +12) */
                     int32_t f = *vp, t10 = f < 0 ? f * 240 / 64 : f * 120 / 63;
                     val[0] = t10 > 0 ? '+' : t10 < 0 ? '-' : ' ';
                     fmt_fix(val + 1, t10 < 0 ? -t10 : t10, 1);
@@ -151,12 +172,31 @@ static void fb_draw(void)
 #endif
                 str_cpy(v2, val, sizeof v2);
                 str_cpy(v2 + str_len(v2), unit, sizeof v2 - str_len(v2));
-                cv_text(4, y, &FONT_S, f, TE_COL[i]);
-                cv_text(32, y, &FONT_S, lab, TE_COL[i]);
-                cv_text(236 - text_w(&FONT_S, v2), y, &FONT_S, v2, C_WHITE);
-                w = RATIO(d, *vp) * 204 / 1000;
-                cv_rect(32, y + 17, 204, 3, TE_G1);
-                cv_rect(32, y + 17, w < 1 ? 1 : w, 3, TE_COL[i]);
+                {   /* PICKUP's box: live, filled in the track's colour; waiting, an amber outline and an arrow the way
+                     * to move the fader (to the value the bank holds); nothing to set, dim */
+                    int32_t none = d == &FB_NONE, live = (smk_flive >> i) & 1u, t = clamp(*vp - d->min, 0, 127),
+                            up = smk_fpos[i] < t, k;
+                    if (none) {
+                        cv_rect(2, y - 1, 24, 18, TE_G1);
+                        cv_text(4, y, &FONT_S, f, TE_G2);
+                    } else if (live) {
+                        cv_rect(2, y - 1, 24, 18, TE_COL[i]);
+                        cv_text(4, y, &FONT_S, f, C_BLACK);
+                    } else {
+                        cv_rect(2, y - 1, 24, 1, C_AMB), cv_rect(2, y + 16, 24, 1, C_AMB);
+                        cv_rect(2, y - 1, 1, 18, C_AMB), cv_rect(25, y - 1, 1, 18, C_AMB);
+                        for (k = 0; k < 5; k++)        /* (a triangle, its point the way to go) */
+                            cv_rect(14 - k, up ? y + 4 + k : y + 12 - k, 2 * k + 1, 1, C_AMB);
+                    }
+                    cv_text(32, y, &FONT_S, lab, none ? TE_G2 : TE_COL[i]);
+                    cv_text(236 - text_w(&FONT_S, v2), y, &FONT_S, v2, none ? TE_G2 : C_WHITE);
+                    w = none ? 0 : RATIO(d, *vp) * 204 / 1000;
+                    cv_rect(32, y + 17, 204, 3, TE_G1);
+                    if (!none) {
+                        cv_rect(32, y + 17, w < 1 ? 1 : w, 3, live ? TE_COL[i] : TE_G3);
+                        cv_rect(32 + (int32_t)smk_fpos[i] * 202 / 127, y + 14, 2, 9, C_WHITE);   /* (the fader) */
+                    }
+                }
             }
             {
                 char h[24] = "< >  K2  FADER BANK";

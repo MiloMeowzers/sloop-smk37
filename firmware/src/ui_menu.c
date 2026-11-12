@@ -976,6 +976,8 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_HON:                                       /* right ON, left OFF; OCT+ toggles (fx.c: T1's notes released,
                                                         * the harmoniser started afresh) */
         hm_set(s > 0 ? 1u : s < 0 ? 0u : !hm_on);
+        if (hm_want)
+            fb_set(4u);                                /* (on: the FADER BANK screen on E, HARM, when the menu closes) */
         break;
     case MI_HNOTE:                                     /* (a readout) */
         break;

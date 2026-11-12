@@ -69,6 +69,10 @@ UI_SMALL static void draw_head(void)
     uint32_t load = ui_load();
     sig += load * 524287u;
 #endif
+#ifdef SMK_HARM
+    uint32_t rep = hm_on && hm.rep ? 1u + (uint32_t)hm_rep_shown() : 0u;   /* REPEAT: 1 off-beat of its flash, 2 lit */
+    sig += rep * 8191u;
+#endif
     if (!ui.force && sig == ui.head_sig)
         return;
     ui.head_sig = sig;
@@ -101,6 +105,11 @@ UI_SMALL static void draw_head(void)
         cv_text(x + 12, 1, &FONT_S, "OCT", C_GRAY);
         cv_text(x + 40, 1, &FONT_S, b, C_HI);
     }
+#ifdef SMK_HARM
+    if (rep == 2u)                                    /* REPEAT (NOTE REPEAT on T1): as its LED, steady held, flashing
+                                                       * latched */
+        cv_text(126, 1, &FONT_S, "REP", C_AMB);
+#endif
     if (FELUCCA_ICONS) {                              /* the selected track: tape + number */
         cv_icon(156, 2, ICON_TAPE, C_GRAY);
         b[0] = (char)('1' + song.sel);

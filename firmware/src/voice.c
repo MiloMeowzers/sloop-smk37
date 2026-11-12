@@ -91,6 +91,10 @@ static void voc_saw(voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 #define VOC_TRK_AUDIO(t) ((t) == &trk[VOC_TRK] && VOC_AUDIO_ON)
 static const char *voc_trk_name(const track_t *t)      /* the name the UI shows for its engine (0: not the audio track) */
 {
+#ifdef SMK_HARM
+    if (HM_T(t))
+        return "HARMONY";                               /* (T1 the harmoniser: HOME, the tracks, the editor's names) */
+#endif
     return VOC_TRK_AUDIO(t) ? (voc_mode % VM_N == VM_SAW ? "VOCODER" : "AUDIO") : 0;
 }
 #define VOC_OWNENV (e->ownenv && !vsaw)          /* (the carrier: the track's ADSR, whatever the engine) */

@@ -13,15 +13,19 @@
 static uint8_t smk_fbank, smk_fbank_new;           /* FADER BANK: 0 level, 1 filter, 2 reverb, 3 delay, 4 the HARM sends
                                                      * (HARMONY on: ui_fbank.c FB_N) (main.c smk_faders) */
 #ifdef SMK_HARM
-static uint32_t hm_rep_t0;                         /* NOTE REPEAT = REPEAT (HARMONY, T1): its press (ms), held */
-static uint8_t hm_rep_held;
+/* (hm_rep_t0, hm_rep_held, hm_rep_shown: smk_harm.h) */
 #endif
 static uint8_t fb_pin;                             /* (2026-11-12, the owner: "a way to keep the fader ui toggled on")
                                                     * FADER BANK held ~0.6 s: the screen stays up (no time-out) until
                                                     * held again, or PATCH / KNOB BANK close it */
-/* the banks: A .. D, and E (the HARM sends, smk_harm.h hm_send) while HARMONY is on */
+/* PICKUP (2026-11-12, the owner): after a bank change a fader acts only once it reaches what the bank holds (within
+ * FB_HOT steps, or passing through it either way); main.c smk_faders. Each fader's place (0 .. 127) and the picked-up
+ * ones (a bit each), for the screen (ui_fbank.c: a box each, an arrow while it waits) */
+#define FB_HOT 3
+static uint8_t smk_fpos[4], smk_flive;
+/* the banks: A .. D, and E (HARM) and F (SENDS) while HARMONY is on */
 #if SMK_UAC_IN_PROBE
-#define FB_N (hm_on ? 5u : 4u)
+#define FB_N ((hm_on || hm_want) ? 6u : 4u)     /* (HARMONY: E HARM, F SENDS; as asked, before the block takes it) */
 #else
 #define FB_N 4u
 #endif
@@ -321,7 +325,7 @@ UI_SMALL static void ui_leds(void)
                                                     * layer open */
 #ifdef SMK_HARM
     if (hm_on && TSEL == &trk[0])
-        fm1_led[panel.btn[B_LFO]] = hm.rep;        /* NOTE REPEAT: lit while REPEAT holds the memory */
+        fm1_led[panel.btn[B_LFO]] = hm_rep_shown();   /* NOTE REPEAT: REPEAT held (steady) or latched (flashing) */
 #endif
     fm1_led[SMK_BTN_KNOB_BANK] = pick_pin || (int32_t)(fm1_ms - pick_k4_until) < 0;   /* KNOB BANK: picker pinned, PRESETS turning */
     smk_pad_pick = (uint16_t)(pick_shown() || VP_SHOWN() ? 0xFFFFu : 0u);   /* (these pads: no notes) */
