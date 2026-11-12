@@ -9,6 +9,7 @@ static const char *const FB_NAME[5] = {"LEVEL", "FILTER", "REVERB", "DELAY", "HA
 #endif
 #define FB_SHOW_MS 4000u                           /* up this long after the last change */
 static uint8_t fb_open;
+/* (fb_pin: ui_input.c, beside smk_fbank) */
 static uint32_t fb_t, fb_frame;                    /* last action (ms); the frame drawn last */
 
 static int fb_shown(void)
@@ -23,10 +24,17 @@ static void fb_set(uint32_t b)                     /* bank b, the screen up */
     fb_t = fm1_ms;
     ui.force = 1;
 }
-static void fb_close(void) { fb_open = 0; }
+static void fb_close(void) { fb_open = 0, fb_pin = 0; }
+/* a fader moved (main.c smk_faders): the screen up, or its time-out restarted, so what the fader set is seen */
+static void fb_touch(void)
+{
+    if (!fb_open)
+        fb_open = 1, ui.force = 1;
+    fb_t = fm1_ms;
+}
 static void fb_expire(void)                        /* up FB_SHOW_MS after the last change */
 {
-    if (fb_open && fm1_ms - fb_t > FB_SHOW_MS)
+    if (fb_open && !fb_pin && fm1_ms - fb_t > FB_SHOW_MS)
         fb_open = 0, ui.force = 1;
 }
 static int fb_left(void)                           /* drawn last frame, not now: the page needs a redraw */

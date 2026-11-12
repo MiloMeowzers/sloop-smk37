@@ -268,6 +268,7 @@ static void smk_faders(void)
             *pv = (int16_t)v;
             break;
         }
+        fb_touch();                                   /* (the FADER BANK screen up: what the fader set is seen) */
         ui.force = 1;
     }
 }
