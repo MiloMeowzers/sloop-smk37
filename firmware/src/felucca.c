@@ -2,6 +2,13 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* SLOOP (based on FELUCCA): one compilation unit (the HAL is header-only). Order matters. */
 #include <stdint.h>
+#ifndef SMK_UAC_IN_PROBE
+#define SMK_UAC_IN_PROBE 0                       /* (the Multichannel build: no vocoder; the vocoder line's build.py sets
+                                                  * it; ui_menu.c, splash.c and editor.c test it in C expressions) */
+#endif
+#ifndef SMK_UAC_PROBE
+#define SMK_UAC_PROBE 0
+#endif
 #include "fm1_time.h"
 #include "fm1_sys.h"
 #include "fm1_irq.h"
