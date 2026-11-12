@@ -124,7 +124,7 @@ jobs:
           # web/make_site.py: the installer with its package (checked by its SHA-256 in the page) and the editor,
           # also as one file for the disk (webapp/editor/sloop-editor.html). The installer fetches its package, so
           # it is served from localhost (serve-installer.ps1), not opened as a file
-          v="2.8.1-smk37-$(git rev-parse --short HEAD)"
+          v="2.8.4-smk37-$(git rev-parse --short HEAD)"
           for m in pro elite mke; do
             p=out/sloop-smk37$( [ $m = pro ] || echo "-$m" ).fwsc
             python3 web/make_site.py "$p" "$v" "out/installer-$m" > /dev/null
@@ -189,7 +189,7 @@ jobs:
           mkdir -p pages
           for m in pro elite mke; do cp -r "out/installer-$m" "pages/$m"; done
           cp -r out/installer-mewcoder pages/mewcoder
-          v="2.8.1-smk37-$(git rev-parse --short HEAD)"
+          v="2.8.4-smk37-$(git rev-parse --short HEAD)"
           sed -e "s|STEMSBUILD|$v|" -e "s|MEWBUILD|$(cat out/mewcoder-version.txt)|" .github/pages/index.html > pages/index.html
           touch pages/.nojekyll
 

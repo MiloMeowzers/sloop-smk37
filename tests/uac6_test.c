@@ -146,7 +146,7 @@ static void test_descriptors(void)
             }
             {   /* 2026-11-04: the reservation sized to the rate; 16 bit (a single-TT hub's): 2-byte subframes */
                 static const uint16_t MP[4] = {882, 828, 588, 552};
-                uint32_t m, mp_ok = 1, f16 = 1;
+                uint32_t m, mp_ok = 1, f16 = 1, cur_if;   /* (the interface the format belongs to) */
                 usb_layout_mode = UL_SYNTHS;
                 for (m = 0; m < 4u; m++) {
                     stem_rate_mode = (uint8_t)m;

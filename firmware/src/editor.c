@@ -36,6 +36,12 @@ enum { ED_INFO = 1, ED_GET, ED_SET, ED_DUMP, ED_DESC, ED_STEP_GET, ED_STEP_SET, 
 /* v12 (SLOOP 2.7): LIVE = 77, editor_live.c: the LIVE page (transport, sections, mix keys, punch-in FX, REC, undo) */
 #define ED_PROTO 12u                                   /* the protocol version INFO ends with */
 #if BOARD_SMK37
+#ifndef SMK_UAC_IN_PROBE
+#define SMK_UAC_IN_PROBE 0                         /* (the Multichannel build: no vocoder; the vocoder line's build.py sets it) */
+#endif
+#ifndef SMK_UAC_PROBE
+#define SMK_UAC_PROBE 0
+#endif
 #define ED_BUILD (1u | (uint32_t)(SMK_UAC_IN_PROBE && !SMK_UAC_PROBE) << 1)
 static uint32_t ed_hold_ms;                             /* a restore's last write (main.c: no USB re-plug meanwhile) */
 #endif
