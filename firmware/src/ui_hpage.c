@@ -464,7 +464,7 @@ static void hp_mkview(hp_view_t *w)
 {
     uint32_t v, ctl = hs.ctl & 3u, m = hm_mvoice(), pk = (uint32_t)hp.mk[HM_UP_IN];
     memset(w, 0, sizeof *w);
-    str_cpy(w->head, ui.msg_t ? ui.msg : hp.msg_t ? hp.msg : HP_GN[hp.grp % 3u], sizeof w->head);
+    str_cpy(w->head, ui.msg_t ? ui.msg : hp.msg_t ? hp.msg : hs.byp ? "BYPASSED" : HP_GN[hp.grp % 3u], sizeof w->head);
     w->grp = (uint8_t)(hp.grp % 3u);
     w->rv = (uint8_t)hp_rvoice();
     w->rv_on = hm.on[w->rv];
@@ -541,7 +541,8 @@ static void hp_paint(const hp_view_t *w)
     char b[16];
     /* the header: the group, or what was just set */
     if (text_w(&FONT_L, w->head) <= 236)
-        cv_text(120 - text_w(&FONT_L, w->head) / 2, 0, &FONT_L, w->head, hp.msg_t || ui.msg_t ? C_WHITE : TE_G4);
+        cv_text(120 - text_w(&FONT_L, w->head) / 2, 0, &FONT_L, w->head,
+                hp.msg_t || ui.msg_t ? C_WHITE : w->byp ? RGB(255, 40, 40) : TE_G4);   /* (BYPASSED: red, every group) */
     else
         cv_text(120 - text_w(&FONT_S, w->head) / 2, 8, &FONT_S, w->head, C_WHITE);
     /* the PITCH RATIO readout: d.ddd */

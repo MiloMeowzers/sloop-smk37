@@ -482,8 +482,9 @@ menu, another page.
 - **Top:** FUNCTION SELECT (IN red / OUT green), F1-F4 (IN: **NORM**, EXTEND (Stage 2), **SHARP**, **FLAT**; OUT:
   Stage 2), **VOICE** (ALL / V1 / V2 / V3: which voices the functions and MANUAL act on), **MANUAL**, **KEYS & MIDI**
   (hold one and press the other: both, **K+M**).
-- **Bottom:** MAIN 6.25 .. 200 ms (Stage 2), **IN / OUT** (OUT: your input straight through, the memory still
-  written), **REPEAT** (tap latches, hold is momentary, as NOTE REPEAT).
+- **Bottom:** MAIN 6.25 .. 200 ms (Stage 2), **IN / OUT** (OUT: your input and the sends straight through, the
+  memory still written; WET / DRY and everything else ignored. The header reads **BYPASSED** in red on every group
+  while it is OUT, and it is always IN after a power-on), **REPEAT** (tap latches, hold is momentary, as NOTE REPEAT).
 - **K1 INPUT LEVEL** (OFF, -40 .. +12 dB), **K3 FEEDBACK**, **K5 LOW EQ**, **K6 HIGH EQ** (the feedback's EQ, shown on
   the screen as `EQ LO.. HI..`), **K7 PITCH**, **K8 WET / DRY**. K2, K4: nothing yet (Stage 2).
 
@@ -538,6 +539,8 @@ record the intervals from the keys.
 | An interval pad lets go when you release it | It was held over 0.6 s (momentary): tap it quickly to latch |
 | It keeps howling after you stop | FB LIMIT is on **H949** (G3) with FEEDBACK high: pull FEEDBACK down (bank E F2 or G2 K3), or back to **SAFE** |
 | The trails boom or turn muddy | The feedback's LOW EQ is up (G2 K5): bring it down, or below 0 dB to keep a bass or drum send from building up |
+| WET / DRY does nothing; the dry voice or the sent drums can't be silenced | IN / OUT is on OUT (bypass): the header reads **BYPASSED**; G2's bottom pad 7 is dark red. Tap it (IN: green) |
+| A dry-sounding copy of the input at full WET | A voice at unison: MAN / K+M with PITCH at 0, a C4 key held, or G1's U pad latched |
 | PITCH moves only one voice | The control method is **MAN**: the fader is that voice's ratio. **KEYS** or **K+M**: PITCH transposes them all |
 | No HARMONY page after the vocoder page | HARMONY is off (HOME > HARMONY): the page only comes up while it is on |
 | A faint flutter on sustained low notes | The splice (ALGORITHM 1), most on big intervals down: the H949's colour. |

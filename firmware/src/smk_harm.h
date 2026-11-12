@@ -106,7 +106,11 @@ static void hs_fix(hset_t *s)        /* every value in range (a load, the editor
     if (!s->ctl)
         s->ctl = HC_KEYS;
     s->inl = (uint8_t)(s->inl % HM_INL_N), s->low = (uint8_t)(s->low % HM_LOW_N), s->high = (uint8_t)(s->high % HM_HIGH_N);
-    s->fbl &= 1u, s->mute &= 15u, s->byp &= 1u, s->fsel &= 1u;
+    s->fbl &= 1u, s->mute &= 15u, s->fsel &= 1u;
+    s->byp = 0;                      /* IN / OUT: always IN after a load or power-on (the H949's performance switch, not a
+                                      * setting: left on OUT by accident it passed the input dry, WET / DRY and all
+                                      * else ignored, and stayed so; the owner 2026-11-13: "I can't silence the
+                                      * unprocessed drums") */
     s->dry = (uint8_t)(s->dry > 100u ? 100u : s->dry);
 }
 /* G1's 16 interval pads (the HK940's: top unison, 2nd, 3rd, 4th, 5th, 6th, 7th, octave up; bottom 2nd .. octave, two
