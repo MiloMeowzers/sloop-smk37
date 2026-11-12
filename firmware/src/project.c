@@ -998,7 +998,8 @@ typedef struct {
     uint8_t mixv, brmode, harm, rsv3;    /* 1: DRY and HF (cur, sec[]) on the 12-step scale (smk_vocoder.h VOC_MIX_N);
                                           * an object of 476 bytes: the old 5-step scale, mapped (VOC_MIX_OLD);
                                           * ENVELOPE > BRIDGE MODE (2026-11-11: a spare byte, 0: FIXED); HOME >
-                                          * HARMONY (2026-11-12: a spare byte, 0: OFF; smk_harm.h hm_on) */
+                                          * HARMONY (2026-11-12: a spare byte, 0: OFF; bit 0 smk_harm.h hm_on,
+                                          * bit 1 INTERVALS hm_int, 0: FIXED) */
 } vocset_t;
 #define VOCSET_V1 64u                    /* (the object's size before BRIDGE TONE) */
 #define VOCSET_V2 68u                    /* (.. before NORMAL) */
@@ -1089,6 +1090,7 @@ static int vocset_take(const uint8_t *b, uint32_t n)
         voc_eatt = (uint8_t)(s.eatt % VOC_EATT_N), voc_erel = (uint8_t)(s.erel % VOC_EREL_N);   /* (older: 0, 0) */
         voc_brmode = (uint8_t)(s.brmode & 1u);         /* (older: FIXED) */
         hm_set(s.harm & 1u);                           /* (older: OFF; taken at the next block, fx.c hm_apply) */
+        hm_int = (uint8_t)((s.harm >> 1) & 1u);         /* (older: FIXED) */
         {                                              /* TRIM L / R: signed dB, -18 .. +6 (older: 0 dB) */
             int32_t tl = (int8_t)s.trl, tr = (int8_t)s.trr;
             tl = tl < -(int32_t)VOC_TRIM_0 ? -(int32_t)VOC_TRIM_0 : tl > (int32_t)(VOC_TRIM_N - 1u - VOC_TRIM_0) ? (int32_t)(VOC_TRIM_N - 1u - VOC_TRIM_0) : tl;
@@ -1132,7 +1134,8 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocset.trr = (uint8_t)(int8_t)((int32_t)(voc_trim[1] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
     vocset.mixv = 1;
     vocset.brmode = (uint8_t)(voc_brmode & 1u);
-    vocset.harm = (uint8_t)(hm_want & 1u);         /* (as asked: the block's start may not have taken it yet) */
+    vocset.harm = (uint8_t)((hm_want & 1u) | (hm_int & 1u) << 1);   /* (as asked: the block's start may not have
+                                                     * taken it yet) */
 }
 static void vocset_save(void)
 {

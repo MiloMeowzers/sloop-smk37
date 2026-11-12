@@ -51,6 +51,9 @@ static const uint16_t HM_NOTE_LAG[41] = {18675, 17627, 16637, 15703, 14822, 1399
 /* (hm_on, HOME > HARMONY: smk_vocoder.h, beside the routes that test it) */
 static uint8_t hm_send[4] = {100, 0, 0, 0};   /* FADER BANK E: T1's column = VOICE (the input's level), then the HARM
                                        * sends of T2, T3, the drums; 0 .. 127 (100: 0 dB; kept: vocset) */
+static uint8_t hm_int;               /* HOME > HARMONY > INTERVALS: 0 FIXED (the keys from C4, chromatic; the tracker at rest:
+                                      * the default), 1 SCALE (from the sung note, in T1's ROOT / SCALE: the song's key);
+                                      * kept, project.c vocset (the owner, 2026-11-12) */
 static int16_t hm_pitch;             /* FADER BANK B, T1's fader: -64 .. 63 (0: x1; main.c smk_faders, its dead zone) */
 static int16_t hm_fb;                /* FB MAIN 0 .. 127 */
 static int16_t hm_wd = 64;           /* WET / DRY 0 .. 127 (64: half each, exactly) */
@@ -241,14 +244,15 @@ static int32_t hm_dinc(int32_t s16)
 /* the voices' ratios this block (T1's notes, SCALE, PITCH) */
 static void hm_ratios(const track_t *t)
 {
-    uint32_t v, sc = t->p[P_SCALE] != 0, tn = hm.tnote;
+    uint32_t v, sc = hm_int != 0, tn = hm.tnote;
     int32_t f = hm_pitch, pit = f < 0 ? f * 6 : f * 192 / 63;   /* PITCH: -64 .. 63 -> -24 .. +12 semitones */
     for (v = 0; v < 3u; v++) {
         int32_t n = hm.note[v], s;
         if (!n)
             continue;                                   /* (fading out: the ratio it had) */
         s = n - 60;
-        if (sc && tn) {                                 /* SCALE: the scale note s above the sung note, rounded down */
+        if (sc && tn) {                                 /* SCALE: the scale note s above the sung note, rounded down (a
+                                                         * CHR scale: s itself) */
             uint32_t mask = scale_mask(t), root = (uint32_t)t->p[P_ROOT] % 12u;
             int32_t m = (int32_t)tn + s, guard = 12;
             while (guard-- && !((mask >> (uint32_t)((m - (int32_t)root + 120) % 12)) & 1u))
@@ -275,7 +279,7 @@ static void hm_start(void)
  * chain runs: the dry plays even with no note) */
 static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, uint32_t n)
 {
-    uint32_t i, v, sp = hm_sbp ^ 1u, sc = t->p[P_SCALE] != 0;
+    uint32_t i, v, sp = hm_sbp ^ 1u, sc = hm_int != 0;   /* (INTERVALS SCALE: the tracker runs) */
     int32_t pk = hm.pk_in, po = hm.pk_out, gt[3], fbk, wg, nn = 0;
     int32_t vg = VOC_AUDIO_ON ? HM_GAIN(hm_send[0]) : 0;   /* VOICE (AUDIO IN off: the sends only) */
     const int16_t *in = uin_dst[UD_HARM];

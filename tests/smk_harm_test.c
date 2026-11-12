@@ -58,7 +58,7 @@ static void reset(void)
     memset(hm_sb, 0, sizeof hm_sb);
     hm_ring = pool;
     memset(&trk[0], 0, sizeof trk[0]);
-    hm_send[0] = 100, audio_on = 1, hm_pitch = 0, hm_fb = 0;
+    hm_send[0] = 100, audio_on = 1, hm_pitch = 0, hm_fb = 0, hm_int = 0;
     trk[0].p[P_TFLT] = -40, trk[0].p[P_DLY] = 90;    /* (a synth preset's FILTER and DELAY SEND: ignored, 67ba07e's
                                                       * octave climb) */
 }
@@ -220,7 +220,7 @@ int main(void)
             for (kind = 0; kind < 2u; kind++) {
                 double f = 440.0 * pow(2.0, (m - 69.0) / 12.0), ph = 0;
                 reset();
-                trk[0].p[P_SCALE] = 1;
+                hm_int = 1;
                 for (i = 0; i < N1 / 2; i++) {
                     ph += f / 44100.0;
                     ph -= floor(ph);
@@ -243,7 +243,7 @@ int main(void)
     {   /* scale */
         int32_t want;
         reset();
-        trk[0].p[P_SCALE] = 1, trk[0].p[P_ROOT] = 0;
+        trk[0].p[P_SCALE] = 1, trk[0].p[P_ROOT] = 0, hm_int = 1;
         hm.tnote = 62;                                 /* (a sung D4) */
         hm_note_on(64);
         hm_ratios(&trk[0]);
@@ -256,7 +256,11 @@ int main(void)
         trk[0].p[P_SCALE] = 0;
         hm_all_off(), hm_note_on(64);
         hm_ratios(&trk[0]);
-        check("scale: SCALE off: chromatic, E4 -> +4", hm.dinc[0] == hm_dinc(4 * 16));
+        check("scale: a CHR scale: from the sung note, chromatic, E4 -> +4", hm.dinc[0] == hm_dinc(4 * 16));
+        trk[0].p[P_SCALE] = 1, hm_int = 0;
+        hm_all_off(), hm_note_on(64);
+        hm_ratios(&trk[0]);
+        check("scale: INTERVALS FIXED (the default): the song's scale ignored, E4 -> +4", hm.dinc[0] == hm_dinc(4 * 16));
     }
     {   /* sends */
         double ev = 0, es = 0;

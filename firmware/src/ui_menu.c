@@ -54,7 +54,8 @@ enum { MI_COLOR, MI_ZOOM,
        MI_VEATT, MI_VEREL, MI_VGDEL, MI_VBRM,      /* ENVELOPE > ATTACK, RELEASE (the bands' envelopes), GATE DELAY (the
                                                     * external carrier's gate), BRIDGE MODE (smk_vocoder.h voc_brmode);
                                                     * kept, project.c */
-       MI_HON, MI_HNOTE,                           /* HARMONY > HARMONY (smk_harm.h hm_on: T1 the harmoniser; kept,
+       MI_HON, MI_HINT, MI_HNOTE,                  /* HARMONY > HARMONY (smk_harm.h hm_on: T1 the harmoniser; kept,
+                                                    * project.c), INTERVALS (hm_int: FIXED / SCALE; kept),
                                                     * project.c), SUNG NOTE (the tracker's, a readout) */
 #endif
 #endif
@@ -93,7 +94,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "SETUP", "CARRIER", "IN L", "IN R", "TRIM L", "TRIM R",
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
                                               "BRIDGE", "THRESHOLD", "AGC", "MOD WHEEL", "TILT", "COLOUR", "BLEND", "RESPONSE",
-                                              "ATTACK", "RELEASE", "GATE DELAY", "BRIDGE MODE", "HARMONY", "SUNG NOTE",
+                                              "ATTACK", "RELEASE", "GATE DELAY", "BRIDGE MODE", "HARMONY", "INTERVALS", "SUNG NOTE",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -381,11 +382,15 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_HON:                                      /* track 1 the harmoniser, or a synth */
         *c = C_HI;
         return hm_on ? "ON: T1" : "OFF";
-    case MI_HNOTE: {                                  /* the tracker's note (dim: it runs with T1's SCALE on only) */
+    case MI_HINT:                                     /* the keys: fixed intervals from C4, or from the sung note in the
+                                                       * song's key (dim: HARMONY off) */
+        *c = hm_on ? C_HI : C_DIM;
+        return hm_int ? "SCALE" : "FIXED";
+    case MI_HNOTE: {                                  /* the tracker's note (dim: it runs with INTERVALS SCALE only) */
         static char b[6];
         uint32_t nt = hm.tnote;
-        *c = hm_on && trk[0].p[P_SCALE] ? C_HI : C_DIM;
-        if (!hm_on || !trk[0].p[P_SCALE] || !nt)
+        *c = hm_on && hm_int ? C_HI : C_DIM;
+        if (!hm_on || !hm_int || !nt)
             return "--";
         note_name(b, nt);
         return b;
@@ -978,6 +983,9 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         hm_set(s > 0 ? 1u : s < 0 ? 0u : !hm_on);
         if (hm_want)
             fb_set(4u);                                /* (on: the FADER BANK screen on E, HARM, when the menu closes) */
+        break;
+    case MI_HINT:                                      /* right SCALE, left FIXED; OCT+ toggles */
+        hm_int = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !hm_int);
         break;
     case MI_HNOTE:                                     /* (a readout) */
         break;
