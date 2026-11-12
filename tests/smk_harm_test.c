@@ -21,7 +21,8 @@
  *   golden    the page at its defaults: 1a's sound bit for bit (12 s: notes, FEEDBACK, PITCH, WET / DRY, SCALE and the
  *             tracker, a send, REPEAT; the hash taken from 931b88b's smk_harm.h)
  *   MICRO     +50 cents on E4: the pitch 2^(50/1200) higher; on a whole step, hm_dinc's exactly
- *   SHARP / FLAT  no key: the voice sounds, its ratio 1.070 / 0.930 at MICRO 100, ~1.001 near 0
+ *   SHARP / FLAT  no key: silent (the keys play them, 2026-11-13); C4 held: 1.070 / 0.930 at MICRO 100, ~1.001 near 0;
+ *             G4 held: the fifth moved too
  *   LEVEL     a voice at 50 %: its part half; OFF (the mute): the dry alone, exactly
  *   DRY       DRY LEVEL 0: no note, silence exactly; IN / OUT: the input straight through, exactly; INPUT LEVEL -6 dB
  *   MANUAL    no key: the MANUAL voice at the PITCH fader's ratio; MANUAL alone keeps its voice from the keys; K+M
@@ -361,7 +362,10 @@ int main(void)
         reset();
         hs.fn[0] = HF_SHARP, hs.mic[0] = 100;
         hm_ratios(&trk[0]);
-        on = hm.on[0] && !hm.on[1];
+        on = !hm.on[0];                                 /* (no key: silent) */
+        hm_note_on(60);
+        hm_ratios(&trk[0]);
+        on &= hm.on[0] && !hm.on[1];
         r1 = hm_ratio1000(0);
         hs.fn[0] = HF_FLAT;
         hm_ratios(&trk[0]);
@@ -369,8 +373,12 @@ int main(void)
         hs.fn[0] = HF_SHARP, hs.mic[0] = 12;
         hm_ratios(&trk[0]);
         r3 = hm_ratio1000(0);
-        snprintf(b, sizeof b, "SHARP / FLAT: no key, sounding; MICRO 100: %u / %u; MICRO 12: %u", r1, r2, r3);
+        snprintf(b, sizeof b, "SHARP / FLAT: no key silent; C4: MICRO 100 %u / %u, MICRO 12 %u", r1, r2, r3);
         check(b, on && r1 >= 1068 && r1 <= 1072 && r2 >= 928 && r2 <= 932 && r3 >= 1001 && r3 <= 1002);
+        hm_all_off(), hm_note_on(67), hs.mic[0] = 100;
+        hm_ratios(&trk[0]);
+        snprintf(b, sizeof b, "SHARP on G4 (the fifth, 1.498): MICRO 100 %u (1.498 x 1.07 = 1.603)", hm_ratio1000(0));
+        check(b, hm_ratio1000(0) >= 1600u && hm_ratio1000(0) <= 1606u);
     }
     {   /* LEVEL and the mutes */
         double e1 = 0, e2 = 0;

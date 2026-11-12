@@ -462,7 +462,8 @@ menu, another page.
 **G1 INTERVALS**
 - **Pads:** the HK940's intervals. Top row up: unison, 2nd, 3rd (major), 4th, 5th, 6th (major), 7th (minor), octave.
   Bottom row down: 2nd, 3rd, 4th, 5th, 6th, 7th, octave, two octaves. **Tap** latches (tap again to let go), **hold**
-  is momentary. A pad plays as a T1 key (60 plus its interval), sharing the three voices with the keys. Lit in its
+  (over 0.6 s) is momentary. A latched pad whose voice a key or the sequence took over shows dim: tap it to bring it
+  back (it stays latched). A pad plays as a T1 key (60 plus its interval), sharing the three voices with the keys. Lit in its
   voice's colour by level, white while held.
 - **K1-K3 MICRO** V1-V3: ±100 cents, a stop at 0. **K4-K6 LEVEL** V1-V3 (0 dB by default). **K8 WET / DRY**.
 
@@ -487,9 +488,11 @@ menu, another page.
 | **MAN** | the VOICE-selected voice (V1 with ALL) plays **with no key held**, its ratio the PITCH fader's (the H949's MANUAL knob); the keys play the other two, untransposed |
 | **K+M** | as KEYS, and the MANUAL voice sounds at PITCH whenever no key holds it |
 
-**SHARP and FLAT** (the H949's micro pitch change): the voice sounds **with no key**, at 1:1 moved by its MICRO knob
-up to **1.070** (SHARP) or down to **0.930** (FLAT), finer near 1:1 (about 1.001 at a small turn): doubling and
-chorus. With VOICE on ALL, all three voices take it: pick a voice for a single double.
+**SHARP and FLAT** (the H949's micro pitch change): the voice still plays its key or pad as in NORM; its **MICRO**
+knob becomes the fine shift, from exactly the interval up to **x1.070** (SHARP) or down to **x0.930** (FLAT), finer
+near the start (about x1.001 at a small turn). On unison (C4, or G1's U pad) that is the classic double and chorus; on
+any other interval, a detuned copy of it. With VOICE on ALL, all three voices take it. For a voice with **no key** held,
+use MANUAL (below).
 
 **The feedback EQ and FB LIMIT:**
 - **LOW EQ** (-12 .. +18 dB, below ~400 Hz) and **HIGH EQ** (-12 .. +4 dB, above ~4 kHz) shape the signal fed back, so
@@ -516,8 +519,10 @@ record the intervals from the keys.
 | A fader does nothing | It is waiting to pick up: follow the arrow on the FADER BANK screen to the end of its bar. |
 | SUNG NOTE reads `--` | INTERVALS is FIXED (the tracker is not running), or nothing clear is coming in yet. |
 | LOAD in the header | Too much at once: [A8](#a8-load-managing-the-load). |
-| A voice sounds with no key held | That voice is on **SHARP** or **FLAT** (G2), or the control method is **MAN** / **K+M** (G2: the MANUAL voice plays from the PITCH fader). Back to **NORM** and **KEYS** for keys only |
-| Three voices at once when choosing SHARP / FLAT | VOICE was on **ALL**: the function went to all three. Pick V1, V2 or V3 with the VOICE pad first |
+| A voice sounds with no key held | The control method is **MAN** or **K+M** (G2): the MANUAL voice plays from the PITCH fader. **KEYS** for keys only |
+| SHARP / FLAT on every voice | VOICE was on **ALL**: the function went to all three. Pick V1, V2 or V3 with the VOICE pad first, or NORM to undo |
+| A latched interval pad gone dim | Its voice was taken by a key, the sequence or a fourth note (three voices): tap it to bring it back |
+| An interval pad lets go when you release it | It was held over 0.6 s (momentary): tap it quickly to latch |
 | It keeps howling after you stop | FB LIMIT is on **H949** (G3) with FEEDBACK high: pull FEEDBACK down (bank E F2 or G2 K3), or back to **SAFE** |
 | The trails boom or turn muddy | The feedback's LOW EQ is up (G2 K5): bring it down, or below 0 dB to keep a bass or drum send from building up |
 | PITCH moves only one voice | The control method is **MAN**: the fader is that voice's ratio. **KEYS** or **K+M**: PITCH transposes them all |

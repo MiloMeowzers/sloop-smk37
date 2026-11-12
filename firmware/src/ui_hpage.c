@@ -19,7 +19,9 @@
 #ifndef SMK_HARM
 #error "ui_hpage.c: the harmoniser (smk_harm.h)"
 #endif
-#define HP_LONG_MS 400u                             /* a pad held longer: momentary (as NOTE REPEAT) */
+#define HP_LONG_MS 400u                             /* REPEAT's pad held longer: momentary (as NOTE REPEAT) */
+#define HP_IV_LONG_MS 600u                          /* an interval pad held longer: momentary (a slow tap latched at
+                                                     * 400 ms let go, 2026-11-13: as the vocoder page's pads, 600) */
 #define HP_PAD_ON 70u                               /* (a pad that is on: at least this bright, of 255) */
 #define HP_RV_FR 90u                                /* (frames, ~3 s: the knob's voice on the readout) */
 static const char *const HP_GN[3] = {"G1 INTERVALS", "G2 PANEL", "G3 OUTPUTS"};
@@ -171,6 +173,14 @@ static void hp_press(uint32_t p)
     static const char *const MS[6] = {"6.25 MS", "12.5 MS", "25 MS", "50 MS", "100 MS", "200 MS"};
     char a[8];
     if (g == 0u) {                                      /* an interval: latched again = let go; else on, maybe held */
+        uint32_t nt = (uint32_t)(60 + HM_PADIV[p]), held = 0;
+        for (v = 0; v < 3u; v++)
+            held |= hm.note[v] == nt;
+        if ((hm_pad & bit) && !held) {                  /* latched, but its voice was taken (a key, the sequence):
+                                                         * played again, still latched */
+            hm_padre |= (uint16_t)bit;
+            return;
+        }
         if (hm_pad & bit) {
             hm_pad &= (uint16_t)~bit;
             hp.pend &= (uint16_t)~bit;
@@ -244,7 +254,7 @@ static void hp_release(uint32_t p, uint32_t held)
             hm.rep = (uint8_t)!hm.rep;
         return;
     }
-    if (hp.grp % 3u == 0u && held > HP_LONG_MS)          /* an interval held: momentary */
+    if (hp.grp % 3u == 0u && held > HP_IV_LONG_MS)       /* an interval held: momentary */
         hm_pad &= (uint16_t)~(1u << p);
 }
 /* once a pass with the page up (vp_input): the knobs, the pads hit (h), the pads let go */

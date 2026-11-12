@@ -25,7 +25,9 @@
  * and the tracker runs (only then): YIN on the dry input at 5.5 kHz (a frame ~20 ms), its note taken once two of the
  * last three frames agree, held through silence.
  * Stage 1b (§9, the HARMONY page, ui_hpage.c): the page's settings (hs): each voice's LEVEL, MICRO and function (NORM;
- * SHARP / FLAT: the voice at 1:1 moved by MICRO up to 1.07 / 0.93, sounding with no key), the control method (KEYS &
+ * SHARP / FLAT: the voice follows its key as in NORM, MICRO its fine shift up to 1.07 / down to 0.93; 2026-11-13: they
+ * sounded with no key at 1:1 and ignored the keys, and with VOICE ALL that locked all three: "the keys don't seem to
+ * function anymore"), the control method (KEYS &
  * MIDI; MANUAL: the PITCH fader is the VOICE-selected voice's ratio, with no key; both: the keys, PITCH transposing,
  * the MANUAL voice sounding while no key holds it), INPUT LEVEL, IN / OUT (the input straight out, the memory still
  * written), the mutes (DRY, V1-V3), DRY LEVEL, the feedback's LOW / HIGH EQ (two shelves at 22.05 kHz,
@@ -109,7 +111,8 @@ static void hs_fix(hset_t *s)        /* every value in range (a load, the editor
 }
 /* G1's 16 interval pads (the HK940's: top unison, 2nd, 3rd, 4th, 5th, 6th, 7th, octave up; bottom 2nd .. octave, two
  * octaves down), held or latched: the page sets them, hm_render plays them as T1's notes (60 + the interval) */
-static volatile uint16_t hm_pad;
+static volatile uint16_t hm_pad, hm_padre;   /* (hm_padre: latched pads whose voice was taken, played again: the page
+                                              * sets it, hm_render takes it) */
 static const int8_t HM_PADIV[16] = {0, 2, 4, 5, 7, 9, 10, 12, -2, -4, -5, -7, -9, -10, -12, -24};
 /* (PITCH, FEEDBACK, VOICE IN, WET / DRY: FADER BANK E, HARM; the sends: F, SENDS; ui_fbank.c, main.c) */
 static int16_t *hm_ring;             /* the memory: smk_fxpool's start (fx.c sets it; slicer.c owns it) */
@@ -334,13 +337,13 @@ static void hm_ratios(const track_t *t)
         int32_t n = hm.note[v], s, ct = hs.mic[v], fn = hs.fn[v];
         int man = (ctl & HC_MAN) && v == m && (ctl == HC_MAN || !n);   /* (both: the MANUAL voice while no key holds
                                                          * it) */
-        hm.on[v] = (uint8_t)(n || man || fn == HF_SHARP || fn == HF_FLAT);
+        hm.on[v] = (uint8_t)(n || man);
         if (!hm.on[v])
             continue;                                   /* (fading out: the ratio it had) */
-        if (fn == HF_SHARP || fn == HF_FLAT) {          /* 1:1 up to 1.07 / down to 0.93, finer near 1:1 (to ~1.001) */
+        if (fn == HF_SHARP || fn == HF_FLAT) {          /* MICRO as the H949's fine shift: 1:1 up to 1.07 / down to
+                                                         * 0.93, finer near 1:1 (to ~1.001), on the voice's interval */
             int32_t a = ct < 0 ? -ct : ct;
-            hm.dinc[v] = hm_dincf(0, fn == HF_SHARP ? a * a * 117 / 10000 : -(a * a * 126 / 10000));
-            continue;
+            ct = fn == HF_SHARP ? a * a * 117 / 10000 : -(a * a * 126 / 10000);
         }
         if (man) {                                      /* MANUAL: the fader is the ratio */
             hm.dinc[v] = hm_dincf(pit, ct);
@@ -401,7 +404,8 @@ static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, ui
     if (!hm.run)
         hm_start();
     {   /* G1's pads: as notes (here, on this core, as the sequencer's) */
-        uint32_t pd = hm_pad, ch = pd ^ hm.padl, k;
+        uint32_t pd = hm_pad, re = hm_padre & pd, ch = (pd ^ hm.padl) | re, k;
+        hm_padre = 0;
         for (k = 0; ch && k < 16u; k++)
             if ((ch >> k) & 1u) {
                 uint32_t nt = (uint32_t)(60 + HM_PADIV[k]);
