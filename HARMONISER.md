@@ -342,7 +342,53 @@ Each of these costs less than an internal synth playing the same part. Try them 
 - **The console** (USB serial): `harm` (or `hprobe`) prints the harmoniser's state: the notes held, each voice's
   ratio, the sung note, PITCH, FEEDBACK, WET / DRY and the peaks; `harm on` / `harm off` switch it.
 
-### A10. Troubleshooting
+### A10. Playing it live: dub with the harmoniser
+
+Found by playing it on the unit (2026-11-12): with STEM FX on PUNCH, keys on T1 and the drums and T2 sent into the
+harmoniser (bank F), the SMK-37 becomes a dub instrument. Three things make it work together:
+
+- **The punch-ins act before the sends.** Each stem's punch-in plays on the track's own signal, before its pan and
+  sends, so whatever you do to a stem (loop it, reverse it, stutter it, freeze it) is what the harmoniser hears. The
+  harmoniser then repitches the result by the keys and the PITCH fader: one gesture on the pads, a second on the keys.
+- **The keys and PITCH shape the timbre, not only the harmony.** On short, percussive material the intervals read as
+  colour more than as chords: an octave down darkens a hit, a fifth or a ninth turns it into a tuned tone, and PITCH
+  sweeps all three voices at once. The H949's formant shift (the introduction) is part of the sound here.
+- **The faders keep both hands free.** Bank E (PITCH, FEEDBACK, VOICE IN, WET / DRY) and bank F (the sends) are one
+  move each. Pin the bank (FADER BANK held) and pickup keeps the jumps out (A4).
+
+**The stem punch-ins, as heard through the harmoniser:**
+
+| Pads | Through the harmoniser | Use |
+|---|---|---|
+| LOOP 4 / 8 / 16 / 32, LOOP 8T (rows 1, 3) | short, repeating fragments: percussive, pitched layers more than loops | a tuned rhythm from the drums' send; 8T for triplet cross-rhythm |
+| REVERSE (row 2) | a rising swell into the beat, pitched by the keys | into a downbeat; with FEEDBACK for a reversed tail |
+| STUTTER (row 2) | a repeated grain: with a held interval, a tuned roll | fills, builds |
+| STOP, HALF (row 2) | the tape-stop and half-speed drop, repitched again by the harmoniser | the drop before a section; PITCH down with it to go further |
+| REWIND (row 3) | the classic dub rewind, harmonised | the turnaround |
+| FREEZE (row 3) | the reverb holds and the dry stems fade under it | a held wash under the harmonised voice |
+| FLIP, LOOP BACK, RAMP UP / DOWN (row 4) | the sequencer itself moves: the parts jump, loop back or ramp | syncopation: the sequence and the harmoniser's input shift against each other |
+
+**Dub moves to start from:**
+- **Throw a stem into the harmoniser.** Bank F: raise the drums' or T2's send for a bar and drop it again, the way a
+  dub engineer throws a channel into the delay. With FEEDBACK up, the throw keeps ringing in the chosen intervals
+  after the send closes.
+- **The harmonies alone.** A track's LEVEL down and its send up: you hear only its harmonised shadow.
+- **REPEAT as the dub loop.** NOTE REPEAT (on T1) freezes what is in the harmoniser's memory (~418 ms); the keys and
+  PITCH then play that fragment. Latch it, play the keys, let it go.
+- **Pads against the sequence.** The punch-ins and row 4's FLIP / LOOP BACK / RAMP on the pads, the keys on T1, the
+  sends on the faders: three layers of syncopation from one keyboard.
+- **WET / DRY as the mute.** WET / DRY down to the voice alone, then up for the chorus or the drop.
+
+**Good to know:**
+- **The stems' past is shorter with HARMONY on** (about a fifth: the harmoniser's memory comes out of the same pool,
+  A7). The longest loops and the slowest STOP / HALF / REVERSE play what there is: shorter, or fading where the past
+  ends.
+- **PUNCH HQ** keeps the stems' full band and half the time; **PUNCH** keeps the time. Through the harmoniser, whose
+  own memory stops near 10 kHz, PUNCH is usually the better trade.
+- **The load:** the punch-ins and the sends cost little; the heavy items are in A8. INTERVALS FIXED keeps the tracker
+  out of the way, and with percussive input it is also the steadier choice: the tracker wants one clear voice.
+
+### A11. Troubleshooting
 
 | What you hear or see | Why, and what to do |
 |---|---|
