@@ -3,7 +3,10 @@
 /* The FADER BANK screen: the four banks, the active one lit, what faders 1..4 set (track colours).
  * FADER BANK opens it and then steps the bank, as < > and SELECT (K2, or K6) do; PATCH closes it, or it closes by itself. */
 static const char *const FB_NAME[5] = {"LEVEL", "FILTER", "REVERB", "DELAY", "HARM"};
-/* (FB_N, the banks: ui_input.c) */
+/* (FB_N, the banks: ui_input.c; a test that includes this file alone: four) */
+#ifndef FB_N
+#define FB_N 4u
+#endif
 #define FB_SHOW_MS 4000u                           /* up this long after the last change */
 static uint8_t fb_open;
 static uint32_t fb_t, fb_frame;                    /* last action (ms); the frame drawn last */
