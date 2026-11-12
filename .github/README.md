@@ -52,5 +52,5 @@ The [manual](/VOCODER.md) has the rest.
 **In development:** a harmoniser modelled on the Eventide H949, for this build, on the same routing: your voice,
 another external sound, the drums or a synth engine pitch-shifted into up to three harmony voices.
 
-Branch `mewcoder` · release tag `mewcoder-v0.1` · current build `mewcoder-baseline` ·
+Branch `mewcoder` · release [`mewcoder-v0.1`](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1) ·
 how it was built: [VOCODER-DESIGN.md](/VOCODER-DESIGN.md) · GPL-3.0-only
