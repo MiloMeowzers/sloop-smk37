@@ -199,18 +199,32 @@ def build_loader():
 # span: the track filter, the INSERT, the envelope sync, the LFO, FM6's feedback operator and envelopes, PHASE's set-up,
 # the drums' filter, the waits for core 1)
 HOT_TEXT = ["fm1_alnk0_irq", "mix_tail_wait", "cpu1_wait", "tp_pos", "uac6_room", "lfo_sync_inc", "events_block",
-            "trk_note_on", "trk_note_off", "voice_victim", "lock_step", "drum_synth_on", "drum_pick", "roll_hit",
-            "hm_block", "mix_units", "mix_part_run", "hm_insert", "hm_lane", "gain_next", "esync_coef", "lfo_wave", "tflt_run", "ins_run", "click_render",
-            "voc_fade", "tp_zero", "eng_arena_of", "pow2_q16", "analog_render", "analog_render_f",
+            "trk_note_on", "trk_note_off", "voice_victim", "lowest_held", "grid_den", "grid_at", "trk_grid",
+            "div_units", "step_pure_cont", "live_has", "voices_busy", "voice_room", "voice_start", "glide_set",
+            "unison_spread", "uni_turns", "mono_pick", "mono_play", "mono_remove", "trk_nvoice", "drum_set", "dsu_kit",
+            "drum_usr_zone", "seq_out_on", "seq_out_off", "seq_release", "strum_cancel", "midi_out_note", "midi_out_event", "lock_step", "drum_synth_on", "drum_pick", "roll_hit",
+            "hm_block", "mix_units", "mix_part_run", "hm_insert", "hm_lane", "gain_next", "trk_silent", "esync_coef", "esync_one", "lfo_wave", "tflt_run", "ins_run", "ins_rest", "ins_swept", "ins_drive", "click_render",
+            "voc_fade", "voc_log2_q8", "voc_tin_block", "voc_saw2", "voc_ext_carrier", "voc_br_q15", "voc_nzc_now",
+            "voc_chan_block", "voc_tilt_now", "voc_process_hq", "tp_zero", "eng_arena_of", "pow2_q16", "analog_render", "analog_render_f",
             "fm6_render", "fm6_part_of", "fm6_note_of", "fm6_op_run", "fm6_op_fb", "fm6_env_advance",
             "fm6_penv_advance", "fm6_block", "fm6_sync", "fm6_note_on", "fm6_done", "phase_render", "pd_setup",
-            "sample_render", "sample_next", "slice_render", "drawbar_render", "grain_render", "phys_render",
+            "memcpy", "memset", "sample_render", "sample_next", "slice_render", "slc_get", "slc_bounds", "slc_fwd", "slc_rev",
+            "drawbar_render", "grain_render", "gr_seek", "gr_fill", "phys_render", "phys_slot_of", "phys_reset",
+            "px_sin", "px_exp2", "px_svf_coef", "px_modal_exciter", "px_modal_q", "px_modal_block", "px_modal_run",
+            "px_memb_block", "px_isqrt64", "px_atan", "px_atan2t", "px_string_block", "px_string_excite", "px_string_run",
+            "phys_symp_pitches", "px_symp_block", "px_symp_run",
             "slicer_track", "mix_drums", "drums_mix", "ds_filter", "slicer_drums", "tp_x", "cpu1_units_job", "cpu1_stems_job",
-            "cpu1_tail_job", "uac6_tap_ch", "uac_tap48", "uac_render_start", "fm1_timer5_irq", "uac_service", "uin_rx",
+            "cpu1_tail_job", "uac6_tap_ch", "uac_tap48", "uac_render_start", "uac_tap", "fm1_timer5_irq", "fm1_input_tick", "smk__pad", "smk__key_event",
+            "smk_curve", "usb_poll", "uac_service", "uin_rx",
             "hm_render", "hm_lags", "hm_ratios", "hm_dinc", "hm_dincf", "hm_note_on", "hm_note_off", "hm_pick", "hm_snap"]   # (the harmoniser, smk_harm.h: T1's
 # engine while HARMONY is on, and what it calls once a block; (2026-11-14, harmoniser-spec.md §12) Stage 1c's
 # hm_block, the lanes (hm_insert, hm_lane) and mix_drums (the drum lane's, every block on core 1) were left in the
-# flash among the UI's code)
+# flash among the UI's code); (the same day, a full audit of the 64a56f8 .dis: every call out of the hot span from it
+# or the RAM code, three deep) what runs every block, on a note or in TIMER5 and was added or split out since §7f:
+# the vocoder's HQ / SETUP / external carrier (2579fbd), the note path and the sequencer's grid, the envelope sync,
+# the INSERT's modes, the master's USB tap, the keys' scan and USB poll (TIMER5, nested in every half), the engines'
+# helpers (SLICE, GRAIN, PHYS). Left out: what a key, the UI or a transport change runs (MIDI CC, chords, recording,
+# the project, the arranger)
 
 
 def build_app():
