@@ -892,8 +892,18 @@ static int32_t hm_dwv[3][VOC_MAXN] HM_POOL, hm_dm[VOC_MAXN] HM_POOL;   /* the dr
                                                          * §10c-2), the drums after their lane, mono (SYNTHS+RET) */
 static uint8_t hm_dran;                                 /* the drum lane ran this block (the stems: the tail) */
 static int32_t hm_dkd;                                  /* .. its dry's gain (the tail's stems: no call there) */
-static inline int32_t hm_q15(int32_t x) { return clamp(((x >> 4) * 22370) >> 11, -32767, 32767); }   /* the track's
-                                                         * scale -> int16 (VOC_VS's inverse) */
+/* a track's signal (its scale) into a lane: int16 scale (VOC_VS's inverse) at bank F's gain sg (Q15), with +12 dB of
+ * headroom over full scale, INPUT LEVEL's top (§12, 2026-11-14): 1c clamped at full scale here, before INPUT LEVEL
+ * (hm_lane), so a loud pluck or the kit's sum was hard-clipped whatever INPUT LEVEL was (1b took the sends unclamped
+ * and clamped after INPUT LEVEL). Under full scale the same as before, bit for bit. Bounds: |x >> 4| * 22370 and the
+ * lane's in * INPUT LEVEL (<= 131071 * 16306) inside 32 bits */
+#define HM_IN_MAX 131071
+static inline int32_t hm_in(int32_t x, int32_t sg)
+{
+    int32_t v = clamp(x >> 4, -95998, 95998);
+    v = clamp((v * 22370) >> 11, -HM_IN_MAX, HM_IN_MAX);
+    return clamp((int32_t)(((int64_t)v * sg) >> 15), -HM_IN_MAX, HM_IN_MAX);
+}
 #define hm_sc(x, k) ((int32_t)(((int64_t)(x) * (k)) >> 15))   /* (a macro: the tail's stems run in .ram_hot, no calls) */
 /* the dry's gain in lane k: bank F's level as an insert amount (0: the track as it is; up to 100, 0 dB: the dry down to
  * WET / DRY's share as the harmony comes in, a crossfade: a throw from bank F does not jump; above 100 the lane only
@@ -913,7 +923,7 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
     if (n > VOC_MAXN)
         n = VOC_MAXN;
     for (i = 0; i < n; i++)
-        in[i] = (hm_q15(x[i]) * sg) >> 15;             /* (bank F: the lane's input; VOICE's: VOICE IN, in the engine) */
+        in[i] = hm_in(x[i], sg);                        /* (bank F: the lane's input; VOICE's: VOICE IN, in the engine) */
     hm_lane(k, in, wl, wr, 0, n);
 #if BOARD_SMK37
     if (SP_ON(SP_T1 + k))
@@ -1468,7 +1478,7 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                 int32_t(*wb)[VOC_MAXN] = hm_wb[mx != &acc[0]];
                 int32_t *in = wb[0], *wl = wb[1], *wr = wb[2], sg = HM_GAIN(hm_send[3]), kd = hm_dkd = hm_kd(HL_DRUM);
                 for (i = 0; i < n; i++)
-                    in[i] = (hm_q15(((mx->l[i] - z[0][i]) >> 1) + ((mx->r[i] - z[1][i]) >> 1)) * sg) >> 15;
+                    in[i] = hm_in(((mx->l[i] - z[0][i]) >> 1) + ((mx->r[i] - z[1][i]) >> 1), sg);
                 hm_lane(HL_DRUM, in, wl, wr, hm_dwv, n);
                 for (i = 0; i < n; i++) {
                     int32_t ol = hm_sc(mx->l[i] - z[0][i], kd) + VOC_VS(wl[i]), orr = hm_sc(mx->r[i] - z[1][i], kd) + VOC_VS(wr[i]);
