@@ -12,7 +12,7 @@ in SLOOP stays: the four tracks, the sequencer, the punch-ins, the multichannel 
 |---|---|
 | **Base** | SLOOP 2.8.4, with all the Multichannel USB audio build adds: punch-in effects on every channel, the punch-in page on the pads, sequencer effects (FLIP, LOOP BACK, RAMP), DAW mode |
 | **Keyboard** | SMK-37 Elite only |
-| **Tracks** | T1 and T2 (synths); **T3** the audio track (USB > AUDIO IN: ON: the input dry or vocoded) or a synth (AUDIO IN: OFF); the drums |
+| **Tracks** | T1 and T2 (synths); **T3** the audio track (INPUT > AUDIO IN: ON: the input dry or vocoded) or a synth (AUDIO IN: OFF); the drums |
 | **Input level** | HOME > INPUT: **TRIM L**, **TRIM R** (−18 .. +6 dB) with a meter each. Section 2.6 |
 | **Configurations** | HOME > SETUP: **FULL** (every track), **VOC + DRUMS** (T1, T2 off), **VOC + SYNTH** (the drums off), **VOC ALONE** (T1, T2 and the drums off). Section 2.1 |
 | **USB audio in** (from the computer) | 2 channels, 48 kHz, each side routed on its own (HOME > SETUP > IN L, IN R): **TRACK 3** (the voice), **CARRIER** (an external synth), **T1** or **T2** (an instrument through that track), **HARMONY** (into the harmoniser, while HARMONY is on), **OFF**. Section 2.2 |
@@ -20,7 +20,7 @@ in SLOOP stays: the four tracks, the sequencer, the punch-ins, the multichannel 
 | **The vocoder** | 20 channels at the Sennheiser VSM201's centres, 145 Hz to 6.78 kHz, each a 4th-order band-pass. The voice analysed at 22.05 kHz; the output at 22.05 kHz in FULL, **44.1 kHz (HQ)** in the other SETUPs |
 | **The carrier** | HOME > SETUP > CARRIER: the built-in saw, one or two a note (**AUTO**, **1 SAW**, **2 SAWS**), played from the keys, the sequencer or MIDI on track 3's channel; or **EXT L** / **EXT R**: an external synth on that input, gated by track 3's notes. Section 2.4 |
 | **Shaping** | ENVELOPE (ATTACK 3-30 ms, RELEASE 8-100 ms, GATE DELAY, BRIDGE MODE FIXED / FOLLOW); voiced / unvoiced detection with a noise source (WHITE, PINK, SOFT); the speech addition (HF, OFF or −30 .. 0 dB); silence bridging and BRIDGE TONE; AUTOCONTROL (the voice's level, steadied); the carrier's AGC; RESPONSE (FLAT, the VSM201's NORMAL, EMPHASIS); per channel on the vocoder page: EMPHASIS, ADDITION, BRIDGING, mute |
-| **The harmoniser** (this branch) | HOME > HARMONY ON: track 1 becomes a harmoniser after the Eventide H949, three voices from your voice (or any track sent in), with its own page after the vocoder page: [HARMONISER.md](HARMONISER.md) |
+| **The harmoniser** (this branch) | HOME > HARMONY ON: track 1 becomes a harmoniser after the Eventide H949, three voices from your voice and a lane across each track you send (T2, T3, the drums), each harmonised on its own channel. **The vocoder is off while HARMONY is on** (MODE locked to AUDIO): [HARMONISER.md](HARMONISER.md) |
 | **Left out to make room** | the built-in samples (your own samples work); the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and NOISE engines; the delay runs at 22.05 kHz. For those: the Multichannel USB audio build |
 
 ## 1. Getting sound in
@@ -30,7 +30,7 @@ in SLOOP stays: the four tracks, the sequencer, the punch-ins, the multichannel 
 2. In your computer's sound settings (or your DAW), send your microphone to the SMK-37's audio **output**: mono or
    stereo, 48 kHz. Keep your voice's peaks around −10 dBFS: hotter makes the vocoder harsh. **HOME > INPUT** shows
    each side's level and trims it on the keyboard (section 2.6).
-3. On the keyboard: **HOME menu** (PATCH held) **> USB > AUDIO IN: ON**. Track 3 is now the audio track: its own
+3. On the keyboard: **HOME menu** (PATCH held) **> INPUT > AUDIO IN: ON** (in the USB section before 2026-11-13). Track 3 is now the audio track: its own
    engine, presets and Program Change are set aside (they come back with AUDIO IN OFF). TEST plays a test tone in
    place of the computer's audio.
 4. **HOME menu > VOCODER > MODE**: **AUDIO** plays your voice dry on track 3; **VOCODER** vocodes it.
@@ -98,7 +98,7 @@ The help text beside IN L / IN R says what the choice does: **TRACK 3** reads **
 | **TRACK 3** | track 3's input: played **dry through track 3's own chain** (its effects, SLICER, stem, punch-ins) with VOCODER > MODE **AUDIO**, or the vocoder's voice with MODE **VOCODER**. Both sides on TRACK 3: L and R averaged, exactly as before |
 | **CARRIER** | replaces the built-in saw: the vocoder plays **this** sound, shaped by your voice. Your keys gate it (2.4) |
 | **T1, T2** | the track plays the side **as audio**, through its own chain: DIST, INSERT, SLICER, FILTER, LEVEL, PAN, the sends, STEM FX and its own USB stem. Only for a track the SETUP has turned off (T1 and T2 in VOC + DRUMS and VOC ALONE); otherwise the value shows in amber with **NEEDS A SETUP** |
-| **HARMONY** | into the harmoniser (HOME > HARMONY ON; amber with **NEEDS HARMONY ON** otherwise). Both sides on HARMONY: mixed, each at half. [HARMONISER.md A6](HARMONISER.md#a6-the-input-and-the-sends) has what each choice does with the harmoniser on |
+| **HARMONY** | into the harmoniser (HOME > HARMONY ON; amber with **NEEDS HARMONY ON** otherwise). Both sides on HARMONY: mixed, each at half. [HARMONISER.md A6](HARMONISER.md#a6-the-lanes-the-harmoniser-across-each-track-and-the-outputs) has what each choice does with the harmoniser on |
 | **OFF** | not used |
 
 **A mono microphone:** set the side without it to **OFF** (or to another use). With both on TRACK 3, an empty side
@@ -256,7 +256,7 @@ The small tick marks **−10 dBFS**: aim your voice's loud peaks there (AIM −1
 
 | Section | Item | Values (default first, where there is one) | What it does |
 |---|---|---|---|
-| USB | AUDIO IN | OFF, ON, TEST | the computer's audio onto track 3 |
+| INPUT | AUDIO IN | OFF, ON, TEST | the computer's audio onto track 3 |
 | SETUP | SETUP | FULL, VOC + DRUMS, VOC + SYNTH, VOC ALONE | which tracks run, and HQ (section 2.1) |
 | | CARRIER | AUTO, 1 SAW, 2 SAWS, EXT L, EXT R | the carrier: the saws or an input (2.4) |
 | | IN L, IN R | TRACK 3, CARRIER, T1, T2, HARMONY, OFF | where each side of the input goes (2.2) |
