@@ -438,8 +438,9 @@ static inline int32_t hm_knee(int32_t y)
     int32_t a = y < 0 ? -y : y;
     if (a <= K)
         return y;
-    a -= K;
-    a = K + (int32_t)(((int64_t)a * M) / (a + M));
+    a -= K;                                             /* (a * M fits 32 bits up to 262143: a 32-bit divide, the
+                                                         * same result; past it, as before) */
+    a = K + (a <= 262143 ? a * M / (a + M) : (int32_t)(((int64_t)a * M) / (a + M)));
     return y < 0 ? -a : a;
 }
 /* once a block on core 0, before the units (fx.c): the pads as notes, the voices' ratios and gates, the shared gains */
@@ -502,6 +503,7 @@ static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int
     uint32_t i, v, sc = k == HL_VOICE && hm_int != 0;
     int32_t pk = hm.pk_in, po = hm.pk_out, ui_in = 0, ui_out = 0, ui_fb = 0, ui_v[3] = {0, 0, 0};
     int32_t fbk = hb.fbk, wg = hb.wg, ig = hb.ig, rep = hm.rep, byp = hb.byp;
+    TIM_VOC_T(tl);                                      /* (§12: each lane's time, console "timing" ln_*) */
     if (!L->run)
         hm_lane_start(k);
     mr = mw = L->mem;
@@ -509,9 +511,11 @@ static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int
         n = VOC_MAXN;
     for (i = 0; i < n; i++) {
         int32_t x = clamp((in[i] * ig) >> 12, -32767, 32767), vs = 0, sl = 0, sr = 0, wq, ax;   /* (INPUT LEVEL) */
-        ax = x < 0 ? -x : x;
-        pk = ax > pk ? ax : pk;
-        ui_in = ax > ui_in ? ax : ui_in;
+        if (L->t & 1u) {                                /* (the meters: once a pair, §12) */
+            ax = x < 0 ? -x : x;
+            pk = ax > pk ? ax : pk;
+            ui_in = ax > ui_in ? ax : ui_in;
+        }
         if (sc) {
             hm.dacc += x;                               /* the tracker's dry ring: an 8-sample mean, 5.5 kHz */
             if ((L->t & 7u) == 7u) {
@@ -577,10 +581,13 @@ static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int
             sl = clamp(sl, -98301, 98301), sr = clamp(sr, -98301, 98301);
             wl[i] = hm_knee((sl * wg) >> 15), wr[i] = hm_knee((sr * wg) >> 15);
         }
-        ax = wl[i] < 0 ? -wl[i] : wl[i];
-        ax = ax > (wr[i] < 0 ? -wr[i] : wr[i]) ? ax : (wr[i] < 0 ? -wr[i] : wr[i]);
-        po = ax > po ? ax : po;
-        ui_out = ax > ui_out ? ax : ui_out;
+        if (L->t & 1u) {                                /* (the meters: once a pair) */
+            int32_t ar = wr[i] < 0 ? -wr[i] : wr[i];
+            ax = wl[i] < 0 ? -wl[i] : wl[i];
+            ax = ax > ar ? ax : ar;
+            po = ax > po ? ax : po;
+            ui_out = ax > ui_out ? ax : ui_out;
+        }
         L->t++;
     }
     hm.pk_in = pk, hm.pk_out = po;
@@ -602,6 +609,7 @@ static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int
             hm.tnote = 0, hm.p1 = hm.p2 = 0, hm.lag = 0;   /* (SCALE off: the tracker at rest, a fresh start later) */
         }
     }
+    TIM_ADD(TS_LV + k % HL_N, TIM_NOW() - tl);
 }
 /* T1's engine while HARMONY is on (voice.c track_render): the input routed to HARMONY at VOICE IN, n <= VOC_MAXN samples
  * on the track's scale; its chain (DIST, SLICER, LEVEL, the punch-in) then the VOICE lane (fx.c hm_insert); 1 (the chain

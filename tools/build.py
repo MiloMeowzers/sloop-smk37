@@ -200,15 +200,17 @@ def build_loader():
 # the drums' filter, the waits for core 1)
 HOT_TEXT = ["fm1_alnk0_irq", "mix_tail_wait", "cpu1_wait", "tp_pos", "uac6_room", "lfo_sync_inc", "events_block",
             "trk_note_on", "trk_note_off", "voice_victim", "lock_step", "drum_synth_on", "drum_pick", "roll_hit",
-            "mix_units", "mix_part_run", "gain_next", "esync_coef", "lfo_wave", "tflt_run", "ins_run", "click_render",
+            "hm_block", "mix_units", "mix_part_run", "hm_insert", "hm_lane", "gain_next", "esync_coef", "lfo_wave", "tflt_run", "ins_run", "click_render",
             "voc_fade", "tp_zero", "eng_arena_of", "pow2_q16", "analog_render", "analog_render_f",
             "fm6_render", "fm6_part_of", "fm6_note_of", "fm6_op_run", "fm6_op_fb", "fm6_env_advance",
             "fm6_penv_advance", "fm6_block", "fm6_sync", "fm6_note_on", "fm6_done", "phase_render", "pd_setup",
             "sample_render", "sample_next", "slice_render", "drawbar_render", "grain_render", "phys_render",
-            "slicer_track", "drums_mix", "ds_filter", "slicer_drums", "tp_x", "cpu1_units_job", "cpu1_stems_job",
+            "slicer_track", "mix_drums", "drums_mix", "ds_filter", "slicer_drums", "tp_x", "cpu1_units_job", "cpu1_stems_job",
             "cpu1_tail_job", "uac6_tap_ch", "uac_tap48", "uac_render_start", "fm1_timer5_irq", "uac_service", "uin_rx",
             "hm_render", "hm_lags", "hm_ratios", "hm_dinc", "hm_dincf", "hm_note_on", "hm_note_off", "hm_pick", "hm_snap"]   # (the harmoniser, smk_harm.h: T1's
-# engine while HARMONY is on, and what it calls once a block)
+# engine while HARMONY is on, and what it calls once a block; (2026-11-14, harmoniser-spec.md §12) Stage 1c's
+# hm_block, the lanes (hm_insert, hm_lane) and mix_drums (the drum lane's, every block on core 1) were left in the
+# flash among the UI's code)
 
 
 def build_app():

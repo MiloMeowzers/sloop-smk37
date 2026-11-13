@@ -33,7 +33,7 @@ static void fb_set(uint32_t b)                     /* bank b, the screen up */
     ui.force = 1;
 }
 static void fb_close(void) { fb_open = 0, fb_pin = 0; }
-/* a fader moved (main.c smk_faders): the screen up, or its time-out restarted, so what the fader set is seen */
+/* a fader moved (main.c smk_faders): the screen up (it stays until closed), so what the fader set is seen */
 static void fb_touch(void)
 {
     if (!fb_open)
