@@ -802,9 +802,9 @@ UI_SMALL static void draw_menu(void)
                     cv_text(xv + 8, y + 30, &FONT_S, "RE-PLUG", C_AMB);   /* (main.c: a moment after the knob) */
                 else if (i == MI_SRATE || i == MI_SFILT
 #if SMK_UAC_IN_PROBE
-                         || i == MI_VINL || i == MI_VINR || i == MI_VCARR
+                         || i == MI_VINL || i == MI_VINR || i == MI_VCARR || i == MI_SPAIR || (i == MI_VMODE && hm_on)
 #endif
-                         ) {
+                         ) {                    /* (STEREO PAIR and MODE's lock: their guides were set, never drawn) */
                     uint16_t gc = vc == C_HI ? C_GRAY : C_DIM;
                     cv_text(xv + 8, y + 16, &FONT_S, mi_guide(i, 0), gc);   /* (y + 30: a fourth row's second line
                                                          * inside the screen; at y + 34 it ran off the bottom) */
