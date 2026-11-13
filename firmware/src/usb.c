@@ -584,6 +584,14 @@ static const char *const U6_NAMES[UL_N][U6_CH] = {
     {"KICK", "SNARE", "HATS", "PERC", "RET L", "RET R"},
     {"SYN 1", "SYN 2", "SYN 3", "DRUMS", "RET L", "RET R"},
     {"SYN 1", "SYN 2", "SYN 3", "KICK", "SNARE", "HATS+PERC"}};
+#ifndef SMK_PAIR_STATE                                  /* (fx.c's STEREO PAIR; a host test of this file alone) */
+#define SP_RET 0u
+#define SP_DRUMS 1u
+#define SP_T1 2u
+#define SP_N 5u
+static uint8_t smk_pair;
+#define SMK_PAIR_STATE 1
+#endif
 static uint8_t u6_str[2u + 2u * 9u];
 static int uac6_str(uint32_t i, const uint8_t **d, uint16_t *l)
 {
@@ -591,7 +599,17 @@ static int uac6_str(uint32_t i, const uint8_t **d, uint16_t *l)
     uint32_t k = 0;
     if (i < 4u || i >= 4u + U6_CH)
         return 0;
-    for (s = U6_NAMES[SMK_UAC_PROBE ? UL_DRUMS : usb_layout_mode % UL_N][i - 4u]; *s && k < 9u; s++, k++)
+    s = U6_NAMES[SMK_UAC_PROBE ? UL_DRUMS : usb_layout_mode % UL_N][i - 4u];
+    if (!SMK_UAC_PROBE && usb_layout_mode % UL_N == UL_SYNTHS && smk_pair && smk_pair < SP_N) {   /* STEREO PAIR (fx.c) */
+        static const char *const PL[SP_N][2] = {{"RET L", "RET R"}, {"DRUMS L", "DRUMS R"}, {"SYN 1 L", "SYN 1 R"},
+                                                {"SYN 2 L", "SYN 2 R"}, {"SYN 3 L", "SYN 3 R"}};
+        uint32_t slot = smk_pair == SP_DRUMS ? 3u : (uint32_t)smk_pair - SP_T1, ch = i - 4u;
+        if (ch == slot)
+            s = "RET";
+        else if (ch >= 4u)
+            s = PL[smk_pair][ch - 4u];
+    }
+    for (; *s && k < 9u; s++, k++)
         u6_str[2u + 2u * k] = (uint8_t)*s, u6_str[3u + 2u * k] = 0;
     u6_str[0] = (uint8_t)(2u + 2u * k);
     u6_str[1] = 3;

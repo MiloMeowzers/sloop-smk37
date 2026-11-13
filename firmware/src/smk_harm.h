@@ -36,7 +36,8 @@
  * default is 1a's sound, bit for bit. */
 #define SMK_HARM 1
 #include "smk_harm_eq.h"             /* the feedback EQ's coefficients and INPUT LEVEL's gains (tools/gen_harm_eq.py) */
-#define HM_LEN 9216u                 /* the memory: 22.05 kHz samples, ~418 ms (the H949's 400 + a margin) */
+#define HM_LEN 7056u                 /* a lane's memory: 22.05 kHz samples, 320 ms (Stage 1c, harmoniser-spec.md §10a-2:
+                                      * every lane the same, so REPEAT is the same everywhere; 1a / 1b: 9216, 418 ms) */
 #define HM_SEG 551u                  /* the segment (NORM): 25 ms at 22.05 kHz */
 #define HM_D0 4u                     /* the taps' least delay (storage samples) */
 #define HM_TW 64u                    /* the tracker's window, 5.5 kHz samples (11.6 ms) */
@@ -86,7 +87,7 @@ typedef struct {
     uint8_t dry;                     /* DRY LEVEL 0 .. 100 (linear %) */
     uint8_t byp;                     /* IN / OUT: 1 OUT (the input straight through) */
     uint8_t fsel;                    /* FUNCTION SELECT: 0 IN (red, pitch), 1 OUT (green, delay: Stage 2) */
-    uint8_t rsv[3];
+    int8_t pan[3];                   /* each voice's pan -64 .. 63 (0: centre; Stage 1c, §10b; the spare bytes of 1b: 0) */
 } hset_t;
 _Static_assert(sizeof(hset_t) == 22u, "hset_t: as kept in vocset");
 static const hset_t HS_DEF = {{0, 0, 0}, {100, 100, 100}, {HF_NORM, HF_NORM, HF_NORM}, 0, HC_KEYS, HM_INL_0, HM_LOW_0,
@@ -112,6 +113,8 @@ static void hs_fix(hset_t *s)        /* every value in range (a load, the editor
                                       * else ignored, and stayed so; the owner 2026-11-13: "I can't silence the
                                       * unprocessed drums") */
     s->dry = (uint8_t)(s->dry > 100u ? 100u : s->dry);
+    for (v = 0; v < 3u; v++)
+        s->pan[v] = (int8_t)clamp(s->pan[v], -64, 63);
 }
 /* G1's 16 interval pads (the HK940's: top unison, 2nd, 3rd, 4th, 5th, 6th, 7th, octave up; bottom 2nd .. octave, two
  * octaves down), held or latched: the page sets them, hm_render plays them as T1's notes (60 + the interval) */
@@ -119,22 +122,47 @@ static volatile uint16_t hm_pad, hm_padre;   /* (hm_padre: latched pads whose vo
                                               * sets it, hm_render takes it) */
 static const int8_t HM_PADIV[16] = {0, 2, 4, 5, 7, 9, 10, 12, -2, -4, -5, -7, -9, -10, -12, -24};
 /* (PITCH, FEEDBACK, VOICE IN, WET / DRY: FADER BANK E, HARM; the sends: F, SENDS; ui_fbank.c, main.c) */
-static int16_t *hm_ring;             /* the memory: smk_fxpool's start (fx.c sets it; slicer.c owns it) */
+static int16_t *hm_ring;             /* the VOICE lane's memory and the tracker's rings: smk_fxpool's start (fx.c sets it;
+                                      * slicer.c owns it) */
 #define hm_tring (hm_ring + HM_LEN)                  /* the dry input, 5.5 kHz */
 #define hm_tb (hm_ring + HM_LEN + HM_TRN)            /* the frame's snapshot, scaled */
-static int32_t hm_sb[2][2][VOC_MAXN];   /* the HARM sends: [core][block parity], Q15 (fx.c writes, hm_render reads) */
-static uint8_t hm_sbp;               /* this block's parity (fx.c, core 0, before the units) */
 #define HM_T(t) (hm_on && (t) == &trk[0])
+/* Stage 1c (harmoniser-spec.md §10): a LANE across each track sent to it, the harmoniser in its track's chain (fx.c
+ * hm_insert: after the track's LEVEL, mute and punch-in, before its pan, sends and stem): VOICE (T1, the input), T2,
+ * T3 (AUDIO: the vocoder is off while HARMONY is on), DRUMS. One set of controls (hb, worked out once a block on core
+ * 0 before the units: hm_block); each lane its own memory, write slot, taps, fades, feedback and EQ state. Linear:
+ * the lanes of the voice and of T2 are what one harmoniser of their sum gave (1b's sends); only the separation is new */
+#ifndef HM_POOL
+#define HM_POOL __attribute__((section(".pool")))   /* (.pool: zeroed at boot; the host tests define it empty) */
+#endif
+enum { HL_VOICE, HL_T2, HL_T3, HL_DRUM, HL_N };
+typedef struct {
+    int16_t *mem;                    /* HM_LEN storage samples */
+    uint32_t w, t;                   /* the write slot; output samples (the pair's phase) */
+    int32_t half, fb;                /* the pair's first sample; the feedback for the next write */
+    int32_t ph[3], g[3];             /* each voice: its segment phase (Q16 storage samples), its fade (Q15) */
+    int32_t eq[2][4];                /* the feedback EQ's state (LOW, HIGH) */
+    uint8_t run;                     /* 0: cleared at its next block (just turned on: no stale audio) */
+} hm_lane_t;
+static hm_lane_t hm_ln[HL_N] HM_POOL;
+static int16_t hm_lmem[HL_N - 1u][HM_LEN] HM_POOL;   /* T2, T3, DRUMS (42 KB; the VOICE lane's in smk_fxpool) */
+static struct {                      /* the block's shared values (hm_block, core 0; the lanes read them) */
+    int32_t gt[3], lg[3], pl[3], pr[3];   /* each voice: its gate (Q15), LEVEL x on (Q15), pan's left / right (Q12) */
+    int32_t fbk, wg, dg, ig, kd;     /* feedback (Q15 over the voices), WET (Q15), DRY LEVEL (Q15), INPUT LEVEL (Q12), the
+                                      * dry's gain in a lane's output (Q15: DRY LEVEL x (1 - WET); IN / OUT OUT: 32768) */
+    int32_t cq[2][5];                /* the feedback EQ's coefficients */
+    uint8_t eql, eqh, byp;
+} hb HM_POOL;
+static uint8_t hm_spread;            /* G3 K5 SPREAD 0 .. 100 (V1 left, V3 right; kept: vocset) */
+static uint8_t hm_vmode, hm_vpark;   /* VOCODER > MODE set aside while HARMONY is on (the vocoder off, MODE AUDIO: §10a-2);
+                                      * hm_vpark: a load gave it before HARMONY was taken (project.c vocv_put) */
+#define HM_LANE_ON(k) (hm_on && ((k) == HL_VOICE || hm_send[(k) & 3u]))   /* (a track's lane: bank F above 0) */
 static struct {
     uint8_t note[3];                 /* each voice's note (0: none) */
     uint32_t age[3], seq;            /* .. its order (the oldest the lowest); the next */
-    volatile uint8_t rep;            /* REPEAT: the memory not written */
-    uint8_t run;                     /* running (its memory cleared at the start) */
-    uint32_t w, t;                   /* the write slot; output samples (the pair's phase) */
-    int32_t half;                    /* the pair's first sample */
-    int32_t ph[3], g[3], dinc[3];    /* each voice: its segment phase (Q16 storage samples), gain (Q15), the delay's
-                                      * change an output sample ((1 - ratio) x 32768, Q16) */
-    int32_t fb;                      /* the feedback for the next write */
+    volatile uint8_t rep;            /* REPEAT: no lane's memory written */
+    uint8_t run;                     /* running (the lanes cleared at the start) */
+    int32_t dinc[3];                 /* each voice: the delay's change an output sample ((1 - ratio) x 32768, Q16) */
     uint32_t tw;                     /* the dry ring's write count */
     int32_t dacc;                    /* .. the 8-sample sum */
     uint32_t lag, sum;               /* the next lag (0: take a snapshot); the running sum of d */
@@ -146,8 +174,6 @@ static struct {
     volatile int32_t pk_in, pk_out;  /* the peaks since the console read them */
     uint8_t on[3];                   /* each voice sounding this block (a note, MANUAL, SHARP / FLAT) */
     uint16_t padl;                   /* the pads as last played */
-    int32_t eq[2][4];                /* the feedback EQ's state (LOW, HIGH): x1, x2, y1, y2 */
-    int32_t cq[2][5];                /* .. its coefficients this block (a copy in RAM) */
     volatile int32_t up[6];          /* the page's peaks (it reads and clears them): the input, V1 .. V3, the output, the
                                       * feedback into the memory before its soft limit */
 } hm;
@@ -190,7 +216,7 @@ static void hm_note_off(uint32_t note)
 static void hm_all_off(void) { hm.note[0] = hm.note[1] = hm.note[2] = 0; }
 
 /* the memory at a delay of d (Q16 storage samples) behind the newest slot, interpolated */
-static inline int32_t hm_read(int32_t wq, int32_t d)
+static inline int32_t hm_read(const int16_t *hm_ring, int32_t wq, int32_t d)   /* (hm_ring: the lane's memory) */
 {
     int32_t p = wq - d, a, b;
     uint32_t i;
@@ -381,33 +407,49 @@ static inline int32_t hm_bq(int32_t *z, const int32_t *c, int32_t x)
     return (y8 + (y8 < 0 ? 255 : 0)) >> 8;
 }
 
-/* the harmoniser's start: no stale memory, the voices at rest (the held notes kept) */
+/* a lane at rest: no stale memory, its voices' phases spread, their fades at 0 */
+static void hm_lane_start(uint32_t k)
+{
+    hm_lane_t *L = &hm_ln[k % HL_N];
+    memset(L, 0, sizeof *L);
+    L->mem = k ? hm_lmem[(k - 1u) % (HL_N - 1u)] : hm_ring;
+    memset(L->mem, 0, HM_LEN * sizeof L->mem[0]);
+    L->ph[1] = (int32_t)(HM_SEG << 14), L->ph[2] = (int32_t)(HM_SEG << 15);
+    L->run = 1;
+}
+/* the harmoniser's start: every lane at rest, the tracker's rings clear (the held notes kept) */
 static void hm_start(void)
 {
     uint8_t nt[3] = {hm.note[0], hm.note[1], hm.note[2]};
-    uint32_t ag[3] = {hm.age[0], hm.age[1], hm.age[2]}, sq = hm.seq;
+    uint32_t ag[3] = {hm.age[0], hm.age[1], hm.age[2]}, sq = hm.seq, k;
     memset(hm_ring, 0, HM_MEM * sizeof hm_ring[0]);
     memset(&hm, 0, sizeof hm);
     memcpy(hm.note, nt, sizeof nt), memcpy(hm.age, ag, sizeof ag), hm.seq = sq;
-    hm.ph[1] = (int32_t)(HM_SEG << 14), hm.ph[2] = (int32_t)(HM_SEG << 15);
+    for (k = 0; k < HL_N; k++)
+        hm_lane_start(k);
     hm.run = 1;
 }
-
-/* the harmoniser: T1's engine (voice.c track_render), n <= VOC_MAXN samples on the track's scale into out; 1 (the
- * chain runs: the dry plays even with no note) */
-static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, uint32_t n)
+/* a gentle ceiling on a lane's wet (int16 scale): untouched up to K (-2.5 dBFS), then bent towards full scale (the
+ * three voices and the feedback reached 1.3 x full scale, 2026-11-13: the master's limiter worked on it, a click in
+ * the headphones only) */
+static inline int32_t hm_knee(int32_t y)
 {
-    uint32_t i, v, sp = hm_sbp ^ 1u, sc = hm_int != 0;   /* (INTERVALS SCALE: the tracker runs) */
-    int32_t pk = hm.pk_in, po = hm.pk_out, gt[3], lg[3], fbk, wg, dg, nn = 0, ui_in = 0, ui_out = 0, ui_fb = 0;
-    int32_t ui_v[3] = {0, 0, 0};
-    int32_t vg = VOC_AUDIO_ON ? HM_GAIN(hm_send[0]) : 0;   /* VOICE (AUDIO IN off: the sends only) */
-    int32_t ig = HM_INL[hs.inl % HM_INL_N], byp = hs.byp & 1u;   /* INPUT LEVEL (Q12), IN / OUT */
-    uint32_t li = hs.low % HM_LOW_N, hi = hs.high % HM_HIGH_N, eql = li != HM_LOW_0, eqh = hi != HM_HIGH_0;
-    const int16_t *in = uin_dst[UD_HARM];
-    const int32_t *s0 = hm_sb[0][sp], *s1 = hm_sb[1][sp];
+    const int32_t K = 24576, M = 32767 - 24576;
+    int32_t a = y < 0 ? -y : y;
+    if (a <= K)
+        return y;
+    a -= K;
+    a = K + (int32_t)(((int64_t)a * M) / (a + M));
+    return y < 0 ? -a : a;
+}
+/* once a block on core 0, before the units (fx.c): the pads as notes, the voices' ratios and gates, the shared gains */
+static void __attribute__((noinline)) hm_block(void)
+{
+    uint32_t v, nn = 0, li = hs.low % HM_LOW_N, hi = hs.high % HM_HIGH_N;
+    int32_t fbk, wg, dg;
     if (!hm.run)
         hm_start();
-    {   /* G1's pads: as notes (here, on this core, as the sequencer's) */
+    {   /* G1's pads: as notes (here, before the units, as the sequencer's) */
         uint32_t pd = hm_pad, re = hm_padre & pd, ch = (pd ^ hm.padl) | re, k;
         hm_padre = 0;
         for (k = 0; ch && k < 16u; k++)
@@ -420,102 +462,129 @@ static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, ui
             }
         hm.padl = (uint16_t)pd;
     }
-    hm_ratios(t);
+    hm_ratios(&trk[0]);
     for (v = 0; v < 3u; v++) {
-        gt[v] = hm.on[v] ? 32767 : 0;
+        int32_t p = hs.pan[v] + (v == 0u ? -(int32_t)hm_spread * 64 / 100 : v == 2u ? (int32_t)hm_spread * 63 / 100 : 0);
+        p = clamp(p, -64, 63);                          /* (SPREAD: V1 left, V3 right, V2 as it is) */
+        hb.gt[v] = hm.on[v] ? 32767 : 0;
         nn += hm.on[v] != 0;
-        lg[v] = (hs.mute >> (v + 1u)) & 1u ? 0 : (int32_t)(hs.lv[v] > 100u ? 100u : hs.lv[v]) * 32768 / 100;   /* LEVEL
-                                                         * (100: 32768, exactly 1a's) */
+        hb.lg[v] = (hs.mute >> (v + 1u)) & 1u ? 0 : (int32_t)(hs.lv[v] > 100u ? 100u : hs.lv[v]) * 32768 / 100;
+        hb.pl[v] = 4096 - (p > 0 ? p * 64 : 0), hb.pr[v] = 4096 + (p < 0 ? p * 64 : 0);   /* (the tracks' PAN law) */
     }
-    if (hs.fbl & 1u) {                                  /* FB MAIN: H949, to 1.25 over the sounding voices (the soft
-                                                         * limit holds it) */
+    if (hs.fbl & 1u) {                                  /* FB MAIN: H949, to 1.25 over the sounding voices */
         fbk = clamp(hm_fb, 0, 127) * 323 / (nn ? nn : 1);
     } else {                                            /* SAFE: to 0.95, under the EQ's loudest gain */
         fbk = clamp(hm_fb, 0, 127) * 246 / (nn ? nn : 1);
-        if (eql)
+        if (li != HM_LOW_0)
             fbk = fbk * 4096 / HM_LOW_PK[li];
-        if (eqh)
+        if (hi != HM_HIGH_0)
             fbk = fbk * 4096 / HM_HIGH_PK[hi];
     }
-    memcpy(hm.cq[0], HM_LOW[li], sizeof hm.cq[0]), memcpy(hm.cq[1], HM_HIGH[hi], sizeof hm.cq[1]);
+    memcpy(hb.cq[0], HM_LOW[li], sizeof hb.cq[0]), memcpy(hb.cq[1], HM_HIGH[hi], sizeof hb.cq[1]);
     wg = hm_wd >= 127 ? 32768 : clamp(hm_wd, 0, 127) * 256;   /* WET / DRY, Q15: 64 = 16384 */
-    dg = hs.mute & 1u ? 0 : (int32_t)(hs.dry > 100u ? 100u : hs.dry) * 32768 / 100;   /* DRY LEVEL (100: 32768) */
+    dg = hs.mute & 1u ? 0 : (int32_t)(hs.dry > 100u ? 100u : hs.dry) * 32768 / 100;   /* DRY LEVEL */
+    hb.fbk = fbk, hb.wg = wg, hb.dg = dg, hb.ig = HM_INL[hs.inl % HM_INL_N];
+    hb.byp = (uint8_t)(hs.byp & 1u), hb.eql = (uint8_t)(li != HM_LOW_0), hb.eqh = (uint8_t)(hi != HM_HIGH_0);
+    hb.kd = hb.byp ? 32768 : (int32_t)(((int64_t)dg * (32768 - wg)) >> 15);
+    for (v = 0; v < HL_N; v++)                          /* (a track's lane turned off: cleared when it comes back) */
+        if (v && !HM_LANE_ON(v))
+            hm_ln[v].run = 0;
+}
+/* lane k: n inputs (int16 scale, the lane's input level applied) into its memory; its voices' wet, WET applied, into
+ * wl / wr (each voice at its pan) and, when wv, each voice apart (the drums' channels, §10c-2). The dry is the caller's
+ * (hb.kd: its own signal, mono or stereo). The VOICE lane runs the tracker (INTERVALS SCALE) */
+static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int32_t *wl, int32_t *wr,
+                                              int32_t (*wv)[VOC_MAXN], uint32_t n)
+{
+    hm_lane_t *L = &hm_ln[k % HL_N];
+    const int16_t *mr;
+    int16_t *mw;
+    uint32_t i, v, sc = k == HL_VOICE && hm_int != 0;
+    int32_t pk = hm.pk_in, po = hm.pk_out, ui_in = 0, ui_out = 0, ui_fb = 0, ui_v[3] = {0, 0, 0};
+    int32_t fbk = hb.fbk, wg = hb.wg, ig = hb.ig, rep = hm.rep, byp = hb.byp;
+    if (!L->run)
+        hm_lane_start(k);
+    mr = mw = L->mem;
     if (n > VOC_MAXN)
         n = VOC_MAXN;
     for (i = 0; i < n; i++) {
-        int32_t x = ((in[i] * vg) >> 15) + s0[i] + s1[i], vs = 0, wq, y, ax;
-        x = clamp((x * ig) >> 12, -32767, 32767);      /* (INPUT LEVEL: 0 dB = 4096, exactly) */
+        int32_t x = clamp((in[i] * ig) >> 12, -32767, 32767), vs = 0, sl = 0, sr = 0, wq, ax;   /* (INPUT LEVEL) */
         ax = x < 0 ? -x : x;
         pk = ax > pk ? ax : pk;
         ui_in = ax > ui_in ? ax : ui_in;
         if (sc) {
             hm.dacc += x;                               /* the tracker's dry ring: an 8-sample mean, 5.5 kHz */
-            if ((hm.t & 7u) == 7u) {
+            if ((L->t & 7u) == 7u) {
                 hm_tring[hm.tw & (HM_TRN - 1u)] = (int16_t)(hm.dacc >> 3);
                 hm.tw++;
                 hm.dacc = 0;
             }
         }
-        if (!(hm.t & 1u)) {
-            hm.half = x;
+        if (!(L->t & 1u)) {
+            L->half = x;
         } else {                                        /* a pair: one stored sample, the feedback in, soft-limited */
-            if (!hm.rep) {
-                int32_t s = clamp(((hm.half + x) >> 1) + hm.fb, -32767, 32767), as = s < 0 ? -s : s;
+            if (!rep) {
+                int32_t s = clamp(((L->half + x) >> 1) + L->fb, -32767, 32767), as = s < 0 ? -s : s;
                 ui_fb = as > ui_fb ? as : ui_fb;
                 s -= (((s * s) >> 15) * s >> 15) * 10923 >> 15;   /* x - x^3 / 3 (slope <= 1; full scale -> 2/3) */
-                hm_ring[hm.w] = (int16_t)s;
+                mw[L->w] = (int16_t)s;
             }
-            hm.w = hm.w + 1u >= HM_LEN ? 0u : hm.w + 1u;
+            L->w = L->w + 1u >= HM_LEN ? 0u : L->w + 1u;
         }
-        wq = (int32_t)(hm.w << 16) - (int32_t)((~hm.t & 1u) << 15);   /* the newest slot, the half-pair's phase */
+        wq = (int32_t)(L->w << 16) - (int32_t)((~L->t & 1u) << 15);   /* the newest slot, the half-pair's phase */
         for (v = 0; v < 3u; v++) {                      /* the voices: two taps, a triangle crossfade */
-            int32_t p, p2, g1, a1, a2, c, g = hm.g[v];
-            g = g < gt[v] ? (g + HM_FADE > gt[v] ? gt[v] : g + HM_FADE) : (g - HM_FADE < gt[v] ? gt[v] : g - HM_FADE);
-            hm.g[v] = g;
-            if (!g)
+            int32_t p, p2, g1, a1, a2, c, g = L->g[v], gt = hb.gt[v];
+            g = g < gt ? (g + HM_FADE > gt ? gt : g + HM_FADE) : (g - HM_FADE < gt ? gt : g - HM_FADE);
+            L->g[v] = g;
+            if (!g) {
+                if (wv)
+                    wv[v][i] = 0;
                 continue;
-            p = hm.ph[v] + hm.dinc[v];
+            }
+            p = L->ph[v] + hm.dinc[v];
             if (p < 0)
                 p += (int32_t)(HM_SEG << 16);
             else if (p >= (int32_t)(HM_SEG << 16))
                 p -= (int32_t)(HM_SEG << 16);
-            hm.ph[v] = p;
+            L->ph[v] = p;
             p2 = p + (int32_t)(HM_SEG << 15);
             if (p2 >= (int32_t)(HM_SEG << 16))
                 p2 -= (int32_t)(HM_SEG << 16);
             g1 = p < (int32_t)(HM_SEG << 15) ? p : (int32_t)(HM_SEG << 16) - p;   /* 0 .. HM_SEG << 15 */
             g1 = (int32_t)(((uint64_t)(uint32_t)g1 * (0xFFFFFFFFu / HM_SEG)) >> 32);   /* -> Q15 */
-            a1 = hm_read(wq, p + (int32_t)(HM_D0 << 16));
-            a2 = hm_read(wq, p2 + (int32_t)(HM_D0 << 16));
-            c = (((((a1 * g1 + a2 * (32767 - g1)) >> 15) * g) >> 15) * lg[v]) >> 15;   /* (LEVEL, the mute) */
+            a1 = hm_read(mr, wq, p + (int32_t)(HM_D0 << 16));
+            a2 = hm_read(mr, wq, p2 + (int32_t)(HM_D0 << 16));
+            c = (((((a1 * g1 + a2 * (32767 - g1)) >> 15) * g) >> 15) * hb.lg[v]) >> 15;   /* (LEVEL, the mute) */
             vs += c;
+            sl += (c * hb.pl[v]) >> 12, sr += (c * hb.pr[v]) >> 12;   /* (its pan) */
+            if (wv)
+                wv[v][i] = byp ? 0 : hm_knee((c * wg) >> 15);
             c = c < 0 ? -c : c;
             ui_v[v] = c > ui_v[v] ? c : ui_v[v];
         }
-        if (hm.t & 1u) {                                /* (22.05 kHz: the next pair's), rounded toward 0: a floor held
-                                                         * the loop on a small offset for ever (-47 at FB 127, the host
-                                                         * test); toward 0 it always dies away */
-            int32_t f = vs * fbk;
+        if (L->t & 1u) {                                /* (22.05 kHz: the next pair's), rounded toward 0 */
+            int32_t f = clamp(vs, -65535, 65535) * fbk;
             f = (f + (f < 0 ? 32767 : 0)) >> 15;
-            if (eql)                                    /* (the EQ: flat, not run: 1a's loop exactly) */
-                f = hm_bq(hm.eq[0], hm.cq[0], f);
-            if (eqh)
-                f = hm_bq(hm.eq[1], hm.cq[1], f);
-            hm.fb = f;
+            if (hb.eql)
+                f = hm_bq(L->eq[0], hb.cq[0], f);
+            if (hb.eqh)
+                f = hm_bq(L->eq[1], hb.cq[1], f);
+            L->fb = f;
         }
-        vs = clamp(vs, -65535, 65535);                  /* (x 32768 in 32 bits) */
-        y = ((((x * dg) >> 15) * (32768 - wg)) >> 15) + ((vs * wg) >> 15);   /* DRY LEVEL, WET / DRY (64: x / 2 + vs /
-                                                         * 2) */
-        if (byp)
-            y = x;                                      /* IN / OUT: OUT, the input straight through */
-        ax = y < 0 ? -y : y;
+        if (byp) {                                      /* IN / OUT: OUT, no wet (the dry, hb.kd 32768, is the input) */
+            wl[i] = wr[i] = 0;
+        } else {
+            sl = clamp(sl, -98301, 98301), sr = clamp(sr, -98301, 98301);
+            wl[i] = hm_knee((sl * wg) >> 15), wr[i] = hm_knee((sr * wg) >> 15);
+        }
+        ax = wl[i] < 0 ? -wl[i] : wl[i];
+        ax = ax > (wr[i] < 0 ? -wr[i] : wr[i]) ? ax : (wr[i] < 0 ? -wr[i] : wr[i]);
         po = ax > po ? ax : po;
         ui_out = ax > ui_out ? ax : ui_out;
-        out[i] = VOC_VS(y);
-        hm.t++;
+        L->t++;
     }
     hm.pk_in = pk, hm.pk_out = po;
-    if (ui_in > hm.up[HM_UP_IN])                        /* (the page's: it takes them at its rate) */
+    if (ui_in > hm.up[HM_UP_IN])                        /* (the page's, the loudest lane's: it takes them at its rate) */
         hm.up[HM_UP_IN] = ui_in;
     for (v = 0; v < 3u; v++)
         if (ui_v[v] > hm.up[HM_UP_V + v])
@@ -524,12 +593,28 @@ static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, ui
         hm.up[HM_UP_OUT] = ui_out;
     if (ui_fb > hm.up[HM_UP_FB])
         hm.up[HM_UP_FB] = ui_fb;
-    if (sc) {
-        TIM_VOC_T(tt);
-        hm_lags();
-        TIM_ADD(TS_TRK, TIM_NOW() - tt);
-    } else {
-        hm.tnote = 0, hm.p1 = hm.p2 = 0, hm.lag = 0;   /* (SCALE off: the tracker at rest, a fresh start later) */
+    if (k == HL_VOICE) {
+        if (sc) {
+            TIM_VOC_T(tt);
+            hm_lags();
+            TIM_ADD(TS_TRK, TIM_NOW() - tt);
+        } else {
+            hm.tnote = 0, hm.p1 = hm.p2 = 0, hm.lag = 0;   /* (SCALE off: the tracker at rest, a fresh start later) */
+        }
     }
+}
+/* T1's engine while HARMONY is on (voice.c track_render): the input routed to HARMONY at VOICE IN, n <= VOC_MAXN samples
+ * on the track's scale; its chain (DIST, SLICER, LEVEL, the punch-in) then the VOICE lane (fx.c hm_insert); 1 (the chain
+ * runs) */
+static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, uint32_t n)
+{
+    uint32_t i;
+    int32_t vg = VOC_AUDIO_ON ? HM_GAIN(hm_send[0]) : 0;   /* VOICE IN (AUDIO IN off: silent) */
+    const int16_t *in = uin_dst[UD_HARM];
+    (void)t;
+    if (n > VOC_MAXN)
+        n = VOC_MAXN;
+    for (i = 0; i < n; i++)
+        out[i] = VOC_VS((in[i] * vg) >> 15);
     return 1u;
 }

@@ -16,10 +16,11 @@
  *             sung note the tone's, never an octave off; silence after: the note held
  *   scale     SCALE MAJOR, C: a sung D4, the key E4 (+4) -> F4 (a minor third over D: the scale's), B4 (+11) -> C5;
  *             SCALE off: chromatic (E4 -> +4)
- *   sends     AUDIO IN off: the voice's input not heard, the HARM sends (hm_sb, the last block's) are
  * Stage 1b (the HARMONY page's settings, hs):
- *   golden    the page at its defaults: 1a's sound bit for bit (12 s: notes, FEEDBACK, PITCH, WET / DRY, SCALE and the
- *             tracker, a send, REPEAT; the hash taken from 931b88b's smk_harm.h)
+ * Stage 1c (§10): the VOICE lane as the mixer runs it (fx.c hm_insert: the dry at hb.kd, the wet at the voices' pans);
+ *   lanes     VOICE(a) + T2(b) = one lane of a + b (1b's sends), to rounding; pans: centred left = right exactly, SPREAD
+ *             100 V1 left / V3 right; the drum channels: the voices apart sum to the wet; the ceiling under full scale
+ *   (1b's golden of 1a's sound: retired, the chain's order changed: T1's DIST / LEVEL before the lane now)
  *   MICRO     +50 cents on E4: the pitch 2^(50/1200) higher; on a whole step, hm_dinc's exactly
  *   SHARP / FLAT  no key: silent (the keys play them, 2026-11-13); C4 held: 1.070 / 0.930 at MICRO 100, ~1.001 near 0;
  *             G4 held: the fifth moved too
@@ -56,6 +57,7 @@ static uint32_t fm1_ms;                            /* (the UI's clock: REPEAT's 
 #define TIM_NOW() 0u
 enum { TS_TRK, TS_HARM };
 static const uint16_t SCALE_MASK[] = {0xFFF, (1 << 0) | (1 << 2) | (1 << 4) | (1 << 5) | (1 << 7) | (1 << 9) | (1 << 11)};
+#define HM_POOL                                    /* (the firmware's .pool: plain statics here) */
 #include "../firmware/src/smk_harm.h"
 static uint32_t scale_mask(const track_t *t) { return SCALE_MASK[t->p[P_SCALE] ? 1 : 0]; }
 static int16_t pool[16384];
@@ -69,8 +71,8 @@ static void check(const char *what, int ok)
 static void reset(void)
 {
     memset(&hm, 0, sizeof hm);
-    memset(hm_sb, 0, sizeof hm_sb);
     hm_ring = pool;
+    hm_spread = 0;
     memset(&trk[0], 0, sizeof trk[0]);
     hm_send[0] = 100, audio_on = 1, hm_pitch = 0, hm_fb = 0, hm_int = 0, hm_wd = 64;
     hs = HS_DEF, hm_pad = 0;                         /* (the HARMONY page at its defaults) */
@@ -83,10 +85,27 @@ static void run(const int16_t *in, int32_t *out, uint32_t n)
     uint32_t i, k;
     for (i = 0; i < n; i += VOC_MAXN) {
         uint32_t m = n - i < VOC_MAXN ? n - i : VOC_MAXN;
+        static int32_t x[VOC_MAXN], wl[VOC_MAXN], wr[VOC_MAXN];
+        int32_t vg = audio_on ? HM_GAIN(hm_send[0]) : 0;
         for (k = 0; k < m; k++)
-            uin_dst[UD_HARM][k] = in ? in[i + k] : 0;
-        hm_sbp ^= 1u;
-        hm_render(&trk[0], out + i, m);
+            x[k] = ((in ? in[i + k] : 0) * vg) >> 15;   /* (T1's engine: the input at VOICE IN, int16 scale) */
+        hm_block();
+        hm_lane(HL_VOICE, x, wl, wr, 0, m);
+        for (k = 0; k < m; k++)                         /* (centred voices: wl = wr = the mono wet) */
+            out[i + k] = VOC_VS(((x[k] * hb.kd) >> 15) + ((wl[k] >> 1) + (wr[k] >> 1)));
+    }
+}
+/* a lane of track k (not the VOICE lane) on x alone: its wet (left + right) / 2, int16 scale */
+static void run_lane(uint32_t k, const int32_t *x, int32_t *w, uint32_t n)
+{
+    uint32_t i, j;
+    for (i = 0; i < n; i += VOC_MAXN) {
+        static int32_t wl[VOC_MAXN], wr[VOC_MAXN];
+        uint32_t m = n - i < VOC_MAXN ? n - i : VOC_MAXN;
+        hm_block();
+        hm_lane(k, x + i, wl, wr, 0, m);
+        for (j = 0; j < m; j++)
+            w[i + j] = (wl[j] >> 1) + (wr[j] >> 1);
     }
 }
 static double goertzel(const double *x, uint32_t n, double f)
@@ -277,69 +296,7 @@ int main(void)
         hm_ratios(&trk[0]);
         check("scale: INTERVALS FIXED (the default): the song's scale ignored, E4 -> +4", hm.dinc[0] == hm_dinc(4 * 16));
     }
-    {   /* sends */
-        double ev = 0, es = 0;
-        reset();
-        audio_on = 0;
-        sine(220.0, 8000.0, N1);
-        for (i = 0; i < N1; i += VOC_MAXN) {
-            for (k = 0; k < VOC_MAXN; k++)
-                uin_dst[UD_HARM][k] = in1[i + k];
-            hm_sbp ^= 1u;
-            for (k = 0; k < VOC_MAXN; k++)
-                hm_sb[1][hm_sbp ^ 1u][k] = 0;          /* (the units would have written the last block's) */
-            hm_render(&trk[0], out1 + i, VOC_MAXN);
-        }
-        for (i = 0; i < N1; i++)
-            ev += (double)out1[i] * out1[i];
-        reset();
-        audio_on = 0;
-        for (i = 0; i < N1; i += VOC_MAXN) {
-            hm_sbp ^= 1u;
-            for (k = 0; k < VOC_MAXN; k++)
-                hm_sb[1][hm_sbp ^ 1u][k] = in1[i + k]; /* (a send, as the units write it) */
-            hm_render(&trk[0], out1 + i, VOC_MAXN);
-        }
-        for (i = 0; i < N1; i++)
-            es += (double)out1[i] * out1[i];
-        check("sends: AUDIO IN off, the voice's input silent", ev == 0.0);
-        check("sends: a send heard (the last block's)", es > 1e9);
-    }
     /* ---- Stage 1b ---- */
-    {   /* golden: the page's defaults are 1a's sound (golden.c's scenario; 0x13DCDBD8 from 931b88b's smk_harm.h) */
-        uint32_t h = 2166136261u, rs = 12345;
-        int32_t o[VOC_MAXN];
-        reset();
-        memset(pool, 0, sizeof pool);
-        trk[0].p[P_SCALE] = 1, trk[0].p[P_TFLT] = 0, trk[0].p[P_DLY] = 0;
-        hm_sbp = 0;
-        for (i = 0; i < 44100u * 12u; i += VOC_MAXN) {
-            uint32_t blk = i / VOC_MAXN;
-            if (blk == 100) hm_note_on(64), hm_note_on(67);
-            if (blk == 3000) hm_fb = 100, hm_pitch = 20;
-            if (blk == 5000) hm_note_on(55), hm_note_off(64), hm_wd = 90;
-            if (blk == 7000) hm_int = 1, hm_send[2] = 80;
-            if (blk == 9000) hm.rep = 1;
-            if (blk == 11000) hm.rep = 0, hm_pitch = -50, hm_note_on(48);
-            if (blk == 14000) hm_all_off(), hm_fb = 127;
-            for (k = 0; k < VOC_MAXN; k++) {
-                double t = (i + k) / 44100.0;
-                rs = rs * 1664525u + 1013904223u;
-                uin_dst[UD_HARM][k] = (int16_t)(9000 * sin(2 * M_PI * 220 * t * (1 + 0.1 * sin(t))) + ((int32_t)(rs >> 20) - 2048));
-                hm_sb[0][hm_sbp][k] = (int32_t)(3000 * sin(2 * M_PI * 330 * t));
-            }
-            hm_sbp ^= 1u;
-            hm_render(&trk[0], o, VOC_MAXN);
-            for (k = 0; k < VOC_MAXN; k++) {
-                uint32_t v = (uint32_t)o[k];
-                h = (h ^ (v & 255u)) * 16777619u, h = (h ^ ((v >> 8) & 255u)) * 16777619u;
-                h = (h ^ ((v >> 16) & 255u)) * 16777619u, h = (h ^ (v >> 24)) * 16777619u;
-            }
-        }
-        memset(hm_sb, 0, sizeof hm_sb);
-        snprintf(b, sizeof b, "golden: the page's defaults, 12 s: 0x%08X (1a: 0x13DCDBD8)", h);
-        check(b, h == 0x13DCDBD8u);
-    }
     {   /* MICRO */
         double f;
         int ok = 1;
@@ -423,15 +380,18 @@ int main(void)
             by &= out1[i] == VOC_VS(in1[i]);
         check("IN / OUT: OUT, a note held: the input straight through, exactly", by);
         reset();
+        sine(330.0, 3000.0, N1);                        /* (quiet: the memory's soft limit out of it) */
+        hm_wd = 127, hm_note_on(67);                    /* (all wet: the voice alone) */
         run(in1, out1, N1);
-        for (i = 0; i < N1; i++)
+        for (i = N1 / 2; i < N1; i++)
             e1 += (double)out1[i] * out1[i];
         reset();
+        hm_wd = 127, hm_note_on(67);
         hs.inl = HM_INL_0 - 6;
         run(in1, out1, N1);
-        for (i = 0; i < N1; i++)
+        for (i = N1 / 2; i < N1; i++)
             e2 += (double)out1[i] * out1[i];
-        snprintf(b, sizeof b, "INPUT LEVEL -6 dB: %.2f dB", 10 * log10(e2 / e1));
+        snprintf(b, sizeof b, "INPUT LEVEL -6 dB: the harmony %.2f dB (the lane's input)", 10 * log10(e2 / e1));
         check(b, fabs(10 * log10(e2 / e1) + 6.0) < 0.1);
     }
     {   /* MANUAL, K+M */
@@ -462,11 +422,12 @@ int main(void)
         int32_t o[VOC_MAXN];
         int ok;
         reset();
+        (void)o;
         hm_pad = 1u << 4;                               /* (top 5: a 5th up) */
-        hm_render(&trk[0], o, VOC_MAXN);
+        hm_block();
         ok = hm.note[0] == 67;
         hm_pad = 0;
-        hm_render(&trk[0], o, VOC_MAXN);
+        hm_block();
         check("pads: top 5 on = G4 (a 5th up), off = let go", ok && hm.note[0] == 0);
     }
     {   /* the EQ's curves */
@@ -524,6 +485,120 @@ int main(void)
                 check(b, e1 * 100.0 > e0 && mx <= VOC_VS(49152));
             }
         }
+    }
+    /* ---- Stage 1c: the lanes, the pans, the drum channels, the ceiling ---- */
+    {   /* linear: the VOICE lane on a + the T2 lane on b = one lane on a + b (1b's sends), to rounding */
+        static int32_t xa[N1], xb[N1], xs[N1], wa[N1], wb_[N1], ws[N1];
+        double e = 0, d = 0;
+        for (i = 0; i < N1; i++) {
+            xa[i] = (int32_t)(800 * sin(2 * M_PI * 220.0 * i / 44100.0));   /* (-32 dBFS: the memory's soft limit, the
+                                                         * H949's colour at high level, out of it) */
+            xb[i] = (int32_t)(700 * sin(2 * M_PI * 331.0 * i / 44100.0));
+            xs[i] = xa[i] + xb[i];
+        }
+        reset();
+        hm_fb = 40, hm_wd = 127, hm_send[1] = 100;
+        hm_note_on(64), hm_note_on(67);
+        run_lane(HL_T2, xs, ws, N1);                    /* (the sum through one lane) */
+        reset();
+        hm_fb = 40, hm_wd = 127, hm_send[1] = 100;
+        hm_note_on(64), hm_note_on(67);
+        for (i = 0; i < N1; i += VOC_MAXN) {            /* (each through its own, the same block) */
+            static int32_t l1[VOC_MAXN], r1[VOC_MAXN], l2[VOC_MAXN], r2[VOC_MAXN];
+            hm_block();
+            hm_lane(HL_VOICE, xa + i, l1, r1, 0, VOC_MAXN);
+            hm_lane(HL_T2, xb + i, l2, r2, 0, VOC_MAXN);
+            for (k = 0; k < VOC_MAXN; k++)
+                wa[i + k] = (l1[k] >> 1) + (r1[k] >> 1), wb_[i + k] = (l2[k] >> 1) + (r2[k] >> 1);
+        }
+        for (i = N1 / 2; i < N1; i++) {
+            double t = wa[i] + wb_[i] - ws[i];
+            e += (double)ws[i] * ws[i], d += t * t;
+        }
+        snprintf(b, sizeof b, "lanes: VOICE(a) + T2(b) = one lane of a + b: the difference %.1f dB under", 10 * log10(e / (d + 1)));
+        check(b, d * 1e4 < e);                          /* (40 dB: what rounding leaves at -32 dBFS) */
+    }
+    {   /* pans: V1 hard left, V3 hard right (SPREAD 100); centred: wl = wr */
+        static int32_t x[VOC_MAXN], wl[VOC_MAXN], wr[VOC_MAXN];
+        double el = 0, er = 0, el3 = 0, er3 = 0;
+        int same = 1;
+        reset();
+        hm_wd = 127;
+        hm_note_on(60);
+        for (i = 0; i < N1; i += VOC_MAXN) {
+            for (k = 0; k < VOC_MAXN; k++)
+                x[k] = (int32_t)(8000 * sin(2 * M_PI * 240.1 * (i + k) / 44100.0));
+            hm_block();
+            hm_lane(HL_VOICE, x, wl, wr, 0, VOC_MAXN);
+            for (k = 0; k < VOC_MAXN; k++)
+                same &= wl[k] == wr[k];
+        }
+        check("pans: centred (the default): left = right, exactly", same);
+        reset();
+        hm_wd = 127, hm_spread = 100;
+        hm_note_on(60);                                 /* (V1) */
+        for (i = 0; i < N1; i += VOC_MAXN) {
+            for (k = 0; k < VOC_MAXN; k++)
+                x[k] = (int32_t)(8000 * sin(2 * M_PI * 240.1 * (i + k) / 44100.0));
+            hm_block();
+            hm_lane(HL_VOICE, x, wl, wr, 0, VOC_MAXN);
+            if (i >= N1 / 2)
+                for (k = 0; k < VOC_MAXN; k++)
+                    el += (double)wl[k] * wl[k], er += (double)wr[k] * wr[k];
+        }
+        hm_all_off(), hm.note[2] = 64, hm.age[2] = ++hm.seq;   /* (V3 alone) */
+        for (i = 0; i < N1; i += VOC_MAXN) {
+            for (k = 0; k < VOC_MAXN; k++)
+                x[k] = (int32_t)(8000 * sin(2 * M_PI * 240.1 * (i + k) / 44100.0));
+            hm_block();
+            hm_lane(HL_VOICE, x, wl, wr, 0, VOC_MAXN);
+            if (i >= N1 / 2)
+                for (k = 0; k < VOC_MAXN; k++)
+                    el3 += (double)wl[k] * wl[k], er3 += (double)wr[k] * wr[k];
+        }
+        snprintf(b, sizeof b, "SPREAD 100: V1 left (right %.0f dB under), V3 right (left %.0f dB under: the PAN law's +63)",
+                 10 * log10((el + 1) / (er + 1)), 10 * log10((er3 + 1) / (el3 + 1)));
+        check(b, er * 1e3 < el && el3 * 1e3 < er3);
+    }
+    {   /* the drum channels: each voice apart (wv), centred, sums to the mono wet */
+        static int32_t x[VOC_MAXN], wl[VOC_MAXN], wr[VOC_MAXN], wv[3][VOC_MAXN];
+        int ok = 1;
+        double e0 = 0, e01 = 0;
+        reset();
+        hm_wd = 127, hm_send[3] = 100;
+        hm_note_on(60), hm_note_on(67), hm_note_on(72);
+        for (i = 0; i < N1; i += VOC_MAXN) {
+            for (k = 0; k < VOC_MAXN; k++)
+                x[k] = (int32_t)(3000 * sin(2 * M_PI * 240.1 * (i + k) / 44100.0));
+            hm_block();
+            hm_lane(HL_DRUM, x, wl, wr, wv, VOC_MAXN);
+            for (k = 0; k < VOC_MAXN; k++) {
+                int32_t sum = wv[0][k] + wv[1][k] + wv[2][k];
+                ok &= abs(sum - wl[k]) <= 3;
+                if (i >= N1 / 2)
+                    e0 += (double)wv[0][k] * wv[0][k], e01 += (double)(wv[0][k] - wv[1][k]) * (wv[0][k] - wv[1][k]);
+            }
+        }
+        check("drum channels: V1 + V2 + V3 apart = the lane's wet (within rounding)", ok);
+        check("drum channels: the voices differ (each its interval)", e0 > 1e6 && e01 > 0.1 * e0);
+    }
+    {   /* the ceiling: three voices, FEEDBACK high, a hot input: the wet never past full scale */
+        static int32_t x[VOC_MAXN], wl[VOC_MAXN], wr[VOC_MAXN];
+        int32_t mx = 0;
+        uint32_t s2 = 1;
+        reset();
+        hm_wd = 127, hm_fb = 122, hs.fbl = 1;
+        hm_note_on(60), hm_note_on(64), hm_note_on(67);
+        for (i = 0; i < 4 * N1; i += VOC_MAXN) {
+            for (k = 0; k < VOC_MAXN; k++)
+                s2 = s2 * 1664525u + 1013904223u, x[k] = (int32_t)(s2 >> 17) - 32768;
+            hm_block();
+            hm_lane(HL_VOICE, x, wl, wr, 0, VOC_MAXN);
+            for (k = 0; k < VOC_MAXN; k++)
+                mx = abs(wl[k]) > mx ? abs(wl[k]) : mx;
+        }
+        snprintf(b, sizeof b, "ceiling: three voices, FEEDBACK 122 (H949), full-scale noise in: wet peak %d (<= 32767)", mx);
+        check(b, mx <= 32767);
     }
     printf(fails ? "smk_harm_test: %d FAILED\n" : "smk_harm_test: all passed\n", fails);
     return fails != 0;

@@ -87,6 +87,9 @@ static int vis_shown(void)
 }
 static void vis_open(void)
 {
+#ifdef SMK_HARM
+    vis_pg = hm_on ? 1u : 0u;                           /* (HARMONY on: the vocoder off, its page out of the cycle) */
+#endif
     vis_on = 1;
     ui.force = 1;
 }

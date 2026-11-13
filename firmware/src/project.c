@@ -1004,7 +1004,8 @@ typedef struct {
                                           * F: PITCH, FEEDBACK, WET / DRY, VOICE IN and the sends; hhave 0 (an object
                                           * of 480 bytes, before them): the defaults */
     int8_t hpit;
-    uint8_t hfb, hwd, hsend[4], hhave, rsv4[2];
+    uint8_t hfb, hwd, hsend[4], hhave, hspread, spair;   /* (+ G3 K5 SPREAD, USB > STEREO PAIR: Stage 1c, the spare
+                                          * bytes: 0 = none, RET, as before) */
 } vocset_t;
 #define VOCSET_V1 64u                    /* (the object's size before BRIDGE TONE) */
 #define VOCSET_V2 68u                    /* (.. before NORMAL) */
@@ -1020,13 +1021,18 @@ _Static_assert(VOCSET_V6 == VOCSET_V5 + 4u && VOCSET_V5 == VOCSET_V4 + 4u && VOC
 static vocset_t vocset, vocset_saved;
 static void vocv_get(vocv_t *v)
 {
-    v->mode = voc_mode, v->lvl = voc_level, v->dry = voc_dry, v->hf = voc_hf, v->cut = voc_cut, v->res = voc_res;
+    v->mode = hm_on ? hm_vmode : voc_mode, v->lvl = voc_level,   /* (HARMONY on: the mode set aside, not AUDIO's lock) */ v->dry = voc_dry, v->hf = voc_hf, v->cut = voc_cut, v->res = voc_res;
     v->vm = voc_vmode, v->pink = voc_pink, v->br = voc_bridge, v->thr = voc_thr;
     v->have = 1, v->uin = (uint8_t)(uin_mode != 0u);   /* (TEST: kept as ON) */
 }
 static void vocv_put(const vocv_t *v)
 {
     voc_mode = (uint8_t)(v->mode % VM_N), voc_level = (uint8_t)(v->lvl % VOC_LEVEL_N);
+    if (hm_on || hm_want) {                            /* (HARMONY on, or about to be: the vocoder stays off) */
+        hm_vmode = voc_mode, voc_mode = VM_OFF;
+        if (!hm_on)
+            hm_vpark = 1;
+    }
     voc_dry = (uint8_t)(v->dry % VOC_MIX_N), voc_hf = (uint8_t)(v->hf % VOC_MIX_N);
     voc_cut = (uint8_t)(v->cut & 127u), voc_res = (uint8_t)(v->res & 127u);
     voc_vmode = (uint8_t)(v->vm % VV_N), voc_pink = (uint8_t)(v->pink % VOC_NOISE_N);
@@ -1108,6 +1114,8 @@ static int vocset_take(const uint8_t *b, uint32_t n)
             hm_pitch = (int16_t)clamp(s.hpit, -64, 63), hm_fb = (int16_t)(s.hfb & 127u), hm_wd = (int16_t)(s.hwd & 127u);
             for (k = 0; k < 4u; k++)
                 hm_send[k] = (uint8_t)(s.hsend[k] & 127u);
+            hm_spread = (uint8_t)(s.hspread > 100u ? 100u : s.hspread);
+            smk_pair = (uint8_t)(s.spair % SP_N);
         } else {
             hs = HS_DEF;                               /* (saved before the page: its defaults, 1a's sound) */
         }
@@ -1160,6 +1168,7 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocset.hpit = (int8_t)clamp(hm_pitch, -64, 63), vocset.hfb = (uint8_t)(hm_fb & 127), vocset.hwd = (uint8_t)(hm_wd & 127);
     memcpy(vocset.hsend, hm_send, sizeof vocset.hsend);
     vocset.hhave = 1;
+    vocset.hspread = hm_spread, vocset.spair = (uint8_t)(smk_pair % SP_N);
 }
 static void vocset_save(void)
 {
