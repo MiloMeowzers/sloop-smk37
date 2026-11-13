@@ -176,6 +176,9 @@ static struct {
     uint16_t padl;                   /* the pads as last played */
     volatile int32_t up[6];          /* the page's peaks (it reads and clears them): the input, V1 .. V3, the output, the
                                       * feedback into the memory before its soft limit */
+    volatile int32_t lpi[4], lpo[4], lpf[4];   /* (§12) each lane's input (after INPUT LEVEL), wet output and memory
+                                      * write before its soft limit (feedback in) peaks, int16 scale, since the console
+                                      * read them ("harm": the T2 / drums levels; 32767 = clipped) */
 } hm;
 #define HM_UP_IN 0u
 #define HM_UP_V 1u
@@ -509,86 +512,111 @@ static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int
     mr = mw = L->mem;
     if (n > VOC_MAXN)
         n = VOC_MAXN;
-    for (i = 0; i < n; i++) {
-        int32_t x = clamp((in[i] * ig) >> 12, -32767, 32767), vs = 0, sl = 0, sr = 0, wq, ax;   /* (INPUT LEVEL) */
-        if (L->t & 1u) {                                /* (the meters: once a pair, §12) */
-            ax = x < 0 ? -x : x;
-            pk = ax > pk ? ax : pk;
-            ui_in = ax > ui_in ? ax : ui_in;
-        }
-        if (sc) {
-            hm.dacc += x;                               /* the tracker's dry ring: an 8-sample mean, 5.5 kHz */
-            if ((L->t & 7u) == 7u) {
-                hm_tring[hm.tw & (HM_TRN - 1u)] = (int16_t)(hm.dacc >> 3);
-                hm.tw++;
-                hm.dacc = 0;
+    {   /* (§12 fix 1: the lane's state and the block's shared values in locals for the loop, written back after it:
+         * through L-> and hb. each sample the compiler had to reload and store them around every output write. The
+         * same arithmetic in the same order: the output bit for bit as before, smk_harm_test and scratchpad bx/) */
+#define HM_S16 ((int32_t)(HM_SEG << 16))
+#define HM_S15 ((int32_t)(HM_SEG << 15))
+#define HM_DQ ((int32_t)(HM_D0 << 16))
+/* one voice: its fade, (heard) its phase, the two taps' triangle crossfade, LEVEL, its pan, the drums' channel apart;
+ * its meter once a pair. A voice faded out does nothing (its phase held), as before */
+#define HM_VOICE(V, G, P, GT, DN, LG, PL, PR, UV) do {                                                             \
+            int32_t p_, p2_, t1_, a1_, a2_, c_;                                                                     \
+            G = G < GT ? (G + HM_FADE > GT ? GT : G + HM_FADE) : (G - HM_FADE < GT ? GT : G - HM_FADE);             \
+            if (!G) {                                                                                               \
+                if (wv)                                                                                             \
+                    wv[V][i] = 0;                                                                                   \
+                break;                                                                                              \
+            }                                                                                                       \
+            p_ = P + DN;                                                                                            \
+            if (p_ < 0)                                                                                             \
+                p_ += HM_S16;                                                                                       \
+            else if (p_ >= HM_S16)                                                                                  \
+                p_ -= HM_S16;                                                                                       \
+            P = p_;                                                                                                 \
+            p2_ = p_ + HM_S15;                                                                                      \
+            if (p2_ >= HM_S16)                                                                                      \
+                p2_ -= HM_S16;                                                                                      \
+            t1_ = p_ < HM_S15 ? p_ : HM_S16 - p_;                     /* 0 .. HM_SEG << 15 */                       \
+            t1_ = (int32_t)(((uint64_t)(uint32_t)t1_ * (0xFFFFFFFFu / HM_SEG)) >> 32);   /* -> Q15 */               \
+            a1_ = hm_read(mr, wq, p_ + HM_DQ);                                                                      \
+            a2_ = hm_read(mr, wq, p2_ + HM_DQ);                                                                     \
+            c_ = (((((a1_ * t1_ + a2_ * (32767 - t1_)) >> 15) * G) >> 15) * LG) >> 15;   /* (LEVEL, the mute) */    \
+            vs += c_;                                                                                               \
+            sl += (c_ * PL) >> 12, sr += (c_ * PR) >> 12;             /* (its pan) */                               \
+            if (wv)                                                                                                 \
+                wv[V][i] = byp ? 0 : hm_knee((c_ * wg) >> 15);                                                      \
+            if (t & 1u) {                                             /* (its meter: once a pair) */                \
+                c_ = c_ < 0 ? -c_ : c_;                                                                             \
+                UV = c_ > UV ? c_ : UV;                                                                             \
+            }                                                                                                       \
+        } while (0)
+        uint32_t w = L->w, t = L->t;
+        int32_t half = L->half, fb = L->fb, eql = hb.eql, eqh = hb.eqh;
+        int32_t gA = L->g[0], gB = L->g[1], gC = L->g[2], pA = L->ph[0], pB = L->ph[1], pC = L->ph[2];
+        const int32_t gtA = hb.gt[0], gtB = hb.gt[1], gtC = hb.gt[2], dA = hm.dinc[0], dB = hm.dinc[1], dC = hm.dinc[2];
+        const int32_t lA = hb.lg[0], lB = hb.lg[1], lC = hb.lg[2], plA = hb.pl[0], plB = hb.pl[1], plC = hb.pl[2];
+        const int32_t prA = hb.pr[0], prB = hb.pr[1], prC = hb.pr[2];
+        for (i = 0; i < n; i++) {
+            int32_t x = clamp((in[i] * ig) >> 12, -32767, 32767), vs = 0, sl = 0, sr = 0, wq, ax;   /* (INPUT LEVEL) */
+            if (t & 1u) {                               /* (the meters: once a pair, §12) */
+                ax = x < 0 ? -x : x;
+                pk = ax > pk ? ax : pk;
+                ui_in = ax > ui_in ? ax : ui_in;
             }
-        }
-        if (!(L->t & 1u)) {
-            L->half = x;
-        } else {                                        /* a pair: one stored sample, the feedback in, soft-limited */
-            if (!rep) {
-                int32_t s = clamp(((L->half + x) >> 1) + L->fb, -32767, 32767), as = s < 0 ? -s : s;
-                ui_fb = as > ui_fb ? as : ui_fb;
-                s -= (((s * s) >> 15) * s >> 15) * 10923 >> 15;   /* x - x^3 / 3 (slope <= 1; full scale -> 2/3) */
-                mw[L->w] = (int16_t)s;
+            if (sc) {
+                hm.dacc += x;                           /* the tracker's dry ring: an 8-sample mean, 5.5 kHz */
+                if ((t & 7u) == 7u) {
+                    hm_tring[hm.tw & (HM_TRN - 1u)] = (int16_t)(hm.dacc >> 3);
+                    hm.tw++;
+                    hm.dacc = 0;
+                }
             }
-            L->w = L->w + 1u >= HM_LEN ? 0u : L->w + 1u;
-        }
-        wq = (int32_t)(L->w << 16) - (int32_t)((~L->t & 1u) << 15);   /* the newest slot, the half-pair's phase */
-        for (v = 0; v < 3u; v++) {                      /* the voices: two taps, a triangle crossfade */
-            int32_t p, p2, g1, a1, a2, c, g = L->g[v], gt = hb.gt[v];
-            g = g < gt ? (g + HM_FADE > gt ? gt : g + HM_FADE) : (g - HM_FADE < gt ? gt : g - HM_FADE);
-            L->g[v] = g;
-            if (!g) {
-                if (wv)
-                    wv[v][i] = 0;
-                continue;
+            if (!(t & 1u)) {
+                half = x;
+            } else {                                    /* a pair: one stored sample, the feedback in, soft-limited */
+                if (!rep) {
+                    int32_t s = clamp(((half + x) >> 1) + fb, -32767, 32767), as = s < 0 ? -s : s;
+                    ui_fb = as > ui_fb ? as : ui_fb;
+                    s -= (((s * s) >> 15) * s >> 15) * 10923 >> 15;   /* x - x^3 / 3 (slope <= 1; full scale -> 2/3) */
+                    mw[w] = (int16_t)s;
+                }
+                w = w + 1u >= HM_LEN ? 0u : w + 1u;
             }
-            p = L->ph[v] + hm.dinc[v];
-            if (p < 0)
-                p += (int32_t)(HM_SEG << 16);
-            else if (p >= (int32_t)(HM_SEG << 16))
-                p -= (int32_t)(HM_SEG << 16);
-            L->ph[v] = p;
-            p2 = p + (int32_t)(HM_SEG << 15);
-            if (p2 >= (int32_t)(HM_SEG << 16))
-                p2 -= (int32_t)(HM_SEG << 16);
-            g1 = p < (int32_t)(HM_SEG << 15) ? p : (int32_t)(HM_SEG << 16) - p;   /* 0 .. HM_SEG << 15 */
-            g1 = (int32_t)(((uint64_t)(uint32_t)g1 * (0xFFFFFFFFu / HM_SEG)) >> 32);   /* -> Q15 */
-            a1 = hm_read(mr, wq, p + (int32_t)(HM_D0 << 16));
-            a2 = hm_read(mr, wq, p2 + (int32_t)(HM_D0 << 16));
-            c = (((((a1 * g1 + a2 * (32767 - g1)) >> 15) * g) >> 15) * hb.lg[v]) >> 15;   /* (LEVEL, the mute) */
-            vs += c;
-            sl += (c * hb.pl[v]) >> 12, sr += (c * hb.pr[v]) >> 12;   /* (its pan) */
-            if (wv)
-                wv[v][i] = byp ? 0 : hm_knee((c * wg) >> 15);
-            c = c < 0 ? -c : c;
-            ui_v[v] = c > ui_v[v] ? c : ui_v[v];
+            wq = (int32_t)(w << 16) - (int32_t)((~t & 1u) << 15);   /* the newest slot, the half-pair's phase */
+            HM_VOICE(0, gA, pA, gtA, dA, lA, plA, prA, ui_v[0]);   /* the voices: two taps, a triangle crossfade */
+            HM_VOICE(1, gB, pB, gtB, dB, lB, plB, prB, ui_v[1]);
+            HM_VOICE(2, gC, pC, gtC, dC, lC, plC, prC, ui_v[2]);
+            if (t & 1u) {                               /* (22.05 kHz: the next pair's), rounded toward 0 */
+                int32_t f = clamp(vs, -65535, 65535) * fbk;
+                f = (f + (f < 0 ? 32767 : 0)) >> 15;
+                if (eql)
+                    f = hm_bq(L->eq[0], hb.cq[0], f);
+                if (eqh)
+                    f = hm_bq(L->eq[1], hb.cq[1], f);
+                fb = f;
+            }
+            if (byp) {                                  /* IN / OUT: OUT, no wet (the dry, hb.kd 32768, is the input) */
+                wl[i] = wr[i] = 0;
+            } else {
+                sl = clamp(sl, -98301, 98301), sr = clamp(sr, -98301, 98301);
+                wl[i] = hm_knee((sl * wg) >> 15), wr[i] = hm_knee((sr * wg) >> 15);
+            }
+            if (t & 1u) {                               /* (the meters: once a pair) */
+                int32_t ar = wr[i] < 0 ? -wr[i] : wr[i];
+                ax = wl[i] < 0 ? -wl[i] : wl[i];
+                ax = ax > ar ? ax : ar;
+                po = ax > po ? ax : po;
+                ui_out = ax > ui_out ? ax : ui_out;
+            }
+            t++;
         }
-        if (L->t & 1u) {                                /* (22.05 kHz: the next pair's), rounded toward 0 */
-            int32_t f = clamp(vs, -65535, 65535) * fbk;
-            f = (f + (f < 0 ? 32767 : 0)) >> 15;
-            if (hb.eql)
-                f = hm_bq(L->eq[0], hb.cq[0], f);
-            if (hb.eqh)
-                f = hm_bq(L->eq[1], hb.cq[1], f);
-            L->fb = f;
-        }
-        if (byp) {                                      /* IN / OUT: OUT, no wet (the dry, hb.kd 32768, is the input) */
-            wl[i] = wr[i] = 0;
-        } else {
-            sl = clamp(sl, -98301, 98301), sr = clamp(sr, -98301, 98301);
-            wl[i] = hm_knee((sl * wg) >> 15), wr[i] = hm_knee((sr * wg) >> 15);
-        }
-        if (L->t & 1u) {                                /* (the meters: once a pair) */
-            int32_t ar = wr[i] < 0 ? -wr[i] : wr[i];
-            ax = wl[i] < 0 ? -wl[i] : wl[i];
-            ax = ax > ar ? ax : ar;
-            po = ax > po ? ax : po;
-            ui_out = ax > ui_out ? ax : ui_out;
-        }
-        L->t++;
+        L->w = w, L->t = t, L->half = half, L->fb = fb;
+        L->g[0] = gA, L->g[1] = gB, L->g[2] = gC, L->ph[0] = pA, L->ph[1] = pB, L->ph[2] = pC;
+#undef HM_VOICE
+#undef HM_S16
+#undef HM_S15
+#undef HM_DQ
     }
     hm.pk_in = pk, hm.pk_out = po;
     if (ui_in > hm.up[HM_UP_IN])                        /* (the page's, the loudest lane's: it takes them at its rate) */
@@ -600,6 +628,12 @@ static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int
         hm.up[HM_UP_OUT] = ui_out;
     if (ui_fb > hm.up[HM_UP_FB])
         hm.up[HM_UP_FB] = ui_fb;
+    if (ui_in > hm.lpi[k % HL_N])                       /* (each lane's, the console's) */
+        hm.lpi[k % HL_N] = ui_in;
+    if (ui_out > hm.lpo[k % HL_N])
+        hm.lpo[k % HL_N] = ui_out;
+    if (ui_fb > hm.lpf[k % HL_N])
+        hm.lpf[k % HL_N] = ui_fb;
     if (k == HL_VOICE) {
         if (sc) {
             TIM_VOC_T(tt);

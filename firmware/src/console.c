@@ -566,6 +566,20 @@ static void hp_console(const char *p)
         con_dec(hm_send[0]);
         con_putc(13);
         con_putc(10);
+        con_puts("  lanes in/out/write (int16 peaks), bank F:");   /* (§12: VOICE, T2, T3, DRUMS; cleared) */
+        for (v = 0; v < 4u; v++) {
+            con_puts(v == 0 ? " v " : v == 1 ? " t2 " : v == 2 ? " t3 " : " d ");
+            con_dec(hm.lpi[v]);
+            con_puts("/");
+            con_dec(hm.lpo[v]);
+            con_puts("/");
+            con_dec(hm.lpf[v]);
+            con_puts(" f");
+            con_dec(hm_send[v]);
+            hm.lpi[v] = hm.lpo[v] = hm.lpf[v] = 0;
+        }
+        con_putc(13);
+        con_putc(10);
     }
     hm.pk_in = hm.pk_out = 0;
 }
