@@ -198,6 +198,9 @@ static struct {
     uint32_t lb_r, lb_last, lb_under, lb_resync;
     uint32_t mon_r, mon_frac, mon_step, mon_under, mon_resync;
     uint32_t mon_lo, mon_hi;     /* the monitor's fill (frames) since the stream started */
+    int32_t mon_g, mon_ll, mon_lr;   /* (2026-11-13) a fade over a dropout: the gain (Q15, 32768 = through, exactly),
+                                  * the last sample each side (after TRIM): running dry it fades to silence from there
+                                  * (it cut to 0: a click), coming back it fades in (it started at full: a click) */
     uint16_t peak_l, peak_r;     /* |sample| since the console last read them */
     /* (2026-10-30, the stems layouts lost ~5 % of the packets, STEREO none: is the check late, or the hardware?)
      * the time between two checks of UIN_EP while the host plays (TIMER4 ticks), its longest, those over 1 ms; an
@@ -1973,10 +1976,29 @@ static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
     for (i = 0; i < n; i++) {
         uint32_t a, b;
         int32_t fr = (int32_t)(uin.mon_frac >> 1);      /* Q15 */
-        if (w - uin.mon_r < 2u) {                       /* run dry: stop until the target is back */
+        if (w - uin.mon_r < 2u) {                       /* run dry: stop until the target is back, fading out */
             uin.mon_under++;
             uin.mon_go = 0;
-            goto quiet;
+            if (mono)
+                for (; i < n; i++) {
+                    int32_t g = uin.mon_g = uin.mon_g > 1024 ? uin.mon_g - 1024 : 0;   /* (~0.7 ms) */
+                    int32_t vl = (uin.mon_ll * g) >> 15, vr = (uin.mon_lr * g) >> 15;
+                    for (d = 0; d < UD_N; d++)
+                        uin_dst[d][i] = 0;
+                    if (rl == rr) {
+                        if (rl < UD_N)
+                            uin_dst[rl][i] = (int16_t)((vl + vr) >> 1);
+                    } else {
+                        if (rl < UD_N)
+                            uin_dst[rl][i] = (int16_t)vl;
+                        if (rr < UD_N)
+                            uin_dst[rr][i] = (int16_t)vr;
+                    }
+                }
+            uin.mon_g = 0;                              /* (the next start fades in) */
+            if (mono)
+                uin_pk[0] = (uint16_t)(pl > 32768u ? 32768u : pl), uin_pk[1] = (uint16_t)(pr > 32768u ? 32768u : pr);
+            return;
         }
         a = uin_ring[uin.mon_r & (UIN_N - 1u)];
         b = uin_ring[(uin.mon_r + 1u) & (UIN_N - 1u)];
@@ -1992,6 +2014,12 @@ static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
                 vl = (vl * tl) >> 12, vr = (vr * tr) >> 12;   /* (TRIM L / R; 0 dB: as it came) */
                 vl = vl > 32767 ? 32767 : vl < -32768 ? -32768 : vl;
                 vr = vr > 32767 ? 32767 : vr < -32768 ? -32768 : vr;
+                if (uin.mon_g < 32768) {                /* (back after a dropout, or the start: fading in, ~1.5 ms;
+                                                         * at 32768 nothing: as it came, exactly) */
+                    uin.mon_g = uin.mon_g + 512 > 32768 ? 32768 : uin.mon_g + 512;
+                    vl = (vl * uin.mon_g) >> 15, vr = (vr * uin.mon_g) >> 15;
+                }
+                uin.mon_ll = vl, uin.mon_lr = vr;
                 ml = (uint32_t)(vl < 0 ? -vl : vl), mr = (uint32_t)(vr < 0 ? -vr : vr);
                 pl = ml > pl ? ml : pl, pr = mr > pr ? mr : pr;   /* (the meters) */
                 if (rl == rr) {
