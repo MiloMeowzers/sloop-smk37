@@ -118,10 +118,10 @@ fader's state in the box at its left:
 The bar is the value the bank holds; the **white tick** is where the fader physically is. Move the tick onto the end of
 the bar and it is live.
 
-**Seeing the faders:** moving any fader brings the FADER BANK screen up (for 4 seconds after the last move), so you
-always see what it set; **on the HARMONY page the page stays**, its header saying what the fader set (A11). **Hold FADER BANK** (about 0.6 s) to pin the screen up for good; hold it again to let it time
-out again. Its LED is steady while pinned and blinks while the screen is up on its time-out. A tap on FADER BANK while
-the screen is up steps to the next bank; PATCH or KNOB BANK close it.
+**Seeing the faders:** moving any fader brings the FADER BANK screen up, so you always see what it set; **on the
+HARMONY page the page stays**, its header saying what the fader set (A11). The screen stays until you **tap FADER BANK**
+again or open something else (the menu, a layer, another page): there is no time-out. **<** **>** or SELECT step the
+banks while it is up. Its LED is lit while it is up.
 
 ### A5. FEEDBACK and REPEAT
 
@@ -554,7 +554,7 @@ record the intervals from the keys.
 | Your voice, but no harmony | No key held: with no key the harmoniser plays your voice dry. |
 | Neighbouring keys uneven | INTERVALS is SCALE: the keys follow the scale over the sung note. Set FIXED for plain intervals. |
 | The harmony climbs or falls away | FEEDBACK is up (bank E, F2). |
-| A fader does nothing | It is waiting to pick up: follow the arrow on the FADER BANK screen to the end of its bar. |
+| A fader does nothing | It is waiting to pick up: follow the arrow on the FADER BANK screen (or the header's MOVE UP / DOWN on the HARMONY page) to the end of its bar. |
 | SUNG NOTE reads `--` | INTERVALS is FIXED (the tracker is not running), or nothing clear is coming in yet. |
 | LOAD in the header | Too much at once: [A8](#a8-load-managing-the-load). |
 | A voice sounds with no key held | The control method is **MAN** or **K+M** (G2): the MANUAL voice plays from the PITCH fader. **KEYS** for keys only |

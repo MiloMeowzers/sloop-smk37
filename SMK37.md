@@ -122,7 +122,7 @@ update mode (UBOOT).
 | OCT− | octave down | drums: ghost hits | OCTAVE− | OCT− |
 | OCT+ | octave up | drums: hard hits | OCTAVE+ | OCT+ |
 | — | — | — | KNOB BANK | pins the pad sound picker open / closes it (lit while pinned or while K4 turns) |
-| — | — | — | FADER BANK | the fader bank screen; tapped again, < > or SELECT: the next bank A→B→C→D (→E→F with HARMONY on); closes after 4 s (blinking while up); **held 0.6 s: pinned** open (lit steady) until held again or PATCH closes it; closes the pad picker |
+| — | — | — | FADER BANK | the fader bank screen (lit while up); tapped again: closed. < > or SELECT: the next bank A→B→C→D (→E→F with HARMONY on). No time-out: it stays until FADER BANK, PATCH, or another screen (the menu, a layer, a page) closes it; closes the pad picker |
 | — | — | — | KNOB BANK + FADER BANK | the pads on the PLAY screen: DRUM KIT (default) ↔ STEPS (as the stock PAD BANK combo) |
 | — | — | — | < | page back (as SELECT, never tempo); SEQ held or pads on STEPS: step page back; visualiser: style |
 | — | — | — | > | page forward; SEQ held or pads on STEPS: step page forward; visualiser: style |

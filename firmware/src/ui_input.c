@@ -320,10 +320,8 @@ UI_SMALL static void ui_leds(void)
     for (c = 0; c < SMK_NLED; c++)                 /* the buttons: on / off (no dim layers) */
         fm1_led[c] = nl[c];
     smk_pad_piano = ui.layer == LY_SCALE;          /* SCALE held: the pads are a little piano (smk_input.h) */
-    fm1_led[SMK_BTN_FADER_BANK] = (fb_shown() && (fb_pin || ((fm1_ms / 400u) & 1u))) || ly_lock == LY_FX;   /* FADER
-                                                    * BANK lit while its screen is pinned up, blinking while it is up for
-                                                    * a while (one bank screen at a time), or while it holds the FX
-                                                    * layer open */
+    fm1_led[SMK_BTN_FADER_BANK] = fb_shown() || ly_lock == LY_FX;   /* FADER BANK lit while its screen is up, or while
+                                                    * it holds the FX layer open */
 #ifdef SMK_HARM
     if (hm_on && (TSEL == &trk[0] || (VP_SHOWN() && vis_pg)))
         fm1_led[panel.btn[B_LFO]] = hm_rep_shown();   /* NOTE REPEAT: REPEAT held (steady) or latched (flashing); on
@@ -1411,32 +1409,22 @@ UI_SMALL static void ui_input(void)
             ui.force = 1;
         }
     }
-    {   /* FADER BANK: its screen; pressed again (a tap, on release) the next bank; held ~0.6 s: the screen pinned open
-         * (no time-out) or let go again (2026-11-12) */
-        static uint32_t fbt0;                                   /* the press (ms) | 1; bit 1: the hold fired */
-        static uint8_t fb_was;                                  /* the screen was up at the press: a tap steps */
+    {   /* FADER BANK (2026-11-13): a tap opens its screen, a tap on the open screen closes it (on release: KNOB BANK +
+         * FADER BANK, the pads' bank, is taken first); < > or SELECT step the banks; no time-out */
+        static uint8_t fb_was, fb_dn;                           /* the screen was up at the press; a press in hand */
         uint32_t fbb = 1u << SMK_BTN_FADER_BANK;
         if (pressed & fbb) {
             pick_close();                                       /* (the pad picker goes: one screen at a time) */
-            fb_was = (uint8_t)fb_shown();
+            fb_was = (uint8_t)fb_shown(), fb_dn = 1;
             if (!fb_was)
-                fb_set(smk_fbank);                              /* (up at once; a tap on it then steps) */
-            fbt0 = (fm1_ms | 1u) & ~2u;
-        } else if (fbt0 && (fm1_in.buttons & fbb)) {
-            if (!(fbt0 & 2u) && fm1_ms - (fbt0 & ~3u) > 600u) {
-                fbt0 |= 2u;
-                fb_pin = (uint8_t)!fb_pin;
-                if (fb_pin)
-                    fb_set(smk_fbank);
-                ui_message(fb_pin ? "FADER BANK: PINNED" : "FADER BANK: 4 S");
-            }
-        } else if (fbt0) {
-            if (!(fbt0 & 2u) && fb_was && fb_shown())
-                fb_set(smk_fbank + 1u);                         /* (a tap on the open screen: the next bank) */
-            fbt0 = 0;
+                fb_set(smk_fbank);                              /* (up at once) */
+        } else if (fb_dn && !(fm1_in.buttons & fbb)) {
+            if (fb_was && fb_shown())
+                fb_close();                                     /* (a tap on the open screen: it goes) */
+            fb_dn = 0;
         }
     }
-    fb_expire();                                                /* (it closes by itself) */
+    fb_expire();                                                /* (another screen: it goes) */
     if (fb_shown()) {                                           /* SELECT (K2, or K6) turns the bank there */
         int32_t t = panel_enc(EN_SELECT);
         if (t)
