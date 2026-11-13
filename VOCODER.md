@@ -241,7 +241,7 @@ flowchart LR
 
 ### 2.6 INPUT: each side's level
 
-![HOME > INPUT: TRIM L and TRIM R, each with its meter; the tick at -10 dBFS](assets/screens/smk37-voc-input.png)
+![HOME > INPUT: TRIM L and TRIM R, each with its meter, the tick at -10 dBFS; AUDIO IN below them](assets/screens/smk37-voc-input.png)
 
 **HOME > INPUT** has **TRIM L** and **TRIM R**: each side's level before it goes anywhere, −18 .. +6 dB in 1 dB steps
 (0 dB: as it comes, the default), kept with the unit. Beside each, its **meter**: the level after the trim on a −48 .. 0
@@ -250,6 +250,8 @@ The small tick marks **−10 dBFS**: aim your voice's loud peaks there (AIM −1
 
 - A voice that comes in hot (peaks near 0 dBFS) makes the vocoder harsh: trim it down until the peaks sit near the tick.
 - A quiet source: trim it up. Above 0 dB the trim can clip a loud source: watch for CLIP.
+- Below the trims: **AUDIO IN** (OFF, ON, TEST), the switch from [Getting sound in](#1-getting-sound-in) (dim while no audio
+  arrives from the computer).
 - AUTOCONTROL (the vocoder page) then keeps the level steady from there.
 
 ## 3. The menus (HOME menu, PATCH held)

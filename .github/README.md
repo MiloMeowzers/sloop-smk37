@@ -43,7 +43,7 @@ NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMe
 1. Back up the keyboard's flash ([how](/SMK37.md#install)) and your projects (the editor's Backup).
 2. [Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/) (Chrome or Edge, over USB).
 3. On the computer, send your microphone to the SMK-37's audio output (peaks around −10 dBFS).
-4. HOME > USB > **AUDIO IN: ON**, HOME > VOCODER > **MODE: VOCODER**, select track 3, play chords and speak.
+4. HOME > INPUT > **AUDIO IN: ON**, HOME > VOCODER > **MODE: VOCODER**, select track 3, play chords and speak.
 5. A mono mic on one side: HOME > SETUP > **IN R: OFF** (or IN L), for its full level. HOME > **INPUT** shows each
    side's level: trim your voice until its peaks sit near the −10 tick.
 

@@ -26,7 +26,7 @@ moving at the pitch ratio, spliced every segment, with feedback and REPEAT. Its 
 
 ### A1. Getting started
 
-![HOME > HARMONY with the harmoniser on; HOME > SETUP with IN R sent to the harmoniser; INTERVALS: SCALE with the sung note](assets/screens/smk37-harm-menu.png)
+![HOME > HARMONY with the harmoniser on; HOME > SETUP with HARMONY on (T3 on its lane, IN R to the harmoniser); amber choices with their reason; INTERVALS: SCALE with the sung note](assets/screens/smk37-harm-menu.png)
 
 1. **The audio in:** set up the USB audio in as for the vocoder ([VOCODER.md, Getting sound in](VOCODER.md#1-getting-sound-in),
    steps 1-3: **HOME > INPUT > AUDIO IN: ON**).
@@ -128,7 +128,7 @@ banks while it is up. Its LED is lit while it is up.
 - **FEEDBACK** (bank E, F2): see [A4](#a4-the-faders-banks-e-and-f-and-pickup). At low settings it thickens the
   harmony with a short shimmer; high up it turns a held chord into rising (or falling) arpeggios of itself. The EQ in
   the loop is flat in this build (the H949's LOW / HIGH EQ is Stage 2).
-- **REPEAT**: select T1 and press **NOTE REPEAT**. The memory (about 0.4 s of what the harmoniser heard) is caught and
+- **REPEAT**: select T1 and press **NOTE REPEAT**. The memory (about 0.32 s of what the harmoniser heard, each lane its own) is caught and
   plays round and round, the input cut off, as the H949's REPEAT button did. The voices still play it at their
   intervals, so keys and PITCH reharmonise the loop.
   - **A tap latches it**: the NOTE REPEAT LED and **REP** in the header **flash**; tap again to let it go.
@@ -186,12 +186,16 @@ the USB layout:
   three harmonised kits, one per interval, mixable apart.
 - **DRUMS+RET:** the same, V1 with KICK, V2 with SNARE, V3 with HATS; PERC stays dry.
 
+![USB > STEREO PAIR = DRUMS (the return mono on channel 4); VOCODER > MODE locked to AUDIO while HARMONY is on; INPUT > AUDIO IN, moved from USB](assets/screens/smk37-harm-routing.png)
+
 **HOME > USB > STEREO PAIR** (SYNTHS+RET; kept): **RET** (default: the effects return on channels 5-6, as before),
 **DRUMS**, **T1**, **T2** or **T3**. The chosen source goes out **in stereo** on channels 5-6 (a track after its pan,
 with its lane's voices at their pans; the drums at their sounds' pans), and the effects return goes out **mono** in the
 channel the source left (PAIR = DRUMS: SYN 1, SYN 2, SYN 3, **RET**, **DRUMS L**, **DRUMS R**). Your DAW sees the new
 channel names at the next plug. With STEM FX on, the drums' punch-ins work on the mono kit: PAIR = DRUMS then carries
 the punched kit centred, with the lane's voices still at their pans.
+Beside the value the screen says where the return went (**RET MONO / ON CH 4** for DRUMS), or, in another USB
+layout, **NEEDS SYNTHS+RET** in amber.
 
 **The voices' pans** (G3: K5 SPREAD, K6 PAN, [A11](#a11-the-harmony-page-the-h949s-panel)) place each lane's harmony
 across the stereo field: SPREAD sends V1 left and V3 right, with V2 in the middle. The drums, which mostly run wet, get
@@ -401,7 +405,7 @@ harmoniser (bank F), the SMK-37 becomes a dub instrument. Three things make it w
   colour more than as chords: an octave down darkens a hit, a fifth or a ninth turns it into a tuned tone, and PITCH
   sweeps all three voices at once. The H949's formant shift (the introduction) is part of the sound here.
 - **The faders keep both hands free.** Bank E (PITCH, FEEDBACK, VOICE IN, WET / DRY) and bank F (the lanes) are one
-  move each. Pin the bank (FADER BANK held) and pickup keeps the jumps out (A4).
+  move each. The FADER BANK screen stays up until you close it, and pickup keeps the jumps out (A4).
 
 **The stem punch-ins, as heard through the harmoniser:**
 
@@ -456,9 +460,9 @@ menu, another page.
 - **The faders keep the page on screen.** Move one and the header says what it did, as the FADER BANK screen would:
   `PITCH +3.5 ST`, `FEEDBACK 38 %`, `T2 LANE 50 %`. The readout follows PITCH as you move it. A fader still waiting
   to pick up says which way to go: `PITCH MOVE UP` / `MOVE DOWN`.
-- **The FADER BANK button** still shows the bank screen (all four faders, the pickup arrows; tap for the next bank,
-  hold to pin it). When it closes, **the page comes back**; so it does after the pad picker.
-- On the vocoder page a fader shows the FADER BANK screen for a moment, and the page comes back after it.
+- **The FADER BANK button** still shows the bank screen (all four faders, the pickup arrows; < > for the next bank, a
+  tap of FADER BANK closes it). When it closes, **the page comes back**; so it does after the pad picker.
+- On the vocoder page a fader brings the FADER BANK screen up; tap FADER BANK and the page comes back.
 
 **The pads' lights** (each group's in the sheet above, as the page lights them):
 - **G1:** a pad in use lit in its voice's colour (V1 orange, V2 cyan, V3 violet), brighter with its level; **white**
@@ -583,6 +587,11 @@ record the intervals from the keys.
 > early, in Stage 1b); Stage 3
 > MIDI out of the harmony. Where Part A and Part B differ, Part A is what the build does: in Part B, "HOME > HARMONY >
 > TRACK" is gone (the harmoniser is always T1), PITCH and FEEDBACK are on bank E, and the keys are chromatic.
+>
+> **Stage 1c changed the routing below:** there are no HARM sends into one input any more. Each track sent has its own
+> **lane** (its own memory of **320 ms**, not 400, and its own feedback), set by **bank F (LANE)**, and comes out on its
+> own channel ([A6](#a6-the-lanes-the-harmoniser-across-each-track-and-the-outputs)). AUDIO IN is under **HOME >
+> INPUT**. The diagrams and lengths in this part are the original design.
 
 ### 1. Getting started
 
