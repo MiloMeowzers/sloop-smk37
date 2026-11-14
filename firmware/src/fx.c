@@ -1890,11 +1890,13 @@ static void mix_block(int32_t *out, uint32_t n)
     if (hm_want != hm_on)
         hm_apply();
     hm_ring = smk_fxpool;                               /* the VOICE lane's memory (T1's unit); the other lanes' in .pool */
-    hm_dran = 0;
+#if !MIX_PIPE
+    hm_dran = 0;                                        /* (the pipeline: after the tail, below; the tail reads it) */
+#endif
     if (hm_on)
         hm_block();                                     /* the lanes' shared values, before either core's units */
 #endif
-#if BOARD_SMK37
+#if BOARD_SMK37 && !MIX_PIPE
     if (stem_feed && stem_layout == 2u && smk_pair)     /* STEREO PAIR: its source writes it this block (silent: 0) */
         memset(stem_pl, 0, sizeof stem_pl), memset(stem_pr, 0, sizeof stem_pr);
 #endif
@@ -1929,6 +1931,16 @@ static void mix_block(int32_t *out, uint32_t n)
         memset(stem_syn, 0, sizeof stem_syn);
         memset(stem_drum, 0, sizeof stem_drum);
     }
+    if (stem_feed && stem_layout == 2u && smk_pair)     /* STEREO PAIR: its source writes it this block (silent: 0).
+                                                         * After the tail, never before: the tail copies the last
+                                                         * block's pair into 5-6, and a clear under that copy (a
+                                                         * byte at a time, the top byte last) left 0xFF000000 in a
+                                                         * small negative sample: a full-scale pop on the stem
+                                                         * (2026-11-14, the owner's drums on 5-6) */
+        memset(stem_pl, 0, sizeof stem_pl), memset(stem_pr, 0, sizeof stem_pr);
+#ifdef SMK_HARM
+    hm_dran = 0;                                        /* (as the pair: the tail reads it for the drum stem's source) */
+#endif
 #endif
     {   /* REV / ECHO THROW (2.6): as without the pipeline, after the tail (its buses read thr_dly) */
         uint32_t q = thr_req | thr_ed;
